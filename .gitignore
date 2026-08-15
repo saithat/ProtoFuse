@@ -1,0 +1,22 @@
+.DS_Store
+.env
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Papers and generated runs can be large or confidential. Keep only examples.
+data/papers/*
+!data/papers/.gitkeep
+data/specs/*
+!data/specs/.gitkeep
+data/runs/*
+!data/runs/.gitkeep
+
+# Proto model/tool caches belong outside Git.
+.proto/

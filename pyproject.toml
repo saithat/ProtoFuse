@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "protofuse"
+version = "0.1.0"
+description = "Turn paper methodologies into auditable Proto workflow plans"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "anthropic>=0.119.0,<1",
+  "modal>=1.5.2,<2",
+  "proto-language @ git+https://github.com/evo-design/proto-language.git@edf64afbcf84cc7c5e4e1404418c8ef1f16c34ce",
+  "pydantic>=2.11,<3",
+  "python-dotenv>=1.1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+protofuse = "protofuse.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protofuse"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["protofuse"]
