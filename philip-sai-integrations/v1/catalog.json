@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "integration_version": "1",
+  "scenarios": [
+    {
+      "scenario_id": "dnachisel-num1",
+      "source_lane": "mixed",
+      "path": "mixed/dnachisel-num1",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip", "sai"]
+    },
+    {
+      "scenario_id": "custom-egfp-lung",
+      "source_lane": "mixed",
+      "path": "mixed/custom-egfp-lung",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "gpcr-cxcr4-miniprotein",
+      "source_lane": "mixed",
+      "path": "mixed/gpcr-cxcr4-miniprotein",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "esm2-protein-maturation",
+      "source_lane": "mixed",
+      "path": "mixed/esm2-protein-maturation",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "antibody-cdr-maturation",
+      "source_lane": "mixed",
+      "path": "mixed/antibody-cdr-maturation",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "integration_version": "1",
+  "scenario_id": "gpcr-cxcr4-miniprotein",
+  "scenario_version": 1,
+  "title": "GPCR CXCR4 miniprotein binder design (Muratspahić et al. 2026)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Scoped computational CXCR4 binder loop from Nature 2026 GPCR miniprotein paper",
+        "Mapped RFdiffusion+MPNN design and Boltz-2 validation to Proto rejection sampling"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "gpcr-cxcr4-v1",
+  "status": "active",
+  "notes": "Paper DOI 10.1038/s41586-026-10656-8; wet-lab OPS-RD/yeast screening out of scope."
+}

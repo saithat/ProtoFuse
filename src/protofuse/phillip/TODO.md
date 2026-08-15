@@ -5,6 +5,9 @@ committed under `proto_programs/generated/<collection_id>/`.
 
 Handoff runbook: [`workspaces/phillip/HANDOFF.md`](../../../workspaces/phillip/HANDOFF.md).
 
+**Pipeline timings (local + Modal):** [`workspaces/phillip/PIPELINE_BENCHMARKS.md`](../../../workspaces/phillip/PIPELINE_BENCHMARKS.md)
+· re-run `uv run python scripts/benchmark_pipelines.py`.
+
 Sai chooses what to fuse, acceptable error rates, and final fusion behavior. Phillip
 does not need to define end outputs or fusion acceptance criteria before handing off.
 
@@ -41,11 +44,11 @@ After Sai starts analysis, treat the collection as read-only. Any change → new
 
 ## Candidate workflows (lower priority)
 
-`custom-egfp-lung` is done; finish `dnachisel-num1` handoff first. Further scenarios are
-backlogged in [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md)
-(protein-first: ESM-2 maturation, FreeBindCraft binder, RFdiffusion3 + Boltz-2; deferred
-RNA/DNA: PARADE UTR, AlphaGenome splice). Pick from that doc when adding the next
-fixture — prioritize GPU-backed loops for Sai profiling.
+`dnachisel-num1` and `custom-egfp-lung` handoffs are complete on `main`. Wave 1 protein
+workflows are implemented (`esm2-protein-maturation`, `antibody-cdr-maturation`) — see
+[`docs/PROTEIN_WORKFLOW_SCAFFOLD.md`](../../../docs/PROTEIN_WORKFLOW_SCAFFOLD.md). Next wave:
+FreeBindCraft binder, symmetric oligomer, PPI interface specificity. Full backlog in
+[`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md).
 
 ## Out of scope (Sai)
 
@@ -60,6 +63,9 @@ Internal only — not the Sai handoff:
 
 - `workspaces/phillip/fixtures/dnachisel-num1/methodology.json`
 - `workspaces/phillip/fixtures/custom-egfp-lung/methodology.json`
-- `data/analysis/dnachisel-num1/` (ignored local profiles from prior runs)
+- `workspaces/phillip/fixtures/esm2-protein-maturation/methodology.json`
+- `workspaces/phillip/fixtures/antibody-cdr-maturation/methodology.json`
+- `data/analysis/<collection_id>/` (ignored local Sai node profiles)
+- `workspaces/phillip/PIPELINE_BENCHMARKS.json` (orchestrator wall times, all pipelines)
 
 Builder library: `program_builders.py`, `dnachisel_constraints.py`, `region_solver.py`.

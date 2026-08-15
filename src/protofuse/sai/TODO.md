@@ -3,12 +3,21 @@
 Goal: learn reusable fusions from Phillip's frozen ordinary Proto programs so future user
 programs automatically use them when compatible and safe.
 
+## Pipeline timings
+
+Orchestrator wall times (local execute + Modal compile/execute attempts):
+[`workspaces/phillip/PIPELINE_BENCHMARKS.md`](../../../workspaces/phillip/PIPELINE_BENCHMARKS.md)
+· JSON: [`PIPELINE_BENCHMARKS.json`](../../../workspaces/phillip/PIPELINE_BENCHMARKS.json).
+
+Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored).
+
 ## Active handoffs
 
 | Collection ID | Path | Primary program | Notes |
 |---------------|------|-----------------|-------|
-| `dnachisel-num1` | `proto_programs/generated/dnachisel-num1/` | **`design_001.py`** (936 bp) | Skip `design_002.py` (100 bp smoke). Outer loop validated: `run_dnachisel_num1(tier="full")` ~113 s. |
-| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | `design_001.py` (720 bp) | Outer loop: `run_custom_egfp_lung(tier="full")`. |
+| `dnachisel-num1` | `proto_programs/generated/dnachisel-num1/` | **`design_001.py`** (936 bp) | Skip `design_002.py`. Full outer loop **138 s** — see benchmarks. |
+| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | **`design_001.py`** (720 bp) | Skip `design_002.py`. Full pool loop **79 s** — see benchmarks. |
+| `gpcr-cxcr4-miniprotein` | `proto_programs/generated/gpcr-cxcr4-miniprotein/` | **`design_001.py`** (70 aa) | Modal GPU workload; smoke `program.run()` **failed** (PDB ID binding bug) — see benchmarks. |
 
 ## Analyze program collections
 
@@ -47,7 +56,8 @@ Raw traces and calibration data stay under `data/analysis/`; weights stay under
 
 ## Future program collections (lower priority)
 
-Current Phillip handoffs (`custom-egfp-lung`, `dnachisel-num1`) are CPU-only codon
-workflows — weak fusion targets. When Phillip adds collections, prefer scenarios from
+CPU codon handoffs (`custom-egfp-lung`, `dnachisel-num1`) are weak fusion targets.
+`gpcr-cxcr4-miniprotein` is the primary GPU-backed collection once Modal execution is
+unblocked. When Phillip adds collections, prefer scenarios from
 [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md) that repeat GPU
 tools (ESMFold, Boltz-2, PARADE, AbLang) inside MCMC or pool loops.

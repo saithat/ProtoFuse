@@ -20,7 +20,13 @@ from protofuse.phillip.dnachisel_constraints import (
     reference_homology_constraint,
     sliding_window_gc_constraint,
 )
-from protofuse.phillip.program_builders import build_dnachisel_num1_program, load_fixture_spec
+from protofuse.phillip.program_builders import (
+    build_antibody_cdr_maturation_program,
+    build_dnachisel_num1_program,
+    build_esm2_protein_maturation_program,
+    load_fixture_spec,
+    resolve_workload_params,
+)
 from protofuse.phillip.sequence_init import estimate_filter_pass_rate, generate_filter_safe_sequence
 
 logger = logging.getLogger(__name__)
@@ -333,6 +339,40 @@ def run_preflight(
         logging.disable(logging.CRITICAL)
 
     spec = load_fixture_spec(fixture_id)
+    workload = spec.global_parameters.get("workload")
+    if workload in {"esm2_protein_maturation", "antibody_cdr_maturation"}:
+        if workload == "esm2_protein_maturation":
+            length = target_length or int(spec.global_parameters.get("segment_length_aa", 80))
+            params = resolve_workload_params(spec, tier="smoke")
+            if target_length is not None:
+                params["segment_length_aa"] = target_length
+                params["seed_sequence"] = str(params["seed_sequence"])[:target_length]
+            program = build_esm2_protein_maturation_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        else:
+            length = target_length or len(str(spec.global_parameters.get("framework_sequence", "")))
+            params = resolve_workload_params(spec, tier="smoke")
+            program = build_antibody_cdr_maturation_program(params, region_pass=0)
+            built_length = program.constructs[0].segments[0].sequence_length
+        ladder = [
+            LadderStepResult(
+                level="L0",
+                output_length=built_length,
+                expected_length=length,
+                passed=built_length == length,
+                detail="build-only preflight (GPU constraints skipped)",
+            )
+        ]
+        return PreflightReport(
+            fixture_id=fixture_id,
+            target_length=length,
+            filter_pass_rate=1.0,
+            ladder_steps=ladder,
+            classification=classify_report(ladder),
+            mcmc_accepted_any=False,
+            filter_pass_samples=0,
+        )
+
     length = target_length or int(spec.global_parameters.get("segment_length_bp", 100))
     filter_rate = estimate_filter_pass_rate(length, n=filter_samples)
 
