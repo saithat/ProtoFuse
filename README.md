@@ -35,8 +35,6 @@ src/protofuse/
 
 proto_programs/generated/   # frozen program collections Phillip gives Sai
 data/                       # ignored papers, runs, training data, and weights
-workspaces/phillip/          # disposable Phillip experiments
-workspaces/sai/              # disposable Sai experiments
 ```
 
 The only team artifact handoff is `proto_programs/generated/<collection_id>/`. There are
