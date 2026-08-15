@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Synthetic example: balanced-GC DNA design",
+    "identifier": "example:balanced-gc",
+    "source_path": null
+  },
+  "generators": [
+    {
+      "name": "random nucleotide generator",
+      "description": "Propose 100-base DNA candidates uniformly.",
+      "parameters": {"length": 100},
+      "evidence": [{"quote": "Randomly generate 100-base DNA candidates.", "section": "Methods", "page": 1}],
+      "output": "dna"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "GC content",
+      "description": "Keep GC content between 40 and 60 percent.",
+      "parameters": {"min_gc": 40, "max_gc": 60},
+      "evidence": [{"quote": "Candidates were retained at 40-60% GC.", "section": "Selection", "page": 1}],
+      "metric": "gc_percent",
+      "direction": "range",
+      "weight": 1.0
+    },
+    {
+      "name": "homopolymer limit",
+      "description": "Reject homopolymers longer than five bases.",
+      "parameters": {"max_length": 5},
+      "evidence": [{"quote": "Runs longer than five identical bases were rejected.", "section": "Selection", "page": 1}],
+      "metric": "max_homopolymer_length",
+      "direction": "filter",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "MCMC",
+      "description": "Iteratively refine candidates using MCMC.",
+      "parameters": {"num_steps": 100, "max_temperature": 1.0},
+      "evidence": [{"quote": "We ran MCMC for 100 steps.", "section": "Optimization", "page": 1}],
+      "strategy": "markov_chain_monte_carlo",
+      "stopping_criteria": {"num_steps": 100}
+    }
+  ],
+  "model_dependencies": [],
+  "global_parameters": {"num_results": 1},
+  "workflow": {
+    "steps": [
+      {"id": "generate", "operation": "generate candidates", "inputs": [], "outputs": ["candidate_dna"], "parameters": {}, "evidence": []},
+      {"id": "score", "operation": "score constraints", "inputs": ["candidate_dna"], "outputs": ["scores"], "parameters": {}, "evidence": []},
+      {"id": "select", "operation": "select survivors", "inputs": ["candidate_dna", "scores"], "outputs": ["survivors"], "parameters": {}, "evidence": []}
+    ],
+    "edges": [
+      {"source": "generate", "target": "score", "artifact": "candidate_dna"},
+      {"source": "score", "target": "select", "artifact": "scores"}
+    ]
+  },
+  "selection_thresholds": [
+    {"name": "minimum GC", "metric": "gc_percent", "operator": ">=", "value": 40, "unit": "%", "applies_to": "candidate DNA", "evidence": []},
+    {"name": "maximum GC", "metric": "gc_percent", "operator": "<=", "value": 60, "unit": "%", "applies_to": "candidate DNA", "evidence": []}
+  ],
+  "experimental_measurements": [],
+  "assumptions": [],
+  "unknowns": []
+}

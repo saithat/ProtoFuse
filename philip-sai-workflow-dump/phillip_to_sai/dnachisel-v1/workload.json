@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "dnachisel-gc-optimization",
+  "fixed_inputs": {
+    "segment_length_bp": 100,
+    "constraint_parameters": {
+      "windowed GC content": {
+        "min_gc": 45,
+        "max_gc": 65,
+        "window_bp": 100
+      },
+      "BsaI site removal": {
+        "pattern": "GGTCTC"
+      },
+      "homopolymer limit": {
+        "max_length": 4
+      }
+    }
+  },
+  "varying_inputs": {
+    "candidate_sequence": {
+      "role": "mutation_delta",
+      "count_per_step": 1
+    },
+    "seed": {
+      "role": "stochastic_axis"
+    }
+  },
+  "reuse_axes": {
+    "shared_prefix": false,
+    "expected_constraint_evaluations": 200,
+    "expected_generator_calls": 200
+  },
+  "branches": 4
+}

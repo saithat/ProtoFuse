@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "device": "local",
+  "seed": 0,
+  "nodes": [
+    {
+      "node_id": "gen:0:stochastic_mutation_generator",
+      "calls": 200,
+      "duration_ms_total": 4.0,
+      "duration_ms_mean": 0.02,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 200,
+      "quality_contribution": "medium",
+      "measurement": "estimated"
+    },
+    {
+      "node_id": "cst:0:windowed_gc_content",
+      "calls": 200,
+      "duration_ms_total": 400.0,
+      "duration_ms_mean": 2.0,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 200,
+      "quality_contribution": "high",
+      "measurement": "estimated"
+    },
+    {
+      "node_id": "cst:1:bsai_site_removal",
+      "calls": 200,
+      "duration_ms_total": 400.0,
+      "duration_ms_mean": 2.0,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 200,
+      "quality_contribution": "medium",
+      "measurement": "estimated"
+    },
+    {
+      "node_id": "cst:2:homopolymer_limit",
+      "calls": 200,
+      "duration_ms_total": 400.0,
+      "duration_ms_mean": 2.0,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 200,
+      "quality_contribution": "medium",
+      "measurement": "estimated"
+    },
+    {
+      "node_id": "opt:0:mcmc_refinement",
+      "calls": 200,
+      "duration_ms_total": 300.0,
+      "duration_ms_mean": 1.5,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 200,
+      "quality_contribution": "orchestration",
+      "measurement": "estimated"
+    }
+  ],
+  "headline_bottleneck_node_id": "cst:0:windowed_gc_content"
+}

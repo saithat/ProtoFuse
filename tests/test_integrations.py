@@ -12,7 +12,7 @@ def test_integration_catalog_loads() -> None:
         Path("philip-sai-integrations/v1/catalog.json").read_text()
     )
     assert catalog.integration_version == "1"
-    assert catalog.scenarios == []
+    assert len(catalog.scenarios) == 2
 
 
 def test_integration_template_manifest_loads() -> None:
@@ -23,9 +23,10 @@ def test_integration_template_manifest_loads() -> None:
     assert manifest.contributors[0].id == "sai"
 
 
-def test_validate_empty_integrations_catalog() -> None:
+def test_validate_integrations_catalog() -> None:
     messages = validate_integrations(version="1")
-    assert any("catalog is empty" in message for message in messages)
+    assert len(messages) == 2
+    assert all(message.startswith("ok sai/") for message in messages)
 
 
 def test_validate_integrations_rejects_catalog_manifest_mismatch(tmp_path: Path) -> None:

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "dnachisel-v1",
+  "target_node_id": "cst:0:windowed_gc_content",
+  "binding_time_split": {
+    "fixed_context": [
+      "segment_length_bp",
+      "constraint_parameters"
+    ],
+    "varying_context": [
+      "candidate_sequence",
+      "seed"
+    ]
+  },
+  "prepared_state": {
+    "cache_key": [
+      "constraint_parameters",
+      "segment_length_bp"
+    ],
+    "invalidates_on": [
+      "constraint_parameters",
+      "segment_length_bp"
+    ],
+    "resume_operation": "incremental_constraint_rescore"
+  },
+  "residual_graph": {
+    "description": "MCMC loop reuses prepared constraint context across proposals with identical fixed parameters.",
+    "protected_invariants": [
+      "All hard constraints must pass before objective optimization.",
+      "Windowed GC must remain within declared thresholds."
+    ]
+  },
+  "exactness": "exact_for_fixed_parameters",
+  "fallback": "baseline_constraint_rescore"
+}

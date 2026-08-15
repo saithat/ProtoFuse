@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "DNA Chisel, a versatile sequence optimizer",
+    "identifier": "10.1093/bioinformatics/btaa558",
+    "source_path": "data/papers/dnachisel.txt"
+  },
+  "topology": "multiobjective_search",
+  "device": "local",
+  "bindings": [
+    {
+      "extracted_name": "stochastic mutation generator",
+      "proto_symbol": "proto_language.generator.RandomNucleotideGenerator",
+      "status": "bound"
+    },
+    {
+      "extracted_name": "windowed GC content",
+      "proto_symbol": "proto_language.constraint.gc_content_constraint",
+      "status": "bound"
+    },
+    {
+      "extracted_name": "BsaI site removal",
+      "proto_symbol": "proto_language.constraint.max_homopolymer_constraint",
+      "status": "bound"
+    },
+    {
+      "extracted_name": "homopolymer limit",
+      "proto_symbol": "proto_language.constraint.max_homopolymer_constraint",
+      "status": "bound"
+    },
+    {
+      "extracted_name": "MCMC refinement",
+      "proto_symbol": "proto_language.optimizer.MCMCOptimizer",
+      "status": "bound"
+    }
+  ],
+  "workflow": {
+    "steps": [
+      {
+        "id": "resolve_constraints",
+        "operation": "resolve hard constraints on unsatisfactory regions",
+        "inputs": [
+          "starting_sequence"
+        ],
+        "outputs": [
+          "feasible_dna"
+        ],
+        "parameters": {},
+        "evidence": [
+          {
+            "quote": "During each step, unsatisfactory sequence regions are detected and separately optimized.",
+            "section": "Implementation",
+            "page": 2
+          }
+        ]
+      },
+      {
+        "id": "generate",
+        "operation": "stochastic mutation proposals",
+        "inputs": [
+          "feasible_dna"
+        ],
+        "outputs": [
+          "candidate_dna"
+        ],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "score",
+        "operation": "score windowed GC and pattern constraints",
+        "inputs": [
+          "candidate_dna"
+        ],
+        "outputs": [
+          "scores"
+        ],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "optimize_objectives",
+        "operation": "maximize weighted objectives under satisfied constraints",
+        "inputs": [
+          "candidate_dna",
+          "scores"
+        ],
+        "outputs": [
+          "optimized_dna"
+        ],
+        "parameters": {},
+        "evidence": [
+          {
+            "quote": "This steps separation allows to detect incompatible constraints early, and quickly reach satisfactory solutions.",
+            "section": "Implementation",
+            "page": 2
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "source": "resolve_constraints",
+        "target": "generate",
+        "artifact": "feasible_dna"
+      },
+      {
+        "source": "generate",
+        "target": "score",
+        "artifact": "candidate_dna"
+      },
+      {
+        "source": "score",
+        "target": "optimize_objectives",
+        "artifact": "scores"
+      }
+    ]
+  },
+  "executable": true,
+  "unresolved": []
+}

@@ -1,0 +1,198 @@
+{
+  "schema_version": "1.0",
+  "scenario_id": "dnachisel-gc-optimization",
+  "topology": "multiobjective_search",
+  "nodes": [
+    {
+      "id": "gen:0:stochastic_mutation_generator",
+      "kind": "generator",
+      "label": "stochastic mutation generator",
+      "proto_symbol": "proto_language.generator.RandomNucleotideGenerator",
+      "output_type": "dna",
+      "traits": {
+        "deterministic": false,
+        "stochastic": true,
+        "effectful": false
+      },
+      "parameters": {
+        "mutations_per_step": 3
+      }
+    },
+    {
+      "id": "cst:0:windowed_gc_content",
+      "kind": "constraint",
+      "label": "windowed GC content",
+      "proto_symbol": "proto_language.constraint.gc_content_constraint",
+      "metric": "gc_percent_windowed",
+      "direction": "range",
+      "traits": {
+        "deterministic": true,
+        "stochastic": false,
+        "effectful": false
+      },
+      "parameters": {
+        "min_gc": 45,
+        "max_gc": 65,
+        "window_bp": 100
+      }
+    },
+    {
+      "id": "cst:1:bsai_site_removal",
+      "kind": "constraint",
+      "label": "BsaI site removal",
+      "proto_symbol": "proto_language.constraint.max_homopolymer_constraint",
+      "metric": "restriction_site_count",
+      "direction": "filter",
+      "traits": {
+        "deterministic": true,
+        "stochastic": false,
+        "effectful": false
+      },
+      "parameters": {
+        "pattern": "GGTCTC"
+      }
+    },
+    {
+      "id": "cst:2:homopolymer_limit",
+      "kind": "constraint",
+      "label": "homopolymer limit",
+      "proto_symbol": "proto_language.constraint.max_homopolymer_constraint",
+      "metric": "max_homopolymer_length",
+      "direction": "filter",
+      "traits": {
+        "deterministic": true,
+        "stochastic": false,
+        "effectful": false
+      },
+      "parameters": {
+        "max_length": 4
+      }
+    },
+    {
+      "id": "opt:0:mcmc_refinement",
+      "kind": "optimizer",
+      "label": "MCMC refinement",
+      "proto_symbol": "proto_language.optimizer.MCMCOptimizer",
+      "strategy": "markov_chain_monte_carlo",
+      "traits": {
+        "deterministic": false,
+        "stochastic": true,
+        "effectful": false
+      },
+      "parameters": {
+        "num_steps": 200,
+        "max_temperature": 1.0
+      }
+    },
+    {
+      "id": "wf:resolve_constraints",
+      "kind": "workflow_step",
+      "label": "resolve hard constraints on unsatisfactory regions",
+      "traits": {
+        "deterministic": true,
+        "stochastic": false,
+        "effectful": false
+      },
+      "parameters": {}
+    },
+    {
+      "id": "wf:generate",
+      "kind": "workflow_step",
+      "label": "stochastic mutation proposals",
+      "traits": {
+        "deterministic": false,
+        "stochastic": true,
+        "effectful": false
+      },
+      "parameters": {}
+    },
+    {
+      "id": "wf:score",
+      "kind": "workflow_step",
+      "label": "score windowed GC and pattern constraints",
+      "traits": {
+        "deterministic": false,
+        "stochastic": true,
+        "effectful": false
+      },
+      "parameters": {}
+    },
+    {
+      "id": "wf:optimize_objectives",
+      "kind": "workflow_step",
+      "label": "maximize weighted objectives under satisfied constraints",
+      "traits": {
+        "deterministic": false,
+        "stochastic": true,
+        "effectful": false
+      },
+      "parameters": {}
+    }
+  ],
+  "edges": [
+    {
+      "source": "gen:0:stochastic_mutation_generator",
+      "target": "cst:0:windowed_gc_content",
+      "artifact": "candidate_sequence",
+      "role": "score_input"
+    },
+    {
+      "source": "gen:0:stochastic_mutation_generator",
+      "target": "cst:1:bsai_site_removal",
+      "artifact": "candidate_sequence",
+      "role": "score_input"
+    },
+    {
+      "source": "gen:0:stochastic_mutation_generator",
+      "target": "cst:2:homopolymer_limit",
+      "artifact": "candidate_sequence",
+      "role": "score_input"
+    },
+    {
+      "source": "cst:0:windowed_gc_content",
+      "target": "opt:0:mcmc_refinement",
+      "artifact": "constraint_score",
+      "role": "optimizer_feedback"
+    },
+    {
+      "source": "cst:1:bsai_site_removal",
+      "target": "opt:0:mcmc_refinement",
+      "artifact": "constraint_score",
+      "role": "optimizer_feedback"
+    },
+    {
+      "source": "cst:2:homopolymer_limit",
+      "target": "opt:0:mcmc_refinement",
+      "artifact": "constraint_score",
+      "role": "optimizer_feedback"
+    },
+    {
+      "source": "opt:0:mcmc_refinement",
+      "target": "gen:0:stochastic_mutation_generator",
+      "artifact": "accepted_proposal",
+      "role": "refinement_loop"
+    },
+    {
+      "source": "wf:resolve_constraints",
+      "target": "wf:generate",
+      "artifact": "feasible_dna",
+      "role": "workflow"
+    },
+    {
+      "source": "wf:generate",
+      "target": "wf:score",
+      "artifact": "candidate_dna",
+      "role": "workflow"
+    },
+    {
+      "source": "wf:score",
+      "target": "wf:optimize_objectives",
+      "artifact": "scores",
+      "role": "workflow"
+    }
+  ],
+  "invariants": [
+    "All hard constraints must pass before objective optimization.",
+    "Windowed GC must remain within declared thresholds."
+  ]
+}

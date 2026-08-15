@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "dnachisel-v1",
+  "baseline": "phillip_to_sai baseline profile",
+  "candidate": "prepared-state patched graph",
+  "device": "local",
+  "seed": 0,
+  "repetitions": 3,
+  "metrics": [
+    {
+      "name": "total_wall_time_ms",
+      "pass_threshold_ratio": 0.85
+    },
+    {
+      "name": "constraint_evaluations",
+      "pass_threshold_ratio": 1.0
+    },
+    {
+      "name": "scientific_invariants",
+      "pass_threshold": "all_pass"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 from protofuse.contracts import MethodologySpec
+from protofuse.integration import DNA_BASELINE_REGISTRY
 from protofuse.phillip import run_pipeline
 from protofuse.scientific_agent import ScientificAgent
 
@@ -26,12 +27,7 @@ def test_pipeline_keeps_unknown_components_non_executable(example_spec: Methodol
 
 
 def test_pipeline_can_use_reviewed_registry(example_spec: MethodologySpec) -> None:
-    registry = {
-        "random nucleotide generator": "proto_language.generator.RandomNucleotideGenerator",
-        "GC content": "proto_language.constraint.gc_content_constraint",
-        "homopolymer limit": "proto_language.constraint.max_homopolymer_constraint",
-        "MCMC": "proto_language.optimizer.MCMCOptimizer",
-    }
+    registry = DNA_BASELINE_REGISTRY
     result = run_pipeline(
         "synthetic paper text",
         ScientificAgent(FakeBackend(example_spec)),

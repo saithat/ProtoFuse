@@ -1,0 +1,28 @@
+{
+  "integration_version": "1",
+  "scenario_id": "dnachisel-gc-optimization",
+  "scenario_version": 1,
+  "title": "Pipeline 2: DNA Chisel windowed GC optimization",
+  "source_lane": "sai",
+  "contributors": [
+    {
+      "id": "sai",
+      "role": "sai",
+      "contributions": [
+        "Selected DNA Chisel as the real-paper optimization target",
+        "Reviewed extracted MethodologySpec at Check-in 0"
+      ]
+    },
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Ingested paper text and produced baseline graph handoff bundle"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "dnachisel-v1",
+  "status": "active",
+  "notes": "Pipeline 2 Sai optimization substrate. Check-in 0 approved 2026-08-15."
+}

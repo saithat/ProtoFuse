@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "dnachisel-v1",
+  "changes": [
+    {
+      "operation": "insert_prepared_module",
+      "before_node_id": "cst:0:windowed_gc_content",
+      "new_node_id": "stage:prepared:cst:0:windowed_gc_content",
+      "expected_benefit_ms_per_iteration": 0.03,
+      "semantic_risk": "low",
+      "rollback": "remove_prepared_module"
+    }
+  ]
+}

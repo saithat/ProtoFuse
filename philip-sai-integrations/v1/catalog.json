@@ -1,5 +1,22 @@
 {
   "schema_version": "1.0",
   "integration_version": "1",
-  "scenarios": []
+  "scenarios": [
+    {
+      "scenario_id": "balanced-gc",
+      "source_lane": "sai",
+      "path": "sai/balanced-gc",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["sai"]
+    },
+    {
+      "scenario_id": "dnachisel-gc-optimization",
+      "source_lane": "sai",
+      "path": "sai/dnachisel-gc-optimization",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip", "sai"]
+    }
+  ]
 }

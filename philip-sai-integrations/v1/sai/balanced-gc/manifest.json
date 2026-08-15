@@ -1,0 +1,20 @@
+{
+  "integration_version": "1",
+  "scenario_id": "balanced-gc",
+  "scenario_version": 1,
+  "title": "Pipeline 1 baseline: balanced-GC DNA design",
+  "source_lane": "sai",
+  "contributors": [
+    {
+      "id": "sai",
+      "role": "sai",
+      "contributions": [
+        "Registered the synthetic baseline fixture for pipeline regression"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": null,
+  "status": "active",
+  "notes": "Pipeline 1 regression fixture. Mirrors examples/toy_methodology.json."
+}
