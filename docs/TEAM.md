@@ -27,8 +27,8 @@ Primary directory: `src/protofuse/phillip/`
 - A focused friction point, if one dominates the end-to-end path.
 - Integration of the chosen topology and the approved Proto bindings.
 
-Use `workspaces/phillip/` for disposable notebooks or experiments before promoting
-stable code into `src/`.
+Use `workspaces/phillip/` for disposable marimo notebooks or experiments before
+promoting stable code into `src/`.
 
 ## Sai
 
@@ -44,8 +44,15 @@ Primary directory: `src/protofuse/sai/`
 Use `workspaces/sai/` for disposable experiments before promoting stable code into
 `src/`.
 
+Register paper and workflow scenarios under `philip-sai-integrations/v1/sai/` when Sai
+selects them independently. The owner adds workflows under
+`philip-sai-integrations/v1/contributed/`. Joint scenarios go in
+`philip-sai-integrations/v1/mixed/`. Every scenario is versioned through
+`manifest.json` and indexed in `philip-sai-integrations/v1/catalog.json`.
+
 ## Daily integration habit
 
 At each handoff, save one synthetic or redistributable `MethodologySpec`, run both
-tracks against it, and keep the end-to-end tests green. Push small commits to `main`
-after rebasing; do not force-push.
+tracks against it, and keep the end-to-end tests green. Versioned scenarios under
+`philip-sai-integrations/` record mixed Sai and owner contributions by lane. Push small
+commits to `main` after rebasing; do not force-push.

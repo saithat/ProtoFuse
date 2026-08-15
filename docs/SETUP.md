@@ -11,6 +11,7 @@ uv sync --extra dev
 cp .env.example .env
 uv run pytest
 uv run python examples/proto_smoke.py
+uv run marimo edit workspaces/phillip/
 ```
 
 The environment includes:
@@ -19,6 +20,7 @@ The environment includes:
 - `modal` for Proto's remote tools and other compute;
 - Anthropic's Python SDK for the shared scientific agent;
 - Pydantic for the versioned methodology contract;
+- marimo for workspace notebooks (not Jupyter);
 - pytest, Ruff, and mypy for shared-main safety.
 
 Paperclip is installed separately because its current installer distributes and

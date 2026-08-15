@@ -1,10 +1,10 @@
-# Reviewed graph handoffs
+# Philip–Sai workflow dump (`philip-sai-workflow-dump/`)
 
-Use these directories for compact, reviewed, non-sensitive decision artifacts following
-`docs/GRAPH_HANDOFF.md`.
+Use these directories for compact, reviewed, non-sensitive workflow and graph handoff
+artifacts following `docs/GRAPH_HANDOFF.md`.
 
 ```text
-handoffs/
+philip-sai-workflow-dump/
 ├── phillip_to_sai/<decision_id>/
 │   ├── summary.md
 │   ├── proto_plan.json

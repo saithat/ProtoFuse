@@ -1,0 +1,21 @@
+{
+  "integration_version": "1",
+  "scenario_id": "replace-me",
+  "scenario_version": 1,
+  "title": "Short scenario title",
+  "source_lane": "sai",
+  "contributors": [
+    {
+      "id": "sai",
+      "role": "sai",
+      "contributions": [
+        "Selected the paper/workflow",
+        "Authored methodology.json"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": null,
+  "status": "draft",
+  "notes": "Copy this directory, rename scenario_id, and replace methodology.json."
+}

@@ -7,5 +7,8 @@
 - Phillip owns the end-to-end pipeline under `src/protofuse/phillip/`.
 - Sai owns reusable topology work under `src/protofuse/sai/`.
 - Both collaborate in `src/protofuse/scientific_agent/` and `integration/`.
+- Versioned paper/workflow scenarios live in `philip-sai-integrations/` by lane (`sai/`,
+  `contributed/`, `mixed/`); register every scenario in
+  `philip-sai-integrations/v1/catalog.json`.
 - Run `uv run ruff check .` and `uv run pytest` before pushing to `main`.
 - Never commit papers, generated runs, API keys, Modal credentials, or model caches.

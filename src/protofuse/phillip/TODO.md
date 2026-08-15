@@ -54,7 +54,8 @@ shared contracts and Sai's topology recommendations through their public interfa
   volume, cache misses, fan-out, and quality contribution so Sai can estimate amortized
   avoidable work.
 - [ ] Put raw traces in ignored `data/runs/<run_id>/`; commit only a compact, reviewed,
-  non-sensitive handoff summary under `handoffs/phillip_to_sai/<decision_id>/`.
+  non-sensitive handoff summary under
+  `philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`.
 - [ ] Include a decision request naming the allowed compression levers, semantic
   invariants, quality thresholds, compute budget, and deadline.
 
@@ -65,9 +66,11 @@ shared contracts and Sai's topology recommendations through their public interfa
 - [ ] **Check-in 1 — graph and workload freeze:** Phillip presents the normalized graph
   and reuse workload; both approve node IDs, typed edges, input roles, loop/effect
   boundaries, and scientific invariants before profiling.
-- [ ] **Check-in 2 — baseline profile:** Phillip runs a small representative baseline;
-  Sai confirms the profile is sufficient to identify hot paths and selects the first
-  optimization target.
+- [ ] **Check-in 2 — baseline profile:** Phillip runs a small representative baseline
+  whose profile exposes total wall time, cost, reuse count, fixed-versus-varying inputs,
+  invalidation scope, call count, memory, transfer volume, cache misses, fan-out, and
+  quality contribution per stable node ID; Sai confirms the profile is sufficient to
+  rank hot paths by amortized avoidable work and selects the first optimization target.
 - [ ] **Decision 1 — prepared-state proposal:** Sai returns the binding-time split,
   prepared-state/invalidation contract, graph patch, and benchmark plan; Phillip accepts,
   rejects, or requests changes based on semantic and execution risk before implementation.

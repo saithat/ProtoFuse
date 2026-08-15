@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from protofuse.contracts import MethodologySpec
-from protofuse.integration import compile_proto_plan
+from protofuse.integration import compile_proto_plan, validate_integrations
 from protofuse.sai import recommend_topologies
 
 
@@ -23,11 +23,26 @@ def main() -> None:
         child.add_argument("spec", type=Path)
     compile_parser = subparsers.choices["compile"]
     compile_parser.add_argument("--device", choices=("local", "modal"), default="local")
+    integrations_parser = subparsers.add_parser(
+        "integrations",
+        help="validate versioned integration scenarios under philip-sai-integrations/",
+    )
+    integrations_sub = integrations_parser.add_subparsers(
+        dest="integrations_command",
+        required=True,
+    )
+    integrations_validate = integrations_sub.add_parser("validate")
+    integrations_validate.add_argument("--version", default="1")
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("paper", type=Path)
     extract_parser.add_argument("--out", type=Path, required=True)
 
     args = parser.parse_args()
+    if args.command == "integrations":
+        for message in validate_integrations(version=args.version):
+            print(message)
+        return
+
     if args.command == "extract":
         from protofuse.scientific_agent import ScientificAgent
         from protofuse.scientific_agent.anthropic_backend import AnthropicBackend

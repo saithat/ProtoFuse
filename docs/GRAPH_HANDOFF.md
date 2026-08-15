@@ -8,7 +8,7 @@ not replace a normalized static graph with stable node IDs and node-level timing
 ## Phillip to Sai
 
 Place the reviewed, compact bundle in
-`handoffs/phillip_to_sai/<decision_id>/`. Raw traces, program state, sequences, model
+`philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`. Raw traces, program state, sequences, model
 artifacts, and complete run exports stay under ignored `data/runs/<run_id>/`.
 
 | File | Purpose |
@@ -30,7 +30,7 @@ units and identify whether each value is measured, estimated, or unknown.
 
 ## Sai to Phillip
 
-Place the response in `handoffs/sai_to_phillip/<decision_id>/`.
+Place the response in `philip-sai-workflow-dump/sai_to_phillip/<decision_id>/`.
 
 | File | Purpose |
 | --- | --- |
@@ -58,7 +58,10 @@ silent replay, duplication, or reordering.
 
 1. Approve the extracted methodology.
 2. Freeze the normalized graph, reuse workload, and scientific invariants.
-3. Run a small representative baseline and choose one measured ProtoStage reuse mode.
+3. Run a small representative baseline whose profile exposes total wall time, cost, reuse
+   count, fixed-versus-varying inputs, invalidation scope, call count, memory, transfer
+   volume, cache misses, fan-out, and quality contribution; rank hot paths by amortized
+   avoidable work and choose one measured ProtoStage reuse mode.
 4. Review Sai's prepared-module plan, graph patch, and benchmark plan before
    implementation.
 5. Benchmark baseline and candidate under controlled conditions.

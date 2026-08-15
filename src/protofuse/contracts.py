@@ -173,3 +173,60 @@ class ProtoPlan(ContractModel):
         if self.executable and (unresolved_bindings or self.unresolved):
             raise ValueError("an executable plan cannot contain unresolved components")
         return self
+
+
+class IntegrationSourceLane(StrEnum):
+    """Which lane owns the primary workflow selection for a scenario."""
+
+    SAI = "sai"
+    CONTRIBUTED = "contributed"
+    MIXED = "mixed"
+
+
+class IntegrationContributor(ContractModel):
+    """Attribution for a versioned integration scenario."""
+
+    id: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_-]*$")
+    role: Literal["sai", "owner", "phillip", "joint"]
+    contributions: list[str] = Field(min_length=1)
+
+
+class IntegrationScenarioManifest(ContractModel):
+    """Versioned metadata for one paper/workflow integration scenario."""
+
+    integration_version: Literal["1"] = "1"
+    scenario_id: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_-]*$")
+    scenario_version: int = Field(ge=1, default=1)
+    title: str = Field(min_length=1)
+    source_lane: IntegrationSourceLane
+    contributors: list[IntegrationContributor] = Field(min_length=1)
+    methodology_path: str = Field(
+        min_length=1,
+        description="Path to MethodologySpec JSON, relative to the scenario directory",
+    )
+    handoff_decision_id: str | None = Field(
+        default=None,
+        description="Optional link to philip-sai-workflow-dump/<direction>/<decision_id>/",
+    )
+    status: Literal["draft", "active", "superseded"] = "draft"
+    notes: str | None = None
+
+
+class IntegrationCatalogEntry(ContractModel):
+    scenario_id: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_-]*$")
+    source_lane: IntegrationSourceLane
+    path: str = Field(
+        min_length=1,
+        description="Scenario directory relative to philip-sai-integrations/v<version>/",
+    )
+    scenario_version: int = Field(ge=1)
+    status: Literal["draft", "active", "superseded"]
+    contributor_ids: list[str] = Field(min_length=1)
+
+
+class IntegrationCatalog(ContractModel):
+    """Index of versioned integration scenarios with mixed attribution."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    integration_version: Literal["1"] = "1"
+    scenarios: list[IntegrationCatalogEntry] = Field(default_factory=list)

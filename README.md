@@ -21,7 +21,9 @@ either person depending on the other's internal implementation.
 | `src/protofuse/phillip/` | Phillip | Sai through contracts |
 | `src/protofuse/sai/` | Sai | Phillip through contracts |
 | `src/protofuse/contracts.py` | Phillip + Sai | both; change deliberately |
-| `src/protofuse/integration/` | Phillip + Sai | both |
+| `src/protofuse/integration/` | Phillip + Sai | shared compiler code |
+| `philip-sai-workflow-dump/` | Phillip + Sai | reviewed graph/workflow handoffs |
+| `philip-sai-integrations/` | Sai + owner | versioned papers/workflows by lane |
 | `workspaces/phillip/` | Phillip | isolated experiments |
 | `workspaces/sai/` | Sai | isolated experiments |
 

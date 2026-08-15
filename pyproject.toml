@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "marimo>=0.14,<1",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
   "pytest-cov>=6.2,<7",

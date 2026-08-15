@@ -45,9 +45,10 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
   batchability, cost, fidelity, cache semantics, version, and provenance.
 - [ ] Perform binding-time analysis relative to the stated workload: classify every
   node as fixed-context, candidate-dependent, or mixed, and explain each classification.
-- [ ] Rank opportunities by **amortized avoidable work**, not one-run duration alone:
-  cost per call, reuse count, branch count, invalidation closure, cache footprint,
-  transfer volume, and scientific-quality contribution.
+- [ ] Rank suspected hot paths by total wall time and cost, while also exposing reuse
+  count, fixed-versus-varying inputs, invalidation scope, call count, memory, transfer
+  volume, cache misses, fan-out, and quality contribution so Sai can estimate amortized
+  avoidable work.
 - [ ] Generate a semantic signature from canonical graph structure, model/software
   versions, configuration, and fixed context so stale prepared state is invalidated.
 - [ ] Produce a residual graph that contains only work still required for each candidate,
@@ -84,8 +85,10 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
   input roles, loops, side effects, reuse axes, and scientific invariants before
   accepting a profile.
 - [ ] **Check-in 2 — baseline profile:** Confirm the candidate/target/prefix/mutation
-  workload is representative, rank amortized avoidable work, and select exactly one
-  ProtoStage demo mode.
+  workload is representative; verify the profile exposes total wall time, cost, reuse
+  count, fixed-versus-varying inputs, invalidation scope, call count, memory, transfer
+  volume, cache misses, fan-out, and quality contribution per node; rank suspected hot
+  paths by amortized avoidable work; and select exactly one ProtoStage demo mode.
 - [ ] **Decision 1 — prepared-state proposal:** Present the binding-time split, state
   contract, exact-or-approximate declaration, invalidation rules, graph patch, predicted
   benefit, rollback path, and benchmark plan for Phillip's approval before code changes.
@@ -131,6 +134,21 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
   serialized contract consumed by Phillip.
 - [ ] Run the repository gates before pushing: `uv run ruff check .` and
   `uv run pytest`.
+
+## Integration scenarios
+
+- [ ] Pick one paper/workflow quickly under
+  `philip-sai-integrations/v1/sai/<scenario_id>/` by copying
+  `philip-sai-integrations/v1/sai/_template/`; commit redistributable `methodology.json`
+  only (no raw paper text).
+- [ ] Register the scenario in `philip-sai-integrations/v1/catalog.json` with
+  `source_lane: "sai"`, contributor attribution, and `scenario_version`.
+- [ ] Consume owner-provided workflows from `philip-sai-integrations/v1/contributed/`
+  and joint scenarios from `philip-sai-integrations/v1/mixed/` without treating them
+  differently at analysis time; preserve lane provenance from each manifest.
+- [ ] Bump `scenario_version` and catalog status when a scenario's methodology or reuse
+  workload changes materially; set superseded entries instead of silent overwrites.
+- [ ] Run `uv run protofuse integrations validate` before pushing scenario changes.
 
 ## Handoff completion
 

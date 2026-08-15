@@ -46,6 +46,12 @@ Sai returns a prepared-module plan, reviewable graph patch, and benchmark gate. 
 decisions occur at methodology approval, graph/workload freeze, reuse-mode selection,
 prepared-state approval, benchmark acceptance, and final integration.
 
+Versioned paper and workflow scenarios live under `philip-sai-integrations/` (separate
+from `src/protofuse/integration/` compiler code). Lanes `sai/`, `contributed/`, and
+`mixed/` record who selected or extended each workflow. Each scenario carries
+`scenario_version` in its manifest and is indexed in
+`philip-sai-integrations/v1/catalog.json`.
+
 ## Execution safety gate
 
 Paper text is untrusted. Extracted component names never become Python imports or shell
