@@ -76,7 +76,7 @@
     {
       "name": "pool propose-score-select",
       "description": "Generate a pool of tissue-optimized sequences and select the top-scoring candidate.",
-      "parameters": {"n_pool": 500, "top_k": 10, "num_steps": 50},
+      "parameters": {"n_pool": 1000, "top_k": 10, "num_steps": 100},
       "evidence": [
         {
           "quote": "We follow a simple probabilistic approach with two steps: (1) translate tissue-specific codon preferences into a pool of optimal sequences and (2) select the desired sequence based on other parameters of relevance.",
@@ -90,7 +90,7 @@
         }
       ],
       "strategy": "propose_score_select",
-      "stopping_criteria": {"n_pool": 500, "top_k": 10, "num_steps": 50}
+      "stopping_criteria": {"n_pool": 1000, "top_k": 10, "num_steps": 100}
     }
   ],
   "model_dependencies": [
@@ -113,9 +113,9 @@
     "target_protein": "eGFP",
     "target_tissue": "lung",
     "segment_length_bp": 720,
-    "n_pool": 500,
+    "n_pool": 1000,
     "top_k": 10,
-    "num_steps": 50,
+    "num_steps": 100,
     "mutations_per_step": 3,
     "homopolymer_max": 7,
     "target_gc": 50.0,
@@ -131,7 +131,7 @@
         "operation": "probabilistic tissue codon pool generation",
         "inputs": ["amino_acid_sequence", "target_tissue"],
         "outputs": ["candidate_pool"],
-        "parameters": {"n_pool": 500},
+        "parameters": {"n_pool": 1000},
         "evidence": [
           {
             "quote": "Once a pool of optimized sequences has been generated, the best-ranked ones can be selected as the user desires.",
@@ -206,7 +206,7 @@
   ],
   "assumptions": [
     "eGFP CDS length (~720 bp) stands in for the full coding sequence optimized in the paper.",
-    "Pool MCMC with n_pool=500 approximates CUSTOM n_pool=1000 at reduced cost while staying minute-scale.",
+    "Pool MCMC with n_pool=1000 matches the paper's experimental pool size at ~1 minute wall time.",
     "Tissue codon weights are a simplified static profile rather than the full random-forest PTR model.",
     "MFE, CAI, CPB, and ENC scoring from select_best are deferred; tissue codon + GC + homopolymer gate the v1 baseline."
   ],

@@ -34,6 +34,13 @@ def main() -> None:
         choices=("dnachisel-num1", "custom-egfp-lung"),
     )
     run_parser.add_argument("--tier", choices=("smoke", "full"), default="smoke")
+    collection_parser = subparsers.add_parser(
+        "collection",
+        help="validate a frozen program collection under proto_programs/generated/",
+    )
+    collection_sub = collection_parser.add_subparsers(dest="collection_command", required=True)
+    collection_validate = collection_sub.add_parser("validate")
+    collection_validate.add_argument("collection_id")
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("paper", type=Path)
     extract_parser.add_argument("--out", type=Path, required=True)
@@ -75,6 +82,17 @@ def main() -> None:
         sequence = program.constructs[0].joined_sequences[0].sequence
         print(f"fixture={args.fixture} tier={args.tier} wall_ms={wall_ms:.0f}")
         print(sequence[:120] + ("..." if len(sequence) > 120 else ""))
+        return
+
+    if args.command == "collection":
+        from protofuse.program_collection import load_collection
+
+        root = Path("proto_programs/generated") / args.collection_id
+        loaded = load_collection(root, require_reviewed=True)
+        print(
+            f"ok: {loaded.manifest.collection_id} "
+            f"({len(loaded.manifest.programs)} programs, methodology={loaded.manifest.methodology_id})"
+        )
         return
 
     spec = _load(args.spec)

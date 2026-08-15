@@ -31,6 +31,11 @@ Infrastructure is done; first real collection is not.
 - [ ] Commit `proto_programs/generated/dnachisel-num1/` to `main`.
 - [ ] Tell Sai the collection ID: `dnachisel-num1`.
 
+- [x] Generate `proto_programs/generated/custom-egfp-lung/design_*.py` from CUSTOM fixture.
+- [x] Run `finalize_collection(..., reviewed=True)` for collection ID `custom-egfp-lung`.
+- [ ] Commit `proto_programs/generated/custom-egfp-lung/` to `main`.
+- [ ] Tell Sai the collection ID: `custom-egfp-lung`.
+
 After Sai starts analysis, treat the collection as read-only. Any change → new
 `collection_id`.
 
@@ -46,6 +51,7 @@ After Sai starts analysis, treat the collection as read-only. Any change → new
 Internal only — not the Sai handoff:
 
 - `workspaces/phillip/fixtures/dnachisel-num1/methodology.json`
+- `workspaces/phillip/fixtures/custom-egfp-lung/methodology.json`
 - `data/analysis/dnachisel-num1/` (ignored local profiles from prior runs)
 
 Builder library: `program_builders.py`, `dnachisel_constraints.py`, `region_solver.py`.

@@ -5,6 +5,9 @@ import pytest
 from protofuse.phillip import finalize_collection
 from protofuse.program_collection import load_collection
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CUSTOM_COLLECTION = REPO_ROOT / "proto_programs/generated/custom-egfp-lung"
+
 
 def test_finalized_collection_verifies_without_importing(tmp_path: Path) -> None:
     program = tmp_path / "design_001.py"
@@ -41,3 +44,31 @@ def test_collection_rejects_changed_program(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="hash mismatch"):
         load_collection(tmp_path)
+
+
+def test_custom_egfp_lung_collection_is_reviewed_and_hashed() -> None:
+    loaded = load_collection(CUSTOM_COLLECTION, require_reviewed=True)
+
+    assert loaded.manifest.collection_id == "custom-egfp-lung"
+    assert loaded.manifest.methodology_id == "custom-egfp-v1"
+    assert loaded.manifest.reviewed is True
+    assert len(loaded.manifest.programs) == 2
+    assert {entry.program_id for entry in loaded.manifest.programs} == {
+        "design-001",
+        "design-002",
+    }
+
+
+def test_custom_egfp_design_builds_program() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "custom_design_001",
+        CUSTOM_COLLECTION / "design_001.py",
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    program = module.build_program()
+    assert program.constructs[0].segments[0].sequence_length == 720
