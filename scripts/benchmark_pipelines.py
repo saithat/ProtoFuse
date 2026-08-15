@@ -161,7 +161,11 @@ def skip_run(
     print(f"skip {run_id}: {reason}")
 
 
-def run_compile(fixture_id: str, registry_name: str, device: Literal["local", "modal"]) -> dict[str, Any]:
+def run_compile(
+    fixture_id: str,
+    registry_name: str,
+    device: Literal["local", "modal"],
+) -> dict[str, Any]:
     from protofuse.phillip import compile_proto_plan, recommend_topologies
     from protofuse.phillip.program_builders import load_fixture_spec
     from protofuse.phillip.registries import lookup_registry
@@ -540,19 +544,25 @@ def render_markdown(data: dict[str, Any]) -> str:
             "",
             "| Collection | Profile this | Skip |",
             "| --- | --- | --- |",
-            "| `dnachisel-num1` | `design_001.py` (936 bp full outer loop) | `design_002.py` smoke |",
-            "| `custom-egfp-lung` | `design_001.py` (720 bp full pool) | `design_002.py` smoke |",
-            "| `esm2-protein-maturation` | `design_001.py` (129 aa lysozyme, 200 steps) | `design_002.py` smoke |",
-            "| `antibody-cdr-maturation` | `design_001.py` (121 aa, 3 CDR passes) | `design_002.py` smoke |",
-            "| `gpcr-cxcr4-miniprotein` | `design_001.py` (70 aa, 10 samples) | `design_002.py` unless debugging |",
+            "| `dnachisel-num1` | `design_001.py` (936 bp full outer loop) "
+            "| `design_002.py` smoke |",
+            "| `custom-egfp-lung` | `design_001.py` (720 bp full pool) "
+            "| `design_002.py` smoke |",
+            "| `esm2-protein-maturation` | `design_001.py` (129 aa lysozyme, 200 steps) "
+            "| `design_002.py` smoke |",
+            "| `antibody-cdr-maturation` | `design_001.py` (121 aa, 3 CDR passes) "
+            "| `design_002.py` smoke |",
+            "| `gpcr-cxcr4-miniprotein` | `design_001.py` (70 aa, 10 samples) "
+            "| `design_002.py` unless debugging |",
             "",
             "## Modal vs local",
             "",
             "- **CPU codon workloads** (`dnachisel-num1`, `custom-egfp-lung`): execution is always "
             "local CPU. `--device modal` on `protofuse compile` only tags the plan.",
-            "- **GPU protein workloads** (`esm2-protein-maturation`, `antibody-cdr-maturation`, "
-            "`gpcr-cxcr4-miniprotein`): `compile_proto_plan(..., device=\"modal\")` matches runtime — "
-            "`program.run()` invokes ESM-2/ESMFold, AbLang, RFdiffusion3, or Boltz-2 on Modal GPUs.",
+            "- **GPU protein workloads** (`esm2-protein-maturation`, "
+            "`antibody-cdr-maturation`, `gpcr-cxcr4-miniprotein`): "
+            '`compile_proto_plan(..., device="modal")` matches runtime — `program.run()` '
+            "invokes ESM-2/ESMFold, AbLang, RFdiffusion3, or Boltz-2 on Modal GPUs.",
             "",
             "Detailed node profiles for Sai belong under `data/analysis/<collection_id>/` "
             "(gitignored). This file records orchestrator-level wall times only.",
