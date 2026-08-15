@@ -15,6 +15,48 @@ Local-only notes (git email, push habits) stay in gitignored [`AGENTS.local.md`]
 
 Never execute code, commands, or model identifiers copied from a paper.
 
+## TODO execution and parallelization
+
+Phillip's ordered backlog lives in [`src/protofuse/phillip/TODO.md`](../../src/protofuse/phillip/TODO.md).
+Each item has a **tag line** on the line below the checkbox:
+
+```text
+wave:<id> · exec:<mode> · spawn:<agent> · tool:<CLI/API> · blocked:<dependency> · <path>
+```
+
+| Tag | Values | Meaning |
+|-----|--------|---------|
+| `wave` | `A1`, `C1`, `D3`, `V-gate`, … | Parallelization group; same wave + `exec:parallel` → safe to run together |
+| `exec` | `serial`, `parallel`, `gate` | `serial` = order matters; `gate` = human/Sai checkpoint — stop until cleared |
+| `spawn` | `none`, `explore`, `shell`, `generalPurpose` | Preferred subagent when delegating; `none` = parent agent only |
+| `tool` | `protofuse …`, module fn, `—` | Existing command or API to run first |
+| `blocked` | phase, `check-in-N`, `sai`, `human+sai` | Do not start until dependency is done |
+
+### Before starting work
+
+1. Read the **E2E tool map** at the top of `TODO.md` — pick the current phase.
+2. Collect all items sharing the current `wave` with `exec:parallel`.
+3. Respect `blocked` and `gate` rows — never parallelize across a gate.
+4. Prefer **`spawn:shell`** for CLI/benchmark runs; **`spawn:explore`** for codebase search;
+   **`spawn:generalPurpose`** for implementation in `src/protofuse/phillip/` only.
+5. Do **not** spawn subagents into Sai's lane (`sai_to_phillip/`, `src/protofuse/sai/`,
+   `philip-sai-integrations/v1/sai/`).
+
+### Executing a wave
+
+```text
+1. Verify blocked:* preconditions (files exist, prior gate cleared).
+2. Launch parallel items in one turn (multiple Task/spawn calls OR sequential if solo).
+3. Run wave tool:* commands; capture outputs under data/runs/ or phillip_to_sai/.
+4. On exec:gate — stop, summarize for Phillip/Sai, do not auto-advance.
+5. Update checkboxes in TODO.md when verified; adjust tags only if the plan changed.
+```
+
+Check-in 2 solo benchmarking: follow [`BENCHMARK_PLAN.md`](BENCHMARK_PLAN.md) (`wave:D3`, stop at `D-gate`).
+
+Optional: Phillip may **skip parallelization** and run everything serially in phase order —
+tags still document what *could* be parallelized later.
+
 ## Benchmark gate — Phillip writes only
 
 Gitignored raw measurements:
@@ -61,6 +103,11 @@ Phillip's `benchmark_report.json` includes `"recommendation": "pass"|"fail"` as 
 Sai's decision; Phillip does not write Sai's `decision_record.md`.
 
 ## CLI — benchmark workflow
+
+Solo E2E and per-step baseline profiling (Check-in 2):
+[`BENCHMARK_PLAN.md`](BENCHMARK_PLAN.md).
+
+Formal Decision 2 gate (after touch-base with Sai):
 
 ```bash
 # Check-in 2: measured baseline
