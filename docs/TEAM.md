@@ -37,6 +37,8 @@ Primary directory: `src/protofuse/sai/`
 - Catalog common Proto workflow topologies.
 - Rank topology fits for an extracted methodology.
 - Optimize ordering, branching, iteration, stopping, and selection policies.
+- Prototype ProtoStage prepared-state transforms over Phillip's typed graph handoffs:
+  fixed-context preparation, shared generator prefixes, and mutation-delta updates.
 - Benchmark topology choices against shared methodology fixtures.
 
 Use `workspaces/sai/` for disposable experiments before promoting stable code into
