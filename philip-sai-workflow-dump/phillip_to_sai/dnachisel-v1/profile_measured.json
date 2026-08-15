@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "device": "local",
+  "seed": 0,
+  "nodes": [
+    {
+      "node_id": "cst:0:windowed_gc_content",
+      "calls": 50,
+      "duration_ms_total": 60.0,
+      "duration_ms_mean": 1.2,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 50,
+      "quality_contribution": "high",
+      "measurement": "measured"
+    },
+    {
+      "node_id": "opt:0:mcmc_refinement",
+      "calls": 50,
+      "duration_ms_total": 40.0,
+      "duration_ms_mean": 0.8,
+      "device": "local",
+      "cache_hits": 0,
+      "cache_misses": 50,
+      "quality_contribution": "orchestration",
+      "measurement": "measured"
+    }
+  ],
+  "headline_bottleneck_node_id": "cst:0:windowed_gc_content"
+}

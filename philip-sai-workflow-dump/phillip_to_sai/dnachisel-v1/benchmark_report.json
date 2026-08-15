@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "dnachisel-v1",
+  "scenario_id": "dnachisel-gc-optimization",
+  "benchmark_plan_hash": "7fe98ae1a9806096494788315478dcbf0ac5f7bfeefddea9f9283ff533b2a7c8",
+  "recommendation": "pass",
+  "baseline": {
+    "decision_id": "dnachisel-v1",
+    "variant": "baseline",
+    "runs": 1,
+    "median_wall_time_ms": 100.0,
+    "profile_measured_path": "/Users/fio/Projects/GXL_hackathon/ProtoFuse/philip-sai-workflow-dump/phillip_to_sai/dnachisel-v1/profile_measured.json"
+  },
+  "candidate": {
+    "decision_id": "dnachisel-v1",
+    "variant": "candidate",
+    "runs": 1,
+    "median_wall_time_ms": 80.0
+  },
+  "metrics": [
+    {
+      "name": "total_wall_time_ms",
+      "baseline": 100.0,
+      "candidate": 80.0,
+      "ratio": 0.8,
+      "passed": true
+    },
+    {
+      "name": "constraint_evaluations",
+      "baseline": 50,
+      "candidate": 50,
+      "passed": true
+    },
+    {
+      "name": "scientific_invariants",
+      "baseline": true,
+      "candidate": true,
+      "passed": true
+    },
+    {
+      "name": "exactness",
+      "details": {
+        "status": "checked",
+        "invariants_match": true,
+        "scores_within_epsilon": true,
+        "score_delta": {
+          "homopolymer": 0.0,
+          "windowed_gc_content": 0.0
+        }
+      },
+      "passed": true
+    }
+  ],
+  "exactness": {
+    "status": "checked",
+    "invariants_match": true,
+    "scores_within_epsilon": true,
+    "score_delta": {
+      "homopolymer": 0.0,
+      "windowed_gc_content": 0.0
+    }
+  }
+}

@@ -7,10 +7,12 @@ from protofuse.sai.optimization import (
     rank_hot_paths,
     write_optimization_proposal,
 )
+from protofuse.sai.protocstage import build_candidate_program
 from protofuse.sai.selector import recommend_topologies
 
 __all__ = [
     "OptimizationProposal",
+    "build_candidate_program",
     "load_handoff_bundle",
     "propose_protocstage_optimization",
     "rank_hot_paths",

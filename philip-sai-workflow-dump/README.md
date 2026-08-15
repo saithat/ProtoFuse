@@ -11,6 +11,9 @@ philip-sai-workflow-dump/
 │   ├── graph.json
 │   ├── workload.json
 │   ├── profile.json
+│   ├── profile_measured.json     # optional: Phillip measured baseline profile
+│   ├── benchmark_report.json     # optional: Phillip Decision 2 comparison
+│   ├── benchmark_summary.md      # optional: Phillip human-readable summary
 │   └── decision_request.md
 └── sai_to_phillip/<decision_id>/
     ├── summary.md
@@ -28,3 +31,9 @@ Phillip's bundle describes the scientific graph and reuse workload. Sai's respon
 describes the proposed prepared state, the residual computation, its invalidation and
 fallback behavior, and the controlled benchmark gate. Keep field names stable, units
 explicit, and measured, estimated, and unknown values distinguishable.
+
+**Interface contract:** default write boundaries and a shared Q&A to resolve violations
+are in [`docs/INTERFACE_CONTRACT_QUERY.md`](../docs/INTERFACE_CONTRACT_QUERY.md).
+Phillip may append `profile_measured.json`, `benchmark_report.json`, and
+`benchmark_summary.md` under `phillip_to_sai/<decision_id>/` only. Sai owns everything
+under `sai_to_phillip/<decision_id>/`.
