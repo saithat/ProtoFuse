@@ -4,6 +4,13 @@ Primary goal: make common Proto workflow topologies explicit, rankable, and reus
 then prototype **ProtoStage**: an exact-first prepared-state layer that avoids repeated
 work while preserving the scientific meaning of Phillip's original Proto workflow.
 
+Philip–Sai artifacts live outside individual owner directories:
+
+- `philip-sai-integrations/` — versioned paper/workflow scenarios (`sai/`,
+  `contributed/`, `mixed/`) indexed in `philip-sai-integrations/v1/catalog.json`
+- `philip-sai-workflow-dump/` — reviewed graph/workflow handoffs between Phillip and
+  Sai (`phillip_to_sai/`, `sai_to_phillip/`)
+
 ## Product hypothesis from the Proto Language benefits discussion
 
 - [ ] Treat the central optimization artifact as a `PreparedModule`, not a cached final
@@ -36,8 +43,8 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
 ## ProtoStage graph analysis
 
 - [ ] Consume Phillip's normalized `graph.json`, `workload.json`, and aggregate
-  `profile.json`; do not infer the graph solely from Python source or Proto result
-  exports.
+  `profile.json` from `philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`; do not
+  infer the graph solely from Python source or Proto result exports.
 - [ ] Verify the graph/profile bundle against `docs/GRAPH_HANDOFF.md` before ranking
   hot paths; request missing measurements rather than estimating them silently.
 - [ ] Build a canonical typed DAG view whose nodes expose input/output roles,
@@ -71,9 +78,10 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
   not preserved.
 - [ ] Never let approximate associations, summaries, factorization, or distillation hard
   prune a candidate without a separately validated certificate or rule.
-- [ ] Return the Sai-to-Phillip bundle described in `docs/GRAPH_HANDOFF.md`:
-  `summary.md`, `prepared_module_plan.json`, `graph_patch.json`,
-  `benchmark_plan.json`, and `decision_record.md`.
+- [ ] Return the Sai-to-Phillip bundle described in `docs/GRAPH_HANDOFF.md` under
+  `philip-sai-workflow-dump/sai_to_phillip/<decision_id>/`: `summary.md`,
+  `prepared_module_plan.json`, `graph_patch.json`, `benchmark_plan.json`, and
+  `decision_record.md`.
 - [ ] Estimate benefits and risks explicitly; label missing evidence as unknown rather
   than presenting an inferred speedup as measured.
 
@@ -135,20 +143,23 @@ work while preserving the scientific meaning of Phillip's original Proto workflo
 - [ ] Run the repository gates before pushing: `uv run ruff check .` and
   `uv run pytest`.
 
-## Integration scenarios
+## Philip–Sai shared folders
 
 - [ ] Pick one paper/workflow quickly under
   `philip-sai-integrations/v1/sai/<scenario_id>/` by copying
   `philip-sai-integrations/v1/sai/_template/`; commit redistributable `methodology.json`
   only (no raw paper text).
-- [ ] Register the scenario in `philip-sai-integrations/v1/catalog.json` with
-  `source_lane: "sai"`, contributor attribution, and `scenario_version`.
+- [ ] Register every scenario in `philip-sai-integrations/v1/catalog.json` with lane,
+  contributor attribution, `scenario_version`, and optional `handoff_decision_id`.
 - [ ] Consume owner-provided workflows from `philip-sai-integrations/v1/contributed/`
   and joint scenarios from `philip-sai-integrations/v1/mixed/` without treating them
   differently at analysis time; preserve lane provenance from each manifest.
+- [ ] Read Phillip bundles from `philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`
+  and publish responses under `philip-sai-workflow-dump/sai_to_phillip/<decision_id>/`.
 - [ ] Bump `scenario_version` and catalog status when a scenario's methodology or reuse
   workload changes materially; set superseded entries instead of silent overwrites.
-- [ ] Run `uv run protofuse integrations validate` before pushing scenario changes.
+- [ ] Run `uv run protofuse integrations validate` before pushing changes under
+  `philip-sai-integrations/` or reviewed handoffs under `philip-sai-workflow-dump/`.
 
 ## Handoff completion
 

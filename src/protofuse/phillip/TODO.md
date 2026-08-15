@@ -3,6 +3,13 @@
 Primary goal: make the paper-to-Proto-plan path reliable end to end while consuming
 shared contracts and Sai's topology recommendations through their public interfaces.
 
+Philip–Sai artifacts live outside individual owner directories:
+
+- `philip-sai-integrations/` — versioned paper/workflow scenarios (`sai/`,
+  `contributed/`, `mixed/`) indexed in `philip-sai-integrations/v1/catalog.json`
+- `philip-sai-workflow-dump/` — reviewed graph/workflow handoffs between Phillip and
+  Sai (`phillip_to_sai/`, `sai_to_phillip/`)
+
 ## Pipeline work
 
 - [ ] Add a Paperclip or local-text ingestion adapter that records the paper identifier
@@ -58,6 +65,21 @@ shared contracts and Sai's topology recommendations through their public interfa
   `philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`.
 - [ ] Include a decision request naming the allowed compression levers, semantic
   invariants, quality thresholds, compute budget, and deadline.
+- [ ] Return Sai's response bundle under
+  `philip-sai-workflow-dump/sai_to_phillip/<decision_id>/` after review.
+
+## Philip–Sai shared folders
+
+- [ ] Publish reviewed Phillip-to-Sai bundles under
+  `philip-sai-workflow-dump/phillip_to_sai/<decision_id>/`; keep raw traces in ignored
+  `data/runs/<run_id>/`.
+- [ ] Add owner-provided workflows under
+  `philip-sai-integrations/v1/contributed/<scenario_id>/` and register them in
+  `philip-sai-integrations/v1/catalog.json`.
+- [ ] Link each handoff to a catalog scenario through `handoff_decision_id` in the
+  scenario manifest when a registered integration scenario exists.
+- [ ] Run `uv run protofuse integrations validate` before pushing catalog or scenario
+  changes under `philip-sai-integrations/`.
 
 ## Intermediate check-ins and decisions
 
