@@ -36,6 +36,9 @@ allow-direct-references = true
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+    "slow: minute-scale integration tests",
+]
 
 [tool.ruff]
 line-length = 100

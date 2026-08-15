@@ -139,8 +139,8 @@
     "num_results": 1,
     "proposals_per_result": 1,
     "mutations_per_step": 3,
-    "max_region_passes": 30,
-    "inner_refinement_steps": 7500,
+    "max_region_passes": 34,
+    "inner_refinement_steps": 8500,
     "max_windows_per_pass": 5,
     "min_inner_refinements_per_pass": 5
   },

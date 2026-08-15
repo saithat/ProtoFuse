@@ -28,6 +28,37 @@ def main() -> None:
         default=None,
         help="reviewed symbol registry for compile binding",
     )
+    preflight_parser = subparsers.add_parser(
+        "preflight",
+        help="validate workload binding feasibility before scaling compute",
+    )
+    preflight_parser.add_argument(
+        "fixture",
+        choices=("dnachisel-num1", "custom-egfp-lung"),
+    )
+    preflight_parser.add_argument(
+        "--length",
+        type=int,
+        default=None,
+        help="target construct length in bp (defaults to fixture global_parameters)",
+    )
+    preflight_parser.add_argument(
+        "--samples",
+        type=int,
+        default=500,
+        help="Monte Carlo samples for filter pass-rate estimate",
+    )
+    preflight_parser.add_argument(
+        "--steps",
+        type=int,
+        default=50,
+        help="MCMC steps per isolation ladder level",
+    )
+    preflight_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit non-zero when classification is not ok",
+    )
     run_parser = subparsers.add_parser("run", help="run a reviewed fixture workload")
     run_parser.add_argument(
         "fixture",
@@ -53,6 +84,33 @@ def main() -> None:
         methodology = ScientificAgent(AnthropicBackend()).extract(args.paper.read_text())
         args.out.write_text(methodology.model_dump_json(indent=2) + "\n")
         print(f"wrote {args.out}")
+        return
+
+    if args.command == "preflight":
+        import logging
+        import sys
+
+        from protofuse.phillip.workload_preflight import assert_workload_feasible, run_preflight
+
+        logging.disable(logging.CRITICAL)
+        if args.fixture != "dnachisel-num1":
+            print(f"preflight not implemented for fixture={args.fixture}", file=sys.stderr)
+            raise SystemExit(2)
+        report = run_preflight(
+            args.fixture,
+            target_length=args.length,
+            filter_samples=args.samples,
+            num_steps=args.steps,
+        )
+        print(report.summary())
+        if args.strict:
+            try:
+                assert_workload_feasible(report)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                raise SystemExit(1) from exc
+        elif report.classification != "ok":
+            raise SystemExit(1)
         return
 
     if args.command == "run":

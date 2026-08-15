@@ -33,6 +33,13 @@ Prior workflow artifacts (graph dumps, benchmark bundles, scenario catalogs,
 
 ## Handoff checklist
 
+0. **Preflight** — validate binding at paper target length before generating or scaling:
+   - `uv run protofuse preflight <fixture_id> --length <paper_bp>`
+   - If infeasible at paper length: document reduced scope in the fixture README with
+     preflight evidence; do not silently shrink `segment_length_bp` without explanation.
+   - Confirm `pytest tests/test_workload_preflight.py` passes (smoke output-length invariant).
+   - See [`WORKLOAD_VALIDATION.md`](WORKLOAD_VALIDATION.md).
+
 1. Generate `proto_programs/generated/<collection_id>/design_*.py` from a reviewed
    methodology (see `fixtures/` and `program_builders.py`).
 2. Read every generated file; confirm allow-listed imports and correct workload wiring.

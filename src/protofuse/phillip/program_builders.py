@@ -23,6 +23,7 @@ from protofuse.phillip.dnachisel_constraints import (
 )
 from protofuse.phillip.pool_optimizer import PoolOptimizerConfig, PoolOptimizerResult, run_pool_optimizer
 from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
+from protofuse.phillip.sequence_init import generate_filter_safe_sequence
 
 WorkloadTier = Literal["smoke", "full"]
 
@@ -121,7 +122,14 @@ def build_dnachisel_num1_program(
     region_pass: int = 0,
     inner_refinement: int = 0,
 ) -> Program:
-    segment = Segment(length=int(params["segment_length_bp"]), sequence_type="dna")
+    length = int(params["segment_length_bp"])
+    if params.get("seed_init", True):
+        seed_sequence = params.get("seed_sequence")
+        if seed_sequence is None:
+            seed_sequence = generate_filter_safe_sequence(length, seed=length + region_pass)
+        segment = Segment(sequence=str(seed_sequence), sequence_type="dna")
+    else:
+        segment = Segment(length=length, sequence_type="dna")
     construct = Construct([segment])
     mutations = int(params["mutations_per_step"]) + region_pass + inner_refinement
     generator = RandomNucleotideGenerator(
