@@ -1,0 +1,20 @@
+{
+  "integration_version": "1",
+  "scenario_id": "antibody-cdr-maturation",
+  "scenario_version": 1,
+  "title": "Antibody CDR region-local maturation (AbLang + ESMFold)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Built CDR-masked region-local MCMC baseline with AbLang naturalness and interface scoring"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "antibody-cdr-maturation-v1",
+  "status": "active",
+  "notes": "Smoke: 30 steps, CDR1 only. Full: 100 steps, 3 CDR passes. Sai fusion target: ablang-score + esmfold-prediction per step."
+}

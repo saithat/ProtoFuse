@@ -1,0 +1,27 @@
+{
+  "integration_version": "1",
+  "scenario_id": "dnachisel-num1",
+  "scenario_version": 1,
+  "title": "Pipeline 3: DNA Chisel NUM1 gene-scale optimization",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Defined paper-faithful NUM1 gene workload with region-local solver"
+      ]
+    },
+    {
+      "id": "sai",
+      "role": "sai",
+      "contributions": [
+        "Review target for ProtoStage caching on windowed GC at gene scale"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "dnachisel-v2",
+  "status": "active",
+  "notes": "Full Figure 1 workload for Check-in 2 benchmark handoff."
+}

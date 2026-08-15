@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "esm2-protein-maturation",
+  "methodology_id": "esm2-protein-maturation-v1",
+  "proto_version": "109e7e4bc6647f7884d94b08f8c0951c2e4af6c2",
+  "registry_version": "1",
+  "seed_policy": "seed protein from fixture global_parameters; smoke uses truncated eGFP",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "f21360837e010bda3391491612b991d8473a4f587346b3e99c6c5bb74b0990db"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "6ee5f5f233cd70d50cef47430557faccfeac803e5b7465153b86121c870a333a"
+    }
+  ]
+}

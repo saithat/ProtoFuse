@@ -1,0 +1,200 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Antibody CDR maturation via region-local MCMC",
+    "identifier": "antibody-cdr-maturation-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "CDR ESM-2 mutation",
+      "description": "Propose amino-acid substitutions within the active CDR region using ESM-2 masked sampling while framework positions remain fixed.",
+      "parameters": {"mutations_per_step": 2, "model_checkpoint": "esm2_t6_8M_UR50D"},
+      "evidence": [
+        {
+          "quote": "Refine complementarity-determining regions for naturalness and interface quality while masking framework regions.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "AbLang naturalness",
+      "description": "Score antibody sequence naturalness with AbLang perplexity on the VHH binder.",
+      "parameters": {"temperature": 1.0, "score_mode": "nll"},
+      "evidence": [
+        {
+          "quote": "Sai fusion target: ablang-score + structure prediction per MCMC step.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "ablang_nll",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "ESMFold interface quality",
+      "description": "Require predicted binder-antigen interface confidence above threshold.",
+      "parameters": {"structure_tool": "esmfold", "min_iptm": 0.3},
+      "evidence": [
+        {
+          "quote": "Constraints: ablang-perplexity, structure-iptm, protein-complexity, gap-gini",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "iptm",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "CDR complexity",
+      "description": "Penalize low-complexity or repetitive regions in the matured CDRs.",
+      "parameters": {"max_low_complexity": 0.25},
+      "evidence": [],
+      "metric": "low_complexity_fraction",
+      "direction": "filter",
+      "weight": 0.5
+    },
+    {
+      "name": "gap distribution",
+      "description": "Keep CDR edits aligned to the seed framework via MAFFT gap Gini against the starting sequence.",
+      "parameters": {"max_gap_gini": 0.15, "trim_alignment": true},
+      "evidence": [],
+      "metric": "gap_gini",
+      "direction": "filter",
+      "weight": 0.5
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "region-local MCMC refinement",
+      "description": "Optimize one CDR region per pass with ESM-2 proposals and AbLang/structure scoring.",
+      "parameters": {"num_steps": 100, "max_temperature": 1.0, "max_region_passes": 3},
+      "evidence": [
+        {
+          "quote": "Topology: iterative_refinement with CDR-only masking (NUM1 pattern).",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "strategy": "region_local_markov_chain_monte_carlo",
+      "stopping_criteria": {"num_steps": 100, "max_region_passes": 3}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "ESM-2",
+      "version_or_checkpoint": "esm2_t6_8M_UR50D (smoke) / esm2_t33_650M_UR50D (full)",
+      "provider": "Meta AI",
+      "purpose": "CDR mutation proposals during MCMC",
+      "evidence": []
+    },
+    {
+      "name": "AbLang",
+      "version_or_checkpoint": null,
+      "provider": "Olsen et al.",
+      "purpose": "Antibody naturalness scoring",
+      "evidence": []
+    },
+    {
+      "name": "ESMFold",
+      "version_or_checkpoint": null,
+      "provider": "Meta AI",
+      "purpose": "Binder-antigen interface ipTM scoring",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "antibody_cdr_maturation",
+    "framework_sequence": "EVQLVESGGGLVQPGGSLRLSCAASGFTFSNYAMNWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNAKNTLYLQMNSLRAEDTAVYYCAKDRGYSSGWYFDYWGQGTQVTVSS",
+    "cdr_regions": [[26, 38], [55, 65], [95, 103]],
+    "target_antigen_sequence": "GSGSGSGSGSGSGSGSGSG",
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 2,
+    "max_region_passes": 3,
+    "max_temperature": 1.0,
+    "min_iptm": 0.3,
+    "max_low_complexity": 0.25,
+    "max_gap_gini": 0.15,
+    "esm2_checkpoint": "esm2_t33_650M_UR50D"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "select_cdr",
+        "operation": "Select active CDR region for this region pass",
+        "inputs": ["framework_sequence", "cdr_regions"],
+        "outputs": ["cdr_mask"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "propose",
+        "operation": "ESM-2 masked mutation within active CDR",
+        "inputs": ["framework_sequence", "cdr_mask"],
+        "outputs": ["candidate_antibody"],
+        "parameters": {"mutations_per_step": 2},
+        "evidence": []
+      },
+      {
+        "id": "score",
+        "operation": "Score AbLang naturalness, ESMFold ipTM, complexity, and gap Gini",
+        "inputs": ["candidate_antibody", "target_antigen_sequence"],
+        "outputs": ["constraint_scores"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "accept",
+        "operation": "MCMC accept/reject on weighted constraint scores",
+        "inputs": ["candidate_antibody", "constraint_scores"],
+        "outputs": ["matured_antibody"],
+        "parameters": {"num_steps": 100},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "select_cdr", "target": "propose", "artifact": "cdr_mask"},
+      {"source": "propose", "target": "score", "artifact": "candidate_antibody"},
+      {"source": "score", "target": "accept", "artifact": "constraint_scores"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "minimum interface ipTM",
+      "metric": "iptm",
+      "operator": ">=",
+      "value": 0.3,
+      "unit": "score",
+      "applies_to": "antibody-antigen complex",
+      "evidence": []
+    },
+    {
+      "name": "maximum gap Gini",
+      "metric": "gap_gini",
+      "operator": "<=",
+      "value": 0.15,
+      "unit": "score",
+      "applies_to": "CDR vs seed framework alignment",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "121-aa anti-GFP nanobody VHH seed substitutes full-length scFv benchmarks.",
+    "Short peptide antigen stub proxies a folded epitope for smoke-tier ESMFold ipTM.",
+    "AbLang scores the VHH as heavy-only; framework positions are fixed via ESM-2 masking.",
+    "Region-local solver runs one MCMC pass per CDR (3 passes full tier, 1 pass smoke)."
+  ],
+  "unknowns": [
+    "Target antigen structure and experimental binding affinity are not modeled.",
+    "PyRosetta interface metrics and multi-chain scFv AbLang pairing are out of scope for v1.",
+    "CDR IMGT boundaries are approximate on the compact nanobody seed."
+  ]
+}

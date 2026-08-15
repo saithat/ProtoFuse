@@ -1,0 +1,20 @@
+{
+  "integration_version": "1",
+  "scenario_id": "custom-egfp-lung",
+  "scenario_version": 1,
+  "title": "Pipeline 4: CUSTOM tissue-specific eGFP codon pool optimization",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Extracted CUSTOM methodology and built minute-scale pool optimizer baseline"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "custom-egfp-v1",
+  "status": "active",
+  "notes": "Genome Biology 2023 CUSTOM paper; n_pool=1000 full tier targets ~1 min wall time."
+}

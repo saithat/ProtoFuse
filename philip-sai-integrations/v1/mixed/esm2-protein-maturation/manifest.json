@@ -1,0 +1,20 @@
+{
+  "integration_version": "1",
+  "scenario_id": "esm2-protein-maturation",
+  "scenario_version": 1,
+  "title": "ESM-2 + ESMFold protein maturation (iterative_refinement)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Built GPU-backed MCMC maturation baseline reusing dnachisel-num1 region-local topology"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "esm2-protein-maturation-v1",
+  "status": "active",
+  "notes": "Smoke: 80 aa eGFP, 50 steps. Full: 129 aa lysozyme, 200 steps. Sai fusion target: esmfold-prediction every MCMC step."
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "antibody-cdr-maturation",
+  "methodology_id": "antibody-cdr-maturation-v1",
+  "proto_version": "109e7e4bc6647f7884d94b08f8c0951c2e4af6c2",
+  "registry_version": "1",
+  "seed_policy": "ESM-2 seeds from framework_sequence; CDR masking via region_pass",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "0af62ce5579fc4f5bdcb814f5eb6713c2114825376cf61340fca716447ff8e96"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "ca9bbff01205be730c46b77a855eabe201beddb7febadadcb4a28b169a5efd7e"
+    }
+  ]
+}

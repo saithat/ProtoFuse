@@ -1,0 +1,238 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "DNA Chisel NUM1 codon optimization (Figure 1)",
+    "identifier": "10.1093/bioinformatics/btaa558-num1",
+    "source_path": "data/papers/dnachisel.txt"
+  },
+  "generators": [
+    {
+      "name": "stochastic mutation generator",
+      "description": "Propose codon-synonymous DNA candidates via random mutations during local region optimization.",
+      "parameters": {"mutations_per_step": 3},
+      "evidence": [
+        {
+          "quote": "A region's sequence is optimized via either a stochastic search (using random mutations of the sequence) or an exhaustive search through all possible sequence variants, depending on the number of variants.",
+          "section": "Implementation",
+          "page": 2
+        }
+      ],
+      "output": "dna"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "windowed GC content",
+      "description": "Keep GC content between 40 and 60 percent on every 100-nucleotide window across the NUM1 coding sequence.",
+      "parameters": {"min_gc": 40, "max_gc": 60, "window_bp": 100},
+      "evidence": [
+        {
+          "quote": "Gene NUM1 of Saccharomyces cerevisiae will be codon optimized for Escherischia coli, and have a GC content of 40-60% on every 100-nucleotide window.",
+          "section": "Usage",
+          "page": 2
+        }
+      ],
+      "metric": "gc_percent_windowed",
+      "direction": "range",
+      "weight": 1.0
+    },
+    {
+      "name": "BsaI site removal",
+      "description": "Remove BsaI restriction sites (GGTCTC) that impede DNA synthesis and assembly.",
+      "parameters": {"pattern": "GGTCTC", "max_occurrences": 0},
+      "evidence": [
+        {
+          "quote": "BsaI restriction sites will be removed (@no(BsaI_site) constraint).",
+          "section": "Usage",
+          "page": 2
+        }
+      ],
+      "metric": "restriction_site_count",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "homopolymer limit",
+      "description": "Reject homopolymer runs that impede synthesis.",
+      "parameters": {"max_length": 4},
+      "evidence": [
+        {
+          "quote": "Removal of regulatory elements or elements impeding DNA synthesis and assembly.",
+          "section": "Supplementary A",
+          "page": 5
+        }
+      ],
+      "metric": "max_homopolymer_length",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "k-mer uniqueness",
+      "description": "Remove undesirable homologies using codon-synonymous mutations in the coding region.",
+      "parameters": {"k": 6, "max_frequency": 0.015},
+      "evidence": [
+        {
+          "quote": "Undesirable homologies occurring naturally in the gene sequence will be removed in the region marked @all_unique_kmers, using codon-synonymous mutations only, as enforced by the @cds constraint.",
+          "section": "Usage",
+          "page": 2
+        }
+      ],
+      "metric": "kmer_overrepresentation",
+      "direction": "filter",
+      "weight": 0.5
+    },
+    {
+      "name": "codon optimization",
+      "description": "Optimize codon usage for Escherichia coli expression while preserving the amino acid sequence.",
+      "parameters": {"target_organism": "escherichia_coli"},
+      "evidence": [
+        {
+          "quote": "Gene NUM1 of Saccharomyces cerevisiae will be codon optimized for Escherischia coli",
+          "section": "Usage",
+          "page": 2
+        }
+      ],
+      "metric": "codon_usage_score",
+      "direction": "maximize",
+      "weight": 0.5
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "region-local MCMC refinement",
+      "description": "Detect unsatisfactory regions and run stochastic local search per region until constraints converge.",
+      "parameters": {"num_steps": 200, "max_temperature": 1.0, "max_region_passes": 8},
+      "evidence": [
+        {
+          "quote": "During each step, unsatisfactory sequence regions are detected and separately optimized.",
+          "section": "Implementation",
+          "page": 2
+        },
+        {
+          "quote": "The optimization algorithm ... has two main steps: (1) resolution of all hard constraints, ignoring optimization objectives, and (2) objectives maximization with respect to the constraints.",
+          "section": "Implementation",
+          "page": 2
+        }
+      ],
+      "strategy": "region_local_markov_chain_monte_carlo",
+      "stopping_criteria": {"num_steps": 200, "max_region_passes": 8}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "Biopython",
+      "version_or_checkpoint": null,
+      "provider": "Biopython",
+      "purpose": "Genbank operations and restriction enzyme data in DNA Chisel",
+      "evidence": [
+        {
+          "quote": "DNA Chisel is implemented in Python. It relies on the Biopython library (Cock et al., 2009) for Genbank operations and restriction enzyme data.",
+          "section": "Implementation",
+          "page": 2
+        }
+      ]
+    }
+  ],
+  "global_parameters": {
+    "workload": "num1_gene",
+    "segment_length_bp": 2808,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 3,
+    "max_region_passes": 8
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "resolve_constraints",
+        "operation": "resolve hard constraints on unsatisfactory regions",
+        "inputs": ["starting_sequence"],
+        "outputs": ["feasible_dna"],
+        "parameters": {},
+        "evidence": [
+          {
+            "quote": "During each step, unsatisfactory sequence regions are detected and separately optimized.",
+            "section": "Implementation",
+            "page": 2
+          }
+        ]
+      },
+      {
+        "id": "generate",
+        "operation": "stochastic codon-synonymous mutation proposals",
+        "inputs": ["feasible_dna"],
+        "outputs": ["candidate_dna"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "score",
+        "operation": "score windowed GC, pattern, k-mer, and codon constraints",
+        "inputs": ["candidate_dna"],
+        "outputs": ["scores"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "optimize_objectives",
+        "operation": "maximize weighted objectives under satisfied constraints",
+        "inputs": ["candidate_dna", "scores"],
+        "outputs": ["optimized_dna"],
+        "parameters": {},
+        "evidence": [
+          {
+            "quote": "This steps separation allows to detect incompatible constraints early, and quickly reach satisfactory solutions.",
+            "section": "Implementation",
+            "page": 2
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {"source": "resolve_constraints", "target": "generate", "artifact": "feasible_dna"},
+      {"source": "generate", "target": "score", "artifact": "candidate_dna"},
+      {"source": "score", "target": "optimize_objectives", "artifact": "scores"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "minimum windowed GC",
+      "metric": "gc_percent_windowed",
+      "operator": ">=",
+      "value": 40,
+      "unit": "%",
+      "applies_to": "100bp windows",
+      "evidence": []
+    },
+    {
+      "name": "maximum windowed GC",
+      "metric": "gc_percent_windowed",
+      "operator": "<=",
+      "value": 60,
+      "unit": "%",
+      "applies_to": "100bp windows",
+      "evidence": []
+    },
+    {
+      "name": "no BsaI sites",
+      "metric": "restriction_site_count",
+      "operator": "==",
+      "value": 0,
+      "unit": "sites",
+      "applies_to": "candidate DNA",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "NUM1 CDS (~936 bp) plus approximate promoter/terminator flanking context (~2808 bp construct).",
+    "Region-local solver approximates DNA Chisel's per-region stochastic search with up to five outer passes.",
+    "Codon optimization uses a static E. coli codon usage table rather than the Codon Usage Database API.",
+    "K-mer uniqueness approximates @all_unique_kmers via overrepresentation penalties on 6-mers."
+  ],
+  "unknowns": [
+    "Protected promoter/terminer flanks (@keep annotations) are not modeled in v1.",
+    "Exact DNA Chisel exhaustive vs stochastic region solver switching is not reproduced.",
+    "AvoidMatches homology removal against external reference genomes is not bound in v1."
+  ]
+}

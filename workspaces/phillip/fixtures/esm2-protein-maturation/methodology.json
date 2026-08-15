@@ -1,0 +1,205 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "ESM-2 + ESMFold protein maturation benchmark",
+    "identifier": "protofuse-esm2-maturation-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "ESM-2 masked mutation",
+      "description": "Propose masked amino-acid substitutions on a seed protein using ESM-2 iterative refinement.",
+      "parameters": {"mutations_per_step": 3, "model_checkpoint": "esm2_t33_650M_UR50D"},
+      "evidence": [
+        {
+          "quote": "Refine an existing protein (GFP, lysozyme, nanobody benchmark) for stability and developability without large functional changes.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "ESM-2 naturalness",
+      "description": "Keep mutated sequences within ESM-2 perplexity bounds relative to the seed.",
+      "parameters": {"temperature": 1.0, "score_mode": "nll"},
+      "evidence": [],
+      "metric": "esm2_perplexity",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "ESMFold structure quality",
+      "description": "Require predicted monomer pLDDT above developability threshold.",
+      "parameters": {"structure_tool": "esmfold", "min_plddt": 70.0},
+      "evidence": [],
+      "metric": "mean_plddt",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "ESMFold interface PAE",
+      "description": "Limit predicted aligned error for structural consistency.",
+      "parameters": {"structure_tool": "esmfold", "max_pae": 15.0},
+      "evidence": [],
+      "metric": "mean_pae",
+      "direction": "minimize",
+      "weight": 0.75
+    },
+    {
+      "name": "developability complexity",
+      "description": "Penalize low-complexity regions that correlate with aggregation risk.",
+      "parameters": {"max_low_complexity": 0.2},
+      "evidence": [],
+      "metric": "low_complexity_fraction",
+      "direction": "filter",
+      "weight": 0.5
+    },
+    {
+      "name": "length bounds",
+      "description": "Preserve protein length during maturation (no indels).",
+      "parameters": {},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    },
+    {
+      "name": "amino acid balance",
+      "description": "Maintain balanced amino-acid composition for expression.",
+      "parameters": {"min_aa_frequency": 0.02, "max_underrepresented_count": 3},
+      "evidence": [],
+      "metric": "aa_balance",
+      "direction": "filter",
+      "weight": 0.5
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "region-local MCMC refinement",
+      "description": "Iterative ESM-2 MCMC refinement with ESMFold scoring, matching DNA Chisel region-local topology.",
+      "parameters": {"num_steps": 200, "max_temperature": 1.0, "max_region_passes": 5},
+      "evidence": [
+        {
+          "quote": "Topology: iterative_refinement — same pattern as dnachisel-num1.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "region_local_markov_chain_monte_carlo",
+      "stopping_criteria": {"num_steps": 200, "max_region_passes": 5}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "ESM-2",
+      "version_or_checkpoint": "esm2_t33_650M_UR50D",
+      "provider": "Meta FAIR",
+      "purpose": "Masked mutation proposals and perplexity scoring",
+      "evidence": []
+    },
+    {
+      "name": "ESMFold",
+      "version_or_checkpoint": null,
+      "provider": "Meta FAIR",
+      "purpose": "Structure pLDDT and PAE constraints during MCMC",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "esm2_protein_maturation",
+    "target_protein": "lysozyme",
+    "segment_length_aa": 129,
+    "num_steps": 200,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 3,
+    "max_temperature": 1.0,
+    "max_region_passes": 5,
+    "inner_refinement_steps": 50,
+    "max_windows_per_pass": 3,
+    "min_inner_refinements_per_pass": 1,
+    "min_plddt": 70.0,
+    "max_pae": 15.0,
+    "esm2_temperature": 1.0,
+    "max_low_complexity": 0.2,
+    "min_aa_frequency": 0.02,
+    "max_underrepresented_count": 3,
+    "seed_sequence_gfp": "MSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTFSYGVQCFSRYPDHMKQHDFFKSAMPEGYVQERTIFFKDDGNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYIMADKQKNGIKVNFKIRHNIEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSTQSALSKDPNEKRDHMVLLEFVTAAGITHGMDELYK",
+    "seed_sequence_lysozyme": "KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINSRWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQAWIRGCRL"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "seed_protein",
+        "operation": "load seed protein sequence",
+        "inputs": ["seed_sequence"],
+        "outputs": ["protein_segment"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "propose_mutations",
+        "operation": "ESM-2 masked mutation proposals",
+        "inputs": ["protein_segment"],
+        "outputs": ["candidate_protein"],
+        "parameters": {"mutations_per_step": 3},
+        "evidence": []
+      },
+      {
+        "id": "score_structure",
+        "operation": "ESMFold pLDDT and PAE scoring",
+        "inputs": ["candidate_protein"],
+        "outputs": ["structure_scores"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "mcmc_accept",
+        "operation": "MCMC accept/reject under composite constraints",
+        "inputs": ["candidate_protein", "structure_scores"],
+        "outputs": ["refined_protein"],
+        "parameters": {"num_steps": 200},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "seed_protein", "target": "propose_mutations", "artifact": "protein_segment"},
+      {"source": "propose_mutations", "target": "score_structure", "artifact": "candidate_protein"},
+      {"source": "score_structure", "target": "mcmc_accept", "artifact": "structure_scores"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "minimum pLDDT",
+      "metric": "mean_plddt",
+      "operator": ">=",
+      "value": 70,
+      "unit": "score",
+      "applies_to": "candidate protein",
+      "evidence": []
+    },
+    {
+      "name": "maximum PAE",
+      "metric": "mean_pae",
+      "operator": "<=",
+      "value": 15,
+      "unit": "Angstrom",
+      "applies_to": "candidate protein",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "Smoke tier uses the first 80 residues of eGFP as a truncated maturation segment.",
+    "Full tier uses hen egg white lysozyme (129 aa) as the developability benchmark.",
+    "ESMFold runs on every MCMC accept/reject step via structure constraints (GPU/Modal required at runtime).",
+    "Region-local passes reuse the dnachisel-num1 orchestration pattern with protein-length windows."
+  ],
+  "unknowns": [
+    "No single canonical paper anchors this v1 fixture; parameters follow internal CANDIDATE_WORKFLOWS spec.",
+    "Exact ESM-2 checkpoint and ESMFold recycle settings may differ from production Modal deployments."
+  ]
+}
