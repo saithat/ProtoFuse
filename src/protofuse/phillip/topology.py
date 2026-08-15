@@ -1,6 +1,6 @@
 """Choose a transparent workflow topology for Phillip's paper-to-Proto pipeline."""
 
-from protofuse.contracts import MethodologySpec, TopologyKind, TopologyRecommendation
+from protofuse.phillip.contracts import MethodologySpec, TopologyKind, TopologyRecommendation
 
 
 def recommend_topologies(spec: MethodologySpec) -> list[TopologyRecommendation]:

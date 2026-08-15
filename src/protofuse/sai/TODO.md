@@ -1,36 +1,38 @@
 # Sai TODO
 
-Goal: read Phillip's frozen Proto program folders, find recurring expensive step groups,
-and build selective learned fusion that defers unreliable inputs to the original models.
+Goal: learn reusable fusions from Phillip's frozen ordinary Proto programs so future user
+programs automatically use them when compatible and safe.
 
-## Analyze Phillip's programs
+## Analyze program collections
 
-- [ ] Load `proto_programs/generated/<collection_id>/collection.json` and verify hashes.
-- [ ] Import each inert `build_program()` without modifying the collection.
-- [ ] Catalog model/tool steps, dependencies, configurations, inputs, outputs, thresholds,
-      loops, and optimizer position.
-- [ ] Profile call count, wall time, accelerator time, memory, failures, and cost.
-- [ ] Rank recurring adjacent groups by total campaign cost and decision importance.
-- [ ] Apply exact caching, batching, or shared intermediates before considering a learned
-      approximation.
+- [x] Load and hash-check the `program_collection.py` handoff without importing it.
+- [ ] Import reviewed `build_program()` entry points in a controlled analyzer.
+- [ ] Derive canonical signatures from model/tool identity and version, configuration,
+      inputs, outputs, stochastic semantics, thresholds, and optimizer position.
+- [ ] Profile call count, latency, accelerator time, memory, failures, cost, and decision
+      contribution across many programs.
+- [ ] Rank recurring adjacent groups and apply exact caching/batching/shared intermediates
+      before learned approximation.
 
-## Build one selective fusion experiment
+## Train one learned fusion
 
-- [ ] Jointly choose one expensive recurring group and define all teacher inputs/outputs,
-      thresholds, applicability domain, and error costs.
+- [ ] Jointly choose one expensive group and define all teacher inputs/outputs,
+      applicability domain, thresholds, and asymmetric error costs.
 - [ ] Collect joint full-model traces and split by target, scaffold, sequence family, or
       another leakage-resistant grouping.
 - [ ] Train a supervised multi-output baseline before considering fine-tuning or RL.
-- [ ] Estimate uncertainty with ensemble disagreement plus calibrated intervals or
-      conformal scores.
-- [ ] Defer OOD, unsupported, high-uncertainty, threshold-crossing, and failed calls to
-      the complete original model group.
-- [ ] Report selective risk versus coverage, false decisions, top-k recall, full-model
-      calls avoided, runtime, and cost.
+- [ ] Calibrate ensemble disagreement plus prediction intervals or conformal scores.
+- [ ] Report selective risk versus coverage, false decisions, top-k recall, subgroup/OOD
+      performance, full-model calls avoided, runtime, and cost.
 
-## Return one integration surface
+## Automatic runtime
 
-- [ ] Expose one callable in `src/protofuse/sai/` for Phillip's final E2E run.
-- [ ] Keep full-model fallback deterministic and fail closed.
+- [x] Register versioned fusion bundles with compatibility matchers.
+- [x] Leave unmatched or failed program transformations unchanged.
+- [x] Route per input through a surrogate gate with deterministic fail-closed fallback.
+- [ ] Implement a real Proto step-signature matcher and transformation.
+- [ ] Package the trained surrogate and gate as the first reviewed `FusionBundle`.
 - [ ] Preserve final full-model validation unless both explicitly change the policy.
-- [ ] Keep raw data in `data/analysis/` and weights in `data/models/`.
+
+Raw traces and calibration data stay under `data/analysis/`; weights stay under
+`data/models/`.

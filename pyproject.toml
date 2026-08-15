@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "protofuse"
 version = "0.1.0"
-description = "Turn paper methodologies into auditable Proto workflow plans"
+description = "Generate Proto programs from papers and apply safe learned fusion automatically"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

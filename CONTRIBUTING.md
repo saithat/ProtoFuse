@@ -2,17 +2,19 @@
 
 This is a two-person trunk-based project.
 
-1. Work in your owned directory and coordinate changes to the scientific agent or shared
-   contract.
-2. Keep commits small and pull before pushing.
+1. Work in `src/protofuse/phillip/` or `src/protofuse/sai/` according to ownership.
+2. Coordinate changes to `program_collection.py`, `runtime.py`, and public APIs.
 3. Treat `proto_programs/generated/<collection_id>/` as frozen once Sai starts using it;
-   create a new collection ID instead of silently changing it.
-4. Run the checks below, then push directly to `main`. Never force-push `main`.
+   create a new collection ID instead of changing it silently.
+4. Keep commits small, pull before pushing, and never force-push `main`.
+5. Run:
 
 ```bash
 uv run ruff check .
+uv run mypy src/protofuse
 uv run pytest
 ```
 
-Do not commit raw papers, generated runs, teacher traces, calibration datasets, model
-weights, credentials, or model caches.
+Tests must exercise real deterministic code paths. Do not add mocked E2E flows or smoke
+scripts. Never commit papers, generated runs, teacher traces, calibration datasets,
+model weights, credentials, or model caches.

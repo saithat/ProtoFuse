@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from protofuse.contracts import MethodologySpec
+from protofuse.phillip.contracts import MethodologySpec
 from protofuse.phillip.prompt import SYSTEM_PROMPT, extraction_prompt
 
 

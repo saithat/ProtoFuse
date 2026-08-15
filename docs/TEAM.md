@@ -1,33 +1,42 @@
 # Phillip and Sai work split
 
-## Phillip: paper to Proto and final E2E
+## Phillip: paper to ordinary Proto
 
-Phillip owns `src/protofuse/phillip/`, `src/protofuse/contracts.py`, and:
+Phillip owns `src/protofuse/phillip/` and:
 
-- extracts and reviews the methodology;
+- extracts and reviews `MethodologySpec`;
 - binds only approved Proto components;
-- generates readable executable programs;
-- saves each frozen collection under `proto_programs/generated/<collection_id>/`;
-- runs the final baseline-versus-fusion workflow end to end.
+- generates readable ordinary Proto programs;
+- finalizes frozen collections under `proto_programs/generated/<collection_id>/`;
+- performs the end-to-end scientific validation used to accept a fusion.
 
-Phillip does not need to create graph/profile handoff files or choose Sai's hot path.
+Phillip does not produce graph/profile handoffs, select Sai's hot path, train the
+surrogate, or modify the fusion gate.
 
-## Sai: learned fusion
+## Sai: automatic learned fusion
 
 Sai owns `src/protofuse/sai/` and:
 
-- reads but does not edit frozen generated programs;
-- profiles and finds recurring expensive model-step groups;
-- distinguishes exact caching/batching from approximate learned fusion;
-- trains a multi-output surrogate for one selected group;
-- detects uncertainty and out-of-domain inputs and defers them to the full models;
-- exposes one callable for Phillip's final E2E run.
+- reads frozen collections without modifying them;
+- derives step signatures and profiles recurring expensive groups;
+- applies exact caching/batching opportunities before approximate fusion;
+- trains a joint surrogate and calibrates applicability/uncertainty;
+- packages accepted work as a registered `FusionBundle`;
+- guarantees per-input full-model fallback through `SelectiveRouter`.
+
+Sai does not require Phillip's paper text, methodology extraction internals, graph dumps,
+or benchmark directories.
+
+## Shared code decisions
+
+Both coordinate changes to `program_collection.py` and `runtime.py`. These are thin,
+stable contracts; owner-specific implementation stays in the owner packages.
 
 ## Four check-ins
 
-1. Both review the extracted methodology.
-2. Phillip freezes a generated collection and tells Sai its path.
-3. Both choose the fusion target, outputs, thresholds, and error costs after Sai profiles
-   the collection.
-4. Both accept, reject, or revise the surrogate after reviewing risk versus coverage and
-   Phillip's final E2E results.
+1. Review the scientific methodology and intended Proto program behavior.
+2. Freeze a generated collection for Sai.
+3. Choose the recurring fusion target, outputs, applicability domain, thresholds, and
+   asymmetric error costs after real profiling.
+4. Accept, reject, or revise the fusion after risk-coverage analysis and Phillip's E2E
+   scientific validation.

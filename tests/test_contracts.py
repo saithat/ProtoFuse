@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from protofuse.contracts import MethodologySpec
+from protofuse.phillip.contracts import MethodologySpec
 
 
 def test_example_contract_loads(example_spec: MethodologySpec) -> None:

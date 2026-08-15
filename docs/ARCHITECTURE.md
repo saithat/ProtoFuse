@@ -1,36 +1,52 @@
 # Architecture
 
-## One folder handoff
+## Research flow
 
 ```text
 Paper
-  -> Phillip's paper extractor
-  -> MethodologySpec
-  -> Phillip generates executable Proto programs
+  -> Phillip extracts MethodologySpec
+  -> Phillip generates ordinary executable Proto programs
   -> proto_programs/generated/<collection_id>/
-  -> Sai profiles recurring expensive step groups
-  -> selective surrogate or full-model deferral
-  -> Phillip runs the final workflow end to end
+  -> Sai inspects many frozen programs and profiles recurring expensive step groups
+  -> Sai trains and calibrates a reusable FusionBundle
+  -> FusionBundle is registered with the ProtoFuse runtime
 ```
 
-ProtoFuse remains one Python package and uses Proto Language as a pinned dependency. Sai
-does not need a separate Proto fork unless a concrete instrumentation limitation later
-proves that wrapping Proto's public objects is insufficient.
+`proto_programs/generated/` is the only Phillip-to-Sai artifact interface. Sai derives
+signatures, graph-like representations, profiles, and teacher data internally under
+ignored `data/` paths.
 
-## Two engineering seams
+## User runtime
 
-1. **Phillip to Sai:** a frozen folder of readable, import-safe Python files. Each exposes
-   `build_program()`. A small generated manifest lists the files and their hashes.
-2. **Sai to Phillip:** one public callable in `src/protofuse/sai/` that wraps or transforms
-   a built program with selective learned fusion and deterministic full-model fallback.
+The user does not write a fused program. They build an ordinary Proto program and call
+`protofuse.optimize(program)`. The runtime walks the reviewed fusion registry in order:
 
-No separate graph-handoff directory, scenario registry, workflow dump, or benchmark
-questionnaire is required. Sai can derive a graph-like representation and profiles from
-the programs as internal analysis data.
+1. A bundle performs a static compatibility match against the program's steps, versions,
+   configuration, inputs, outputs, and semantics.
+2. A compatible bundle transforms or wraps that step group.
+3. At execution time, its `SelectiveRouter` evaluates the surrogate prediction and its
+   calibrated applicability/uncertainty gate.
+4. Accepted inputs use the surrogate. Rejected, OOD, unsupported, or failed inputs invoke
+   the complete original model group.
+
+If no bundle matches—or matching/transformation fails—the original program is returned.
+The initial registry is empty, so current behavior is unchanged until a real reviewed
+fusion is registered.
+
+## Code boundaries
+
+- `phillip/`: all paper conversion and program generation.
+- `sai/`: analysis, fusion bundles, matching, learned models, gating, and routing.
+- `program_collection.py`: shared folder schema and hash validation; it never imports the
+  generated programs.
+- `runtime.py`: thin public API delegating optimization to Sai's registry.
+
+No Proto fork, graph-handoff directory, workflow dump, scenario catalog, or separately
+generated fused-program folder is required.
 
 ## Safety
 
-Paper text is untrusted. Generated programs may use only reviewed registry symbols and
-typed parameters. They must not copy or execute paper-provided code, commands, URLs, or
-unreviewed model identifiers. Raw inputs, traces, training data, and weights remain under
-ignored `data/` paths.
+Paper text is untrusted. Generated programs use only reviewed symbols and typed
+parameters; they never copy or execute paper-provided code, commands, URLs, or unreviewed
+model identifiers. Program collections are hash-checked before analysis. Fusion matching
+and routing fail closed, and the authoritative full-model path remains available.

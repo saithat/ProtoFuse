@@ -1,8 +1,11 @@
-# Phillip-to-Sai handoff
+# Phillip-to-Sai program corpus
 
-Phillip writes reviewed program collections to `generated/<collection_id>/`. Sai reads
-those frozen folders when building learned fusion.
+Phillip writes reviewed collections to `generated/<collection_id>/`; Sai reads those
+frozen folders to discover and train reusable fusions. This is the only artifact handoff.
 
-Each collection contains `collection.json` plus readable Python files that expose
-`build_program()` and are inert on import. Do not store paper text, confidential inputs,
-credentials, run outputs, teacher traces, or model weights here.
+Each collection contains `collection.json` and readable Python files with a synchronous
+`build_program()` entry point. `src/protofuse/program_collection.py` validates metadata,
+paths, review status, and hashes without executing the files.
+
+Do not store paper text, confidential inputs, credentials, run outputs, teacher traces,
+calibration data, or model weights here.

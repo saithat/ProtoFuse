@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from protofuse.contracts import (
+from protofuse.phillip.compiler import compile_proto_plan
+from protofuse.phillip.contracts import (
     ExecutionDevice,
     MethodologySpec,
     ProtoPlan,
     TopologyRecommendation,
 )
-from protofuse.phillip.compiler import compile_proto_plan
 from protofuse.phillip.extractor import ScientificAgent
 from protofuse.phillip.topology import recommend_topologies
 

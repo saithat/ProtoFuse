@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from protofuse.contracts import MethodologySpec
 from protofuse.phillip import compile_proto_plan, recommend_topologies
+from protofuse.phillip.contracts import MethodologySpec
 
 
 def _load(path: Path) -> MethodologySpec:

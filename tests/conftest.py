@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from protofuse.contracts import MethodologySpec
+from protofuse.phillip.contracts import MethodologySpec
 
 
 @pytest.fixture

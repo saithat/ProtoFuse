@@ -1,6 +1,6 @@
-# Generated Proto program folder
+# Generated Proto program collection
 
-Phillip saves each reviewed collection here:
+Phillip saves each reviewed collection at:
 
 ```text
 proto_programs/generated/<collection_id>/
@@ -9,21 +9,24 @@ proto_programs/generated/<collection_id>/
 └── design_002.py
 ```
 
-Every design file must expose `build_program()` and do no work, network access, or model
-loading on import. Files use only reviewed imports and registry symbols.
+Every design exposes one synchronous `build_program()` and performs no execution,
+network access, or model loading during import. Phillip's `finalize_collection()` checks
+the declaration using Python's syntax tree and writes `collection.json` without importing
+the programs.
 
-`collection.json` is generated automatically and contains only what Sai needs to load
-the folder safely:
+The manifest contains:
 
-- collection ID;
-- program filenames, entry points, and hashes;
-- pinned Proto and registry versions;
-- source `MethodologySpec` ID or hash;
-- review status and seed policy.
+- schema and collection IDs;
+- source methodology ID or hash;
+- pinned Proto and component-registry versions;
+- seed policy and review status;
+- program IDs, relative paths, `build_program` entry points, and SHA-256 hashes.
 
-Once Sai begins an analysis, the collection is read-only. Phillip creates a new
-collection ID for any change.
+Sai calls `load_collection()` before analysis. It rejects unreviewed collections,
+absolute or escaping paths, symlinked programs, missing files, duplicate entries, and
+hash mismatches. Loading the manifest does not execute generated code.
 
-Sai keeps profiles, teacher traces, calibration data, and reports under ignored
-`data/analysis/<collection_id>/`, and model weights under `data/models/`. Stable learned
-fusion code is promoted to `src/protofuse/sai/`. No second handoff folder is required.
+Once Sai begins analysis, the collection is read-only. Phillip creates a new collection
+ID for any change. Sai keeps profiles, traces, calibration data, and reports in
+`data/analysis/<collection_id>/`, and weights under `data/models/`. There is no return
+handoff folder: accepted fusions become registered runtime bundles in Sai's code.

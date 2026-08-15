@@ -1,6 +1,6 @@
 """Prompt construction for paper-to-methodology extraction."""
 
-from protofuse.contracts import MethodologySpec
+from protofuse.phillip.contracts import MethodologySpec
 
 SYSTEM_PROMPT = """You extract methods from scientific papers into an auditable JSON contract.
 Use only the supplied paper text. Every specific claim should include a short supporting quote and
