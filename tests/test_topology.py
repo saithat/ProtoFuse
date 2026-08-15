@@ -1,5 +1,5 @@
 from protofuse.contracts import MethodologySpec, TopologyKind
-from protofuse.sai import recommend_topologies
+from protofuse.phillip import recommend_topologies
 
 
 def test_multiobjective_topology_ranks_first(example_spec: MethodologySpec) -> None:

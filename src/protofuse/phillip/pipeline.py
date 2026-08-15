@@ -11,8 +11,8 @@ from protofuse.contracts import (
     ProtoPlan,
     TopologyRecommendation,
 )
-from protofuse.integration import compile_proto_plan
-from protofuse.sai import recommend_topologies
+from protofuse.phillip.compiler import compile_proto_plan
+from protofuse.phillip.topology import recommend_topologies
 from protofuse.scientific_agent import ScientificAgent
 
 

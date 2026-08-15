@@ -1,59 +1,61 @@
 # ProtoFuse
 
-ProtoFuse turns a scientific paper into an auditable methodology specification,
-matches it to a reusable workflow topology, and produces a Proto-oriented execution
-plan.
+ProtoFuse has one simple research handoff:
 
 ```text
-paper -> scientific agent -> methodology spec -> topology selection
-      -> folder of Proto programs -> selective learned fusion -> executable workflow
+paper -> scientific agent -> Phillip's paper-to-Proto pipeline
+      -> proto_programs/generated/<collection_id>/
+      -> Sai's selective learned fusion
+      -> Phillip's final end-to-end run
 ```
 
-The important integration boundaries are the versioned `MethodologySpec` and Phillip's
-reviewed folder of generated Proto programs. Phillip owns the paper-to-Proto path. Sai
-profiles recurring model-step groups across those programs and prototypes a multi-output
-surrogate that defers uncertain or out-of-domain inputs to the original full models.
+Phillip owns everything from a paper through saved, executable Proto programs. Sai reads
+those programs, finds recurring expensive model-step groups, and develops a surrogate
+that defers uncertain or out-of-domain inputs to the original full models.
 
-## Team split
+## Project layout
 
-| Area | Primary | Shared with |
-| --- | --- | --- |
-| `src/protofuse/scientific_agent/` | Phillip + Sai | both |
-| `src/protofuse/phillip/` | Phillip | paper-to-Proto collection generation |
-| `src/protofuse/sai/` | Sai | catalog, profiling, learned fusion, and evaluation |
-| `src/protofuse/contracts.py` | Phillip + Sai | both; change deliberately |
-| `src/protofuse/integration/` | Phillip + Sai | both |
-| `proto_programs/` | Phillip | Sai consumes frozen collections |
-| `workspaces/phillip/` | Phillip | isolated experiments |
-| `workspaces/sai/` | Sai | isolated experiments |
+```text
+src/protofuse/
+├── scientific_agent/   # shared evidence-grounded extraction
+├── phillip/             # paper -> MethodologySpec -> Proto programs -> final E2E
+├── sai/                 # profiling, learned fusion, uncertainty, and deferral
+└── contracts.py         # shared MethodologySpec
 
-See [docs/TEAM.md](docs/TEAM.md) for the direct-to-main collaboration rules and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the interface between the two tracks.
+proto_programs/generated/  # the Phillip -> Sai handoff
+data/                      # ignored papers, runs, training data, and weights
+workspaces/phillip/         # disposable Phillip experiments
+workspaces/sai/             # disposable Sai experiments
+```
 
-## Start here
+There are only two code integration points:
+
+1. Phillip freezes a generated-program folder for Sai.
+2. Sai exposes one selective-fusion callable that Phillip uses in the final E2E run.
+
+See [docs/TEAM.md](docs/TEAM.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and
+[docs/PROGRAM_COLLECTION.md](docs/PROGRAM_COLLECTION.md).
+
+## Setup
 
 ```bash
 uv sync --extra dev
 cp .env.example .env
+uv run ruff check .
 uv run pytest
-uv run protofuse validate examples/toy_methodology.json
-uv run protofuse recommend examples/toy_methodology.json
-uv run python examples/proto_smoke.py
 ```
 
-After configuring an Anthropic key, extract a paper text file with:
+After configuring Anthropic, extract a local paper text file with:
 
 ```bash
 uv run protofuse extract path/to/paper.txt --out data/specs/paper.json
 ```
 
-Account authentication is intentionally separate from package installation. Complete
-the short checklist in [docs/SETUP.md](docs/SETUP.md) for Anthropic, Paperclip, Modal,
-and any gated Hugging Face models.
+Account authentication is separate from package installation. See
+[docs/SETUP.md](docs/SETUP.md).
 
-## What is executable today
+## Current state
 
-The local toy methodology validates and receives a topology recommendation. The
-compiler emits a `ProtoPlan` and lists any paper-specific component names that still
-need binding to concrete Proto classes/functions. That explicit unresolved list is the
-safety gate between text extraction and code execution.
+The shared methodology contract, scientific-agent adapter, safe component planning, and
+Phillip-owned topology selection are implemented. Phillip's collection generator and
+Sai's learned-fusion implementation are the next milestones.

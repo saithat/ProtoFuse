@@ -1,4 +1,4 @@
-"""Compile an extracted spec into a reviewable, safety-gated Proto plan."""
+"""Compile an extracted methodology into a reviewed Proto plan."""
 
 from __future__ import annotations
 

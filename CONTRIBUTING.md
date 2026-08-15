@@ -1,23 +1,18 @@
 # Contributing directly to main
 
-This two-person hackathon repository intentionally uses trunk-based development.
+This is a two-person trunk-based project.
 
-1. Work in the directory assigned in `docs/TEAM.md`. Treat generated Proto collections
-   as a frozen interface between Phillip and Sai.
-2. Keep commits small and single-purpose.
-3. Before editing a shared contract, message the other person and agree on the field
-   change.
-4. Before pushing, run `git pull --rebase origin main`, resolve any conflict locally,
-   then run the checks below.
-5. Push directly to `main`. Never force-push `main`.
+1. Work in your owned directory and coordinate changes to the scientific agent or shared
+   contract.
+2. Keep commits small and pull before pushing.
+3. Treat `proto_programs/generated/<collection_id>/` as frozen once Sai starts using it;
+   create a new collection ID instead of silently changing it.
+4. Run the checks below, then push directly to `main`. Never force-push `main`.
 
 ```bash
 uv run ruff check .
 uv run pytest
 ```
 
-Generated paper content and experiment outputs belong under ignored `data/` paths.
-Commit a small, synthetic example only when it is needed for a test.
-
-Raw teacher traces, surrogate weights, and calibration datasets belong under ignored
-`data/` paths. Commit only compact synthetic fixtures and reviewed evaluation reports.
+Do not commit raw papers, generated runs, teacher traces, calibration datasets, model
+weights, credentials, or model caches.

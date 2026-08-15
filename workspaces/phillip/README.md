@@ -1,5 +1,5 @@
 # Phillip workspace
 
-Use this directory for Phillip's disposable end-to-end experiments. Promote stable,
-tested code into `src/protofuse/phillip/` or a shared package; do not commit large paper
-files or generated runs.
+Use this directory for disposable paper-to-Proto experiments. Promote stable code into
+`src/protofuse/phillip/` and reviewed generated programs into `proto_programs/generated/`.
+Keep papers, raw runs, and credentials out of Git.

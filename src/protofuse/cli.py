@@ -1,4 +1,4 @@
-"""Small local CLI for contract validation and topology recommendation."""
+"""Small CLI for methodology extraction, validation, and Proto planning."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ import json
 from pathlib import Path
 
 from protofuse.contracts import MethodologySpec
-from protofuse.integration import compile_proto_plan
-from protofuse.sai import recommend_topologies
+from protofuse.phillip import compile_proto_plan, recommend_topologies
 
 
 def _load(path: Path) -> MethodologySpec:
