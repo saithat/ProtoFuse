@@ -13,6 +13,23 @@ from protofuse.phillip.contracts import (
 )
 
 
+class UnresolvedBindingsError(ValueError):
+    """Raised when source generation is requested before every binding is resolved."""
+
+    def __init__(self, unresolved: list[str]) -> None:
+        self.unresolved = unresolved
+        super().__init__(f"unresolved component bindings: {', '.join(unresolved)}")
+
+
+def require_resolved_plan(plan: ProtoPlan) -> ProtoPlan:
+    """Refuse downstream generation until the compiled plan is executable."""
+
+    unresolved = [item.extracted_name for item in plan.bindings if item.status != "bound"]
+    if not plan.executable or unresolved or plan.unresolved:
+        raise UnresolvedBindingsError(plan.unresolved or unresolved)
+    return plan
+
+
 def compile_proto_plan(
     spec: MethodologySpec,
     recommendation: TopologyRecommendation,

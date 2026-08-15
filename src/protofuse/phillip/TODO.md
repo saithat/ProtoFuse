@@ -11,10 +11,10 @@ does not need to define end outputs or fusion acceptance criteria before handing
 ## Paper to programs (internal)
 
 - [ ] Finish Paperclip/local-text ingestion with evidence and `unknowns`.
-- [ ] Maintain a reviewed registry of allowed Proto components and typed parameters.
-- [ ] Generate readable `design_*.py` from a reviewed `MethodologySpec`.
-- [ ] Refuse source generation while any binding is unresolved.
-- [ ] Validate allow-listed imports and confirm generated modules are inert on import.
+- [x] Maintain a reviewed registry of allowed Proto components and typed parameters.
+- [x] Generate readable `design_*.py` from a reviewed `MethodologySpec`.
+- [x] Refuse source generation while any binding is unresolved.
+- [x] Validate allow-listed imports and confirm generated modules are inert on import.
 
 ## Handoff — commit a signed collection
 
@@ -23,13 +23,13 @@ Infrastructure is done; first real collection is not.
 - [x] `finalize_collection()` validates `build_program()` without importing programs.
 - [x] `collection.json` generation with stable metadata and SHA-256 hashes.
 - [x] `load_collection()` path/hash/review checks (Sai's side).
-- [ ] Generate `proto_programs/generated/dnachisel-num1/design_*.py` from NUM1 fixture
+- [x] Generate `proto_programs/generated/dnachisel-num1/design_*.py` from NUM1 fixture
       (`program_builders.py`).
-- [ ] Read generated source; confirm wiring matches
+- [x] Read generated source; confirm wiring matches
       `workspaces/phillip/fixtures/dnachisel-num1/methodology.json`.
-- [ ] Run `finalize_collection(..., reviewed=True)` for collection ID `dnachisel-num1`.
-- [ ] Commit `proto_programs/generated/dnachisel-num1/` to `main`.
-- [ ] Tell Sai the collection ID: `dnachisel-num1`.
+- [x] Run `finalize_collection(..., reviewed=True)` for collection ID `dnachisel-num1`.
+- [x] Commit `proto_programs/generated/dnachisel-num1/` to `main`.
+- [x] Tell Sai the collection ID: `dnachisel-num1`.
 
 - [x] Generate `proto_programs/generated/custom-egfp-lung/design_*.py` from CUSTOM fixture.
 - [x] Run `finalize_collection(..., reviewed=True)` for collection ID `custom-egfp-lung`.
@@ -38,6 +38,14 @@ Infrastructure is done; first real collection is not.
 
 After Sai starts analysis, treat the collection as read-only. Any change → new
 `collection_id`.
+
+## Candidate workflows (lower priority)
+
+`custom-egfp-lung` is done; finish `dnachisel-num1` handoff first. Further scenarios are
+backlogged in [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md)
+(protein-first: ESM-2 maturation, FreeBindCraft binder, RFdiffusion3 + Boltz-2; deferred
+RNA/DNA: PARADE UTR, AlphaGenome splice). Pick from that doc when adding the next
+fixture — prioritize GPU-backed loops for Sai profiling.
 
 ## Out of scope (Sai)
 

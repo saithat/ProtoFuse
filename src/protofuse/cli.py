@@ -9,6 +9,14 @@ from pathlib import Path
 from protofuse.phillip import compile_proto_plan, recommend_topologies
 from protofuse.phillip.contracts import MethodologySpec
 
+FIXTURE_CHOICES = (
+    "dnachisel-num1",
+    "custom-egfp-lung",
+    "esm2-protein-maturation",
+    "antibody-cdr-maturation",
+    "gpcr-cxcr4-miniprotein",
+)
+
 
 def _load(path: Path) -> MethodologySpec:
     return MethodologySpec.model_validate_json(path.read_text())
@@ -34,7 +42,7 @@ def main() -> None:
     )
     preflight_parser.add_argument(
         "fixture",
-        choices=("dnachisel-num1", "custom-egfp-lung"),
+        choices=FIXTURE_CHOICES,
     )
     preflight_parser.add_argument(
         "--length",
@@ -62,7 +70,7 @@ def main() -> None:
     run_parser = subparsers.add_parser("run", help="run a reviewed fixture workload")
     run_parser.add_argument(
         "fixture",
-        choices=("dnachisel-num1", "custom-egfp-lung"),
+        choices=FIXTURE_CHOICES,
     )
     run_parser.add_argument("--tier", choices=("smoke", "full"), default="smoke")
     collection_parser = subparsers.add_parser(
@@ -72,6 +80,17 @@ def main() -> None:
     collection_sub = collection_parser.add_subparsers(dest="collection_command", required=True)
     collection_validate = collection_sub.add_parser("validate")
     collection_validate.add_argument("collection_id")
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="generate design_*.py programs from a reviewed fixture methodology",
+    )
+    generate_parser.add_argument("fixture", choices=FIXTURE_CHOICES)
+    generate_parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="output directory (defaults to proto_programs/generated/<fixture>)",
+    )
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("paper", type=Path)
     extract_parser.add_argument("--out", type=Path, required=True)
@@ -93,9 +112,6 @@ def main() -> None:
         from protofuse.phillip.workload_preflight import assert_workload_feasible, run_preflight
 
         logging.disable(logging.CRITICAL)
-        if args.fixture != "dnachisel-num1":
-            print(f"preflight not implemented for fixture={args.fixture}", file=sys.stderr)
-            raise SystemExit(2)
         report = run_preflight(
             args.fixture,
             target_length=args.length,
@@ -121,7 +137,7 @@ def main() -> None:
             from protofuse.phillip.program_builders import run_dnachisel_num1
 
             program, wall_ms = run_dnachisel_num1(tier=args.tier)
-        else:
+        elif args.fixture == "custom-egfp-lung":
             from protofuse.phillip.program_builders import run_custom_egfp_lung_report
 
             result = run_custom_egfp_lung_report(tier=args.tier)
@@ -137,6 +153,30 @@ def main() -> None:
                     indent=2,
                 )
             )
+        elif args.fixture == "esm2-protein-maturation":
+            from protofuse.phillip.program_builders import run_esm2_protein_maturation
+
+            program, wall_ms = run_esm2_protein_maturation(tier=args.tier)
+        elif args.fixture == "antibody-cdr-maturation":
+            from protofuse.phillip.program_builders import run_antibody_cdr_maturation
+
+            program, wall_ms = run_antibody_cdr_maturation(tier=args.tier)
+        elif args.fixture == "gpcr-cxcr4-miniprotein":
+            from protofuse.phillip.program_builders import (
+                build_gpcr_cxcr4_miniprotein_program,
+                load_fixture_spec,
+                resolve_workload_params,
+            )
+            from time import perf_counter
+
+            spec = load_fixture_spec("gpcr-cxcr4-miniprotein")
+            params = resolve_workload_params(spec, tier=args.tier)
+            program = build_gpcr_cxcr4_miniprotein_program(params)
+            start = perf_counter()
+            program.run()
+            wall_ms = (perf_counter() - start) * 1000
+        else:
+            raise SystemExit(f"run not implemented for fixture={args.fixture}")
         sequence = program.constructs[0].joined_sequences[0].sequence
         print(f"fixture={args.fixture} tier={args.tier} wall_ms={wall_ms:.0f}")
         print(sequence[:120] + ("..." if len(sequence) > 120 else ""))
@@ -149,8 +189,28 @@ def main() -> None:
         loaded = load_collection(root, require_reviewed=True)
         print(
             f"ok: {loaded.manifest.collection_id} "
-            f"({len(loaded.manifest.programs)} programs, methodology={loaded.manifest.methodology_id})"
+            f"({len(loaded.manifest.programs)} programs, "
+            f"methodology={loaded.manifest.methodology_id})"
         )
+        return
+
+    if args.command == "generate":
+        from protofuse.phillip.generator import generate_program_sources, write_design_programs
+        from protofuse.phillip.program_builders import load_fixture_spec
+        from protofuse.phillip.registries import lookup_registry, profile_for_fixture
+
+        spec = load_fixture_spec(args.fixture)
+        profile = profile_for_fixture(args.fixture)
+        recommendations = recommend_topologies(spec)
+        plan = compile_proto_plan(
+            spec,
+            recommendations[0],
+            registry=lookup_registry(profile.registry_name),
+        )
+        sources = generate_program_sources(spec, plan, profile=profile)
+        output_dir = args.out or Path("proto_programs/generated") / args.fixture
+        paths = write_design_programs(output_dir, sources)
+        print(f"wrote {len(paths)} programs to {output_dir}")
         return
 
     spec = _load(args.spec)
@@ -165,14 +225,9 @@ def main() -> None:
 
     registry = None
     if args.registry:
-        from protofuse.phillip import registries
+        from protofuse.phillip.registries import lookup_registry
 
-        registry = {
-            "baseline": registries.DNA_BASELINE_REGISTRY,
-            "dnachisel": registries.DNA_CHISEL_REGISTRY,
-            "dnachisel-num1": registries.DNA_CHISEL_NUM1_REGISTRY,
-            "custom-egfp": registries.CUSTOM_EGFP_REGISTRY,
-        }[args.registry]
+        registry = lookup_registry(args.registry)
 
     plan = compile_proto_plan(spec, recommendations[0], registry=registry, device=args.device)
     print(plan.model_dump_json(indent=2))
