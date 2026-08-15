@@ -1,30 +1,22 @@
-# Reviewed graph handoffs
+# Reviewed learned-fusion reports
 
-Use these directories for compact, reviewed, non-sensitive decision artifacts following
-`docs/GRAPH_HANDOFF.md`.
+Phillip's generated programs follow `docs/PROGRAM_COLLECTION.md` and live under
+`proto_programs/`; there is no separate manual
+Phillip-to-Sai handoff bundle.
+
+Sai may place a compact, reviewed report here:
 
 ```text
 handoffs/
-├── phillip_to_sai/<decision_id>/
-│   ├── summary.md
-│   ├── proto_plan.json
-│   ├── graph.json
-│   ├── workload.json
-│   ├── profile.json
-│   └── decision_request.md
-└── sai_to_phillip/<decision_id>/
+└── sai_to_phillip/<collection_id>/
     ├── summary.md
-    ├── prepared_module_plan.json
-    ├── graph_patch.json
-    ├── benchmark_plan.json
+    ├── step_catalog.json
+    ├── hotpaths.json
+    ├── fusion_spec.json
+    ├── risk_coverage.json
+    ├── benchmark_report.json
     └── decision_record.md
 ```
 
-Do not copy raw traces or full generated runs here. Those belong under ignored
-`data/runs/`. Before committing a bundle, remove paper text, sequences, credentials,
-model artifacts, and any other confidential or large payload.
-
-Phillip's bundle describes the scientific graph and reuse workload. Sai's response
-describes the proposed prepared state, the residual computation, its invalidation and
-fallback behavior, and the controlled benchmark gate. Keep field names stable, units
-explicit, and measured, estimated, and unknown values distinguishable.
+Do not commit raw traces, teacher labels, confidential sequences, credentials, surrogate
+weights, or model caches. Those belong under ignored `data/` paths.

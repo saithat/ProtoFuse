@@ -6,22 +6,24 @@ plan.
 
 ```text
 paper -> scientific agent -> methodology spec -> topology selection
-      -> Proto plan -> executable workflow
+      -> folder of Proto programs -> selective learned fusion -> executable workflow
 ```
 
-The important integration boundary is the versioned `MethodologySpec`. Phillip can
-improve the full paper-to-workflow path while Sai improves topology selection without
-either person depending on the other's internal implementation.
+The important integration boundaries are the versioned `MethodologySpec` and Phillip's
+reviewed folder of generated Proto programs. Phillip owns the paper-to-Proto path. Sai
+profiles recurring model-step groups across those programs and prototypes a multi-output
+surrogate that defers uncertain or out-of-domain inputs to the original full models.
 
 ## Team split
 
 | Area | Primary | Shared with |
 | --- | --- | --- |
 | `src/protofuse/scientific_agent/` | Phillip + Sai | both |
-| `src/protofuse/phillip/` | Phillip | Sai through contracts |
-| `src/protofuse/sai/` | Sai | Phillip through contracts |
+| `src/protofuse/phillip/` | Phillip | paper-to-Proto collection generation |
+| `src/protofuse/sai/` | Sai | catalog, profiling, learned fusion, and evaluation |
 | `src/protofuse/contracts.py` | Phillip + Sai | both; change deliberately |
 | `src/protofuse/integration/` | Phillip + Sai | both |
+| `proto_programs/` | Phillip | Sai consumes frozen collections |
 | `workspaces/phillip/` | Phillip | isolated experiments |
 | `workspaces/sai/` | Sai | isolated experiments |
 

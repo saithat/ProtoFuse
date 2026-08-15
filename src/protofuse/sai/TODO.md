@@ -1,143 +1,105 @@
 # Sai TODO
 
-Primary goal: make common Proto workflow topologies explicit, rankable, and reusable,
-then prototype **ProtoStage**: an exact-first prepared-state layer that avoids repeated
-work while preserving the scientific meaning of Phillip's original Proto workflow.
+Primary goal: analyze collections of Proto designs, discover common expensive model-step
+groups, and replace one group with a selective learned-fusion surrogate that defers
+unsafe inputs to the original full models.
 
-## Product hypothesis from the Proto Language benefits discussion
+## Collection ingestion and step catalog
 
-- [ ] Treat the central optimization artifact as a `PreparedModule`, not a cached final
-  score: semantic signature, fixed inputs, residual graph, cached state, resume/update
-  operations, validity rules, exactness, cost, and provenance hash.
-- [ ] Keep the order of attack explicit: `prepare`, `prefill`, and `incremental` first;
-  `factorize`, `reweight`, and `summarize` only behind validity/error contracts; learned
-  `distill` last.
-- [ ] Demonstrate one exact mode end to end before expanding scope. Select among target
-  preparation, shared generator-prefix state, or mutation-delta recomputation using the
-  measured reuse pattern in Phillip's workload.
-- [ ] Treat proposed names such as `prepare` and `PreparedModule` as ProtoFuse design
-  vocabulary until an approved adapter exists; do not assume they are current Proto APIs.
+- [ ] Recursively scan `proto_programs/generated/<collection_id>/` for reviewed Python
+  files listed in `collection.json`.
+- [ ] Verify hashes, Proto/registry versions, entry points, input roles, and safety status
+  before importing any generated program.
+- [ ] Load each inert `build_program()` and catalog its optimizer stages, generators,
+  constraints, model/tool calls, thresholds, loops, and data dependencies.
+- [ ] Canonicalize a step by tool/model identity and version, configuration, input roles,
+  fixed context, outputs, and stochastic seed semantics.
+- [ ] Detect recurring step groups such as one structure model feeding several scorers or
+  the same sequence/target being evaluated by Boltz plus another model.
+- [ ] Preserve joint outputs, structures, failure witnesses, and provenance rather than
+  reducing a group to disconnected scalar scores.
 
-## Topology work
+## Profiling and fusion-target selection
 
-- [ ] Define reusable templates for propose-score-select, iterative refinement, staged
-  filtering, multi-objective search, and closed-loop experiments.
-- [ ] Describe required nodes, legal edges, iteration points, stopping policies, and
-  selection policies for each template.
-- [ ] Replace baseline scoring constants with named, testable features derived only
-  from `MethodologySpec`.
-- [ ] Add deterministic tie-breaking and an explanation for every recommendation.
-- [ ] Score the effects of constraint count, explicit thresholds, optimizer stages,
-  workflow loops, and experimental feedback separately.
-- [ ] Add topology validation that rejects missing required nodes and invalid cycles.
-- [ ] Benchmark recommendations against shared synthetic or redistributable fixtures.
-- [ ] Preserve the public `recommend_topologies()` interface used by Phillip.
+- [ ] Measure per-step and per-group wall time, cost, call count, batch size, device,
+  memory, transfers, cache behavior, failures, and optimizer-decision contribution.
+- [ ] Rank candidates using total measured cost, recurrence across designs, critical-path
+  impact, and the fraction of calls a fused surrogate could avoid.
+- [ ] Separate exact sharing opportunities from learned fusion: repeated identical
+  preparation or model calls should be cached/shared before training a surrogate.
+- [ ] Select exactly one common expensive group for the first experiment.
+- [ ] Define its teacher inputs, joint outputs, scientific thresholds, downstream
+  decisions, applicability domain, and asymmetric false-accept/false-reject costs.
+- [ ] Record missing measurements as unknown instead of estimating silent speedups.
 
-## ProtoStage graph analysis
+## Joint teacher dataset
 
-- [ ] Consume Phillip's normalized `graph.json`, `workload.json`, and aggregate
-  `profile.json`; do not infer the graph solely from Python source or Proto result
-  exports.
-- [ ] Verify the graph/profile bundle against `docs/GRAPH_HANDOFF.md` before ranking
-  hot paths; request missing measurements rather than estimating them silently.
-- [ ] Build a canonical typed DAG view whose nodes expose input/output roles,
-  deterministic or stochastic behavior, side effects, context dependencies,
-  batchability, cost, fidelity, cache semantics, version, and provenance.
-- [ ] Perform binding-time analysis relative to the stated workload: classify every
-  node as fixed-context, candidate-dependent, or mixed, and explain each classification.
-- [ ] Rank opportunities by **amortized avoidable work**, not one-run duration alone:
-  cost per call, reuse count, branch count, invalidation closure, cache footprint,
-  transfer volume, and scientific-quality contribution.
-- [ ] Generate a semantic signature from canonical graph structure, model/software
-  versions, configuration, and fixed context so stale prepared state is invalidated.
-- [ ] Produce a residual graph that contains only work still required for each candidate,
-  branch, mutation, or stochastic extension.
-- [ ] Define exact prepared-state modes where the dependency structure permits them:
-  fixed target/context preparation, prefix-trie state sharing, and mutation-delta change
-  propagation.
-- [ ] Use conventional cache, batch, parallelize, fuse, reorder, and early-stop passes as
-  measured baselines or complementary transforms, not as substitutes for dependency
-  analysis.
-- [ ] Protect generator/constraint semantics, joint outputs, selection thresholds,
-  optimizer state, seed behavior, evidence level, and experimental side-effect
-  boundaries. Wet-lab actions must never be silently replayed, duplicated, or reordered.
-- [ ] For stochastic prepared state, define `replay`, `extend`, `branch`, `reweight`, and
-  `refresh` separately; prevent sample reuse from being counted as new evidence.
-- [ ] Require effective-sample-size or equivalent overlap evidence before reweighting a
-  nearby ensemble; otherwise extend or refresh the original evaluator.
-- [ ] Require an observable/error contract for factorized or summarized state, including
-  which means, covariance, quantiles, joint samples, and named tail failures are and are
-  not preserved.
-- [ ] Never let approximate associations, summaries, factorization, or distillation hard
-  prune a candidate without a separately validated certificate or rule.
-- [ ] Return the Sai-to-Phillip bundle described in `docs/GRAPH_HANDOFF.md`:
-  `summary.md`, `prepared_module_plan.json`, `graph_patch.json`,
-  `benchmark_plan.json`, and `decision_record.md`.
-- [ ] Estimate benefits and risks explicitly; label missing evidence as unknown rather
-  than presenting an inferred speedup as measured.
+- [ ] Store all outputs from the full step group for the same input as one versioned
+  teacher trace, including model/configuration versions and stochastic seeds.
+- [ ] Deduplicate exact evaluations without counting cached or replayed samples as new
+  evidence.
+- [ ] Partition by target, scaffold, sequence family, or experimental context—not only
+  by random sequence—to measure transfer and out-of-domain behavior.
+- [ ] Reserve independent train, validation, calibration, and final test groups.
+- [ ] Retain rare failures and boundary cases; do not let common easy negatives dominate
+  training.
+- [ ] Track the monetary and compute budget for acquiring additional full-model labels.
 
-## Intermediate check-ins and decisions
+## Selective learned-fusion surrogate
 
-- [ ] **Check-in 0 — methodology:** Phillip and Sai approve the extracted
-  `MethodologySpec`, evidence, assumptions, and unknowns before component binding.
-- [ ] **Check-in 1 — graph and workload freeze:** Validate stable node IDs, typed edges,
-  input roles, loops, side effects, reuse axes, and scientific invariants before
-  accepting a profile.
-- [ ] **Check-in 2 — baseline profile:** Confirm the candidate/target/prefix/mutation
-  workload is representative, rank amortized avoidable work, and select exactly one
-  ProtoStage demo mode.
-- [ ] **Decision 1 — prepared-state proposal:** Present the binding-time split, state
-  contract, exact-or-approximate declaration, invalidation rules, graph patch, predicted
-  benefit, rollback path, and benchmark plan for Phillip's approval before code changes.
-- [ ] **Decision 2 — benchmark gate:** Jointly accept, reject, or defer the proposal
-  based on semantic equivalence or stated error bounds plus runtime, cost, memory, and
-  scientific quality.
-- [ ] **Check-in 3 — integration:** Verify the accepted graph survives Phillip's
-  end-to-end execution and remains compatible with shared contracts before pushing.
+- [ ] Train a multi-task student with a shared representation and one typed head per
+  decision-relevant teacher output.
+- [ ] Start with supervised distillation or regression/classification losses; do not use
+  RL until a supervised baseline and stable routing objective exist.
+- [ ] Compare a simple baseline with a small ensemble of independently trained students.
+- [ ] Estimate uncertainty using ensemble disagreement plus calibrated residual or
+  prediction intervals; do not treat a raw confidence value as sufficient.
+- [ ] Preserve joint decision behavior, including combinations of outputs used by the
+  optimizer, rather than optimizing each output independently.
+- [ ] Keep the original full step group as the authoritative fallback and final validator.
 
-## Integration checks
+## Applicability and deferral gate
 
-- [ ] Validate recommendations against `examples/toy_methodology.json` and keep
-  multi-objective search ranked first for its two scored constraints.
-- [ ] Confirm recommendation is deterministic for identical `MethodologySpec` inputs.
-- [ ] Confirm ranking does not mutate the input specification.
-- [ ] Confirm every recommendation has a score from 0 to 1 and at least one reason.
-- [ ] Confirm feedback measurements make closed-loop topology eligible.
-- [ ] Confirm specifications without an optimizer still receive a safe baseline
-  topology.
-- [ ] Confirm every proposed `graph_patch.json` operation targets a stable graph node
-  and includes a protected-invariant check.
-- [ ] Confirm hot-path rankings distinguish measured values from estimates and unknowns.
-- [ ] Confirm benchmark comparisons use the same input fixture, seed, device class, and
-  quality thresholds.
-- [ ] Confirm an exact prepared module matches the unspecialized workflow output for the
-  same inputs and seeds, including joint outputs and failure witnesses.
-- [ ] Confirm a change to target, scaffold, model version, configuration, or other fixed
-  context invalidates every dependent prepared-state entry.
-- [ ] Confirm a candidate mutation recomputes the full dependency closure and nothing
-  outside that closure when exact incremental execution is claimed.
-- [ ] Confirm prefix reuse never crosses incompatible generator/model/configuration or
-  constraint-automaton state.
-- [ ] Confirm stochastic `extend` produces new samples, `replay` does not change sample
-  counts, and no cache mode double-counts evidence.
-- [ ] Confirm approximate prepared state reports its applicability domain, error and
-  observable contract, and a fallback to the original full evaluator.
-- [ ] Confirm experimental nodes are effectful barriers and cannot be cached or reordered
-  as ordinary deterministic computations.
-- [ ] Run `uv run pytest tests/test_selector.py`.
-- [ ] Run the cross-owner suite: `uv run pytest tests/test_selector.py
-  tests/test_pipeline.py`.
-- [ ] Run `uv run protofuse recommend examples/toy_methodology.json` and inspect the
-  serialized contract consumed by Phillip.
-- [ ] Run the repository gates before pushing: `uv run ruff check .` and
-  `uv run pytest`.
+- [ ] Defer when an input is outside the training applicability domain.
+- [ ] Defer when ensemble disagreement or calibrated interval width exceeds its limit.
+- [ ] Defer when any interval crosses a selection threshold or top-k boundary.
+- [ ] Defer when model heads disagree about the downstream decision, a required output is
+  unsupported, or a named rare-failure rule requires full evaluation.
+- [ ] Default new targets/scaffolds/families to full-model execution until separately
+  calibrated evidence supports surrogate coverage.
+- [ ] Return structured reason codes for every surrogate decision and every deferral.
+- [ ] Send final selected candidates through the full model group unless both people
+  explicitly approve a different validation rule.
+- [ ] Feed deferred full-model traces back into an active-learning queue, but recalibrate
+  on held-out data before changing the operating threshold.
 
-## Handoff completion
+## Calibration and benchmark
 
-- [ ] Publish any scoring, topology, or graph-patch contract change before Phillip
-  integrates it.
-- [ ] Provide the expected recommendation, selected reuse mode, binding-time split,
-  prepared-state signature, proposed graph change, protected invariants, and rollback
-  trigger for each fixture.
-- [ ] Verify Phillip's pipeline still compiles the recommendation into a safety-gated
-  `ProtoPlan` and can execute or resume the optimized graph.
+- [ ] Plot selective risk against coverage over all gate thresholds.
+- [ ] Choose the operating point by a pre-agreed false-accept or false-reject risk limit,
+  then maximize coverage within that limit.
+- [ ] Report full-model calls avoided, wall-time and cost savings, false accepts, false
+  rejects, top-k teacher recall, rank correlation, calibration error, and fallback rate.
+- [ ] Break metrics down by target, scaffold, family, and in-domain versus out-of-domain
+  inputs so aggregate performance cannot hide a weak subgroup.
+- [ ] Compare full execution and selective fusion using identical programs, inputs,
+  seeds, device class, repetitions, and final-validation policy.
+- [ ] Treat standard conformal guarantees as calibration-distribution guarantees, not as
+  proof of safety under arbitrary distribution shift.
+- [ ] Reject the learned fusion if it cannot meet the agreed scientific risk at useful
+  coverage or if its own inference cost erases the savings.
+
+## Outputs and integration checks
+
+- [ ] Write raw traces and training/calibration data under ignored `data/analysis/` and
+  model weights under ignored `data/models/`.
+- [ ] Produce the compact Sai-to-Phillip report in `docs/PROGRAM_COLLECTION.md`.
+- [ ] Confirm collection scanning and profiling never modify Phillip's generated files.
+- [ ] Confirm the same input and versions produce a deterministic routing decision,
+  subject to the declared seed policy.
+- [ ] Confirm every deferral invokes the complete original step group.
+- [ ] Confirm cached/replayed teacher outputs are not counted as independent labels.
+- [ ] Confirm final-validation and rare-failure policies cannot be bypassed by the
+  surrogate.
+- [ ] Run Sai's unit tests, a frozen synthetic collection, the cross-owner pipeline test,
+  `uv run ruff check .`, and `uv run pytest` before pushing.

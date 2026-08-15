@@ -1,55 +1,76 @@
 # Architecture
 
-## Integration flow
+## Single-package integration flow
 
 ```text
 Paper / Paperclip
        |
        v
-shared scientific_agent  -- both improve prompts, evidence, and evaluation
+shared scientific_agent
        |
        v
-MethodologySpec v1.0     -- stable integration contract
+MethodologySpec v1.0
        |
-       +--------------------------+
-       |                          |
-       v                          v
-Phillip: end-to-end pipeline      Sai: common topology ranking/optimization
-       |                          |
-       |-- graph + profile ------>|
-       |<-- prepared state + gate-|
-       +------------+-------------+
-                    v
-               ProtoPlan
-                    |
-          explicit binding review
-                    v
-         executable Proto workflow
+       v
+Phillip: reviewed paper-to-Proto generation
+       |
+       v
+proto_programs/generated/<collection_id>/*.py
+       |
+       v
+Sai: catalog and profile recurring model-step groups
+       |
+       v
+select one expensive fusion candidate
+       |
+       v
+multi-output surrogate + calibrated deferral gate
+       |                            |
+       | confident and in-domain    | uncertain / OOD / final validation
+       v                            v
+surrogate outputs             original full model steps
+       |                            |
+       +-------------+--------------+
+                     v
+              optimizer decision
 ```
 
-## Why the contract is the seam
+Everything lives in the ProtoFuse package. Proto Language remains a pinned dependency;
+Sai does not need a separate fork unless a later experiment proves that required
+instrumentation cannot be implemented through wrapping and the public runtime objects.
 
-`MethodologySpec` contains exactly the method fields the project needs: generators,
-constraints and scores, optimizers, model dependencies, parameters, workflow topology,
-selection thresholds, experimental measurements, evidence, assumptions, and unknowns.
+## Integration contracts
 
-The scientific agent produces this contract. Sai's code consumes it without knowing
-which model performed extraction. Phillip's pipeline consumes Sai's ranked
-`TopologyRecommendation` without depending on the ranking implementation.
+`MethodologySpec` is the scientific seam. Phillip's generator consumes the specification
+through a reviewed component registry and writes a directory of readable Proto Python
+programs. Each file exposes `build_program()` and does nothing expensive on import.
 
-After component binding, Phillip also emits the normalized computation-graph and reuse
-workload handoff defined in `docs/GRAPH_HANDOFF.md`. Sai uses its stable typed graph,
-input roles, and aggregate profile to identify amortizable work. The first optimization
-target is ProtoStage: split fixed context from varying candidate work, cache typed
-prepared state, and retain a residual graph with equivalent semantics where possible.
-Sai returns a prepared-module plan, reviewable graph patch, and benchmark gate. Joint
-decisions occur at methodology approval, graph/workload freeze, reuse-mode selection,
-prepared-state approval, benchmark acceptance, and final integration.
+The directory contract is defined in `docs/PROGRAM_COLLECTION.md`. Phillip's only handoff
+action is generating and reviewing that collection. A collection-level manifest is
+written automatically so Sai can verify hashes, Proto version, registry version, input
+roles, and safety approval before loading any program.
 
-## Execution safety gate
+Sai's analyzer imports the reviewed builders, inspects and profiles their Program stages,
+generators, constraints, and model/tool calls, and canonicalizes recurring step groups.
+The word "graph" is descriptive rather than a claim that Proto has a tensor execution
+graph like PyTorch or TensorFlow.
 
-Paper text is untrusted. Extracted component names never become Python imports or shell
-commands. `compile_proto_plan` accepts a separately reviewed name-to-Proto-symbol
-registry. A plan is marked executable only after every component is bound. The next
-implementation milestone is a registry-backed builder that instantiates those approved
-symbols using typed, validated parameter mappings.
+## Learned fusion contract
+
+Learned fusion approximates several recurring full-model steps with one multi-output
+surrogate. It is always paired with an abstention gate. The surrogate may act only when
+the input is within its applicability domain and its calibrated uncertainty supports the
+downstream decision. Otherwise the original full-model steps run.
+
+The router defers when an input is out of domain, ensemble disagreement is high,
+prediction intervals cross a scientific threshold or top-k boundary, a required output
+is unsupported, or a rare-failure rule requests full evaluation. Final selected
+candidates receive full-model validation unless an explicit joint decision changes that
+policy.
+
+## Execution safety
+
+Paper text is untrusted. Generated programs may instantiate only reviewed registry
+symbols with typed parameters; they must never copy paper-provided code, imports, shell
+commands, URLs, or unreviewed model identifiers. Raw teacher traces, confidential inputs,
+surrogate weights, and model caches remain under ignored `data/` paths.
