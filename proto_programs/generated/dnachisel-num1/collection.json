@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "dnachisel-num1",
+  "methodology_id": "dnachisel-v2",
+  "proto_version": "1d45ae91fa317a443e4c35f9067072bd879265cf",
+  "registry_version": "1",
+  "seed_policy": "filter-safe random init seeded by length + region_pass",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "af1cdf47219a97501bb9edaffd94b517b9ac71a26300fcfc7fa5abecade9d272"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "3aa70857188253a0b6c3e3271d8ae168a5ecf4397428ca93201888efce6f76bd"
+    }
+  ]
+}
