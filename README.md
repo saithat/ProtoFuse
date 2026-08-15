@@ -22,7 +22,6 @@ ordinary Proto program -> protofuse.optimize(program)
 src/protofuse/
 ├── program_collection.py   # sole Phillip -> Sai folder contract
 ├── runtime.py              # public automatic-fusion entry point
-├── contracts.py            # backward-compatible import shim
 ├── phillip/
 │   ├── contracts.py        # MethodologySpec and ProtoPlan
 │   ├── extractor.py        # paper -> MethodologySpec
