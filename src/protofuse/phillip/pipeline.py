@@ -12,8 +12,8 @@ from protofuse.contracts import (
     TopologyRecommendation,
 )
 from protofuse.phillip.compiler import compile_proto_plan
+from protofuse.phillip.extractor import ScientificAgent
 from protofuse.phillip.topology import recommend_topologies
-from protofuse.scientific_agent import ScientificAgent
 
 
 @dataclass(frozen=True)

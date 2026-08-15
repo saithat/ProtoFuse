@@ -28,8 +28,8 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "extract":
-        from protofuse.scientific_agent import ScientificAgent
-        from protofuse.scientific_agent.anthropic_backend import AnthropicBackend
+        from protofuse.phillip import ScientificAgent
+        from protofuse.phillip.anthropic_backend import AnthropicBackend
 
         methodology = ScientificAgent(AnthropicBackend()).extract(args.paper.read_text())
         args.out.write_text(methodology.model_dump_json(indent=2) + "\n")

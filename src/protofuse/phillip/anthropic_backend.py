@@ -1,4 +1,4 @@
-"""Anthropic adapter for the shared scientific agent."""
+"""Anthropic adapter for Phillip's paper-conversion pipeline."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Prompt construction kept separate so both teammates can iterate on extraction."""
+"""Prompt construction for paper-to-methodology extraction."""
 
 from protofuse.contracts import MethodologySpec
 

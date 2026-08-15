@@ -117,7 +117,7 @@ class ExperimentalMeasurement(ContractModel):
 
 
 class MethodologySpec(ContractModel):
-    """The handoff from the shared scientific agent to both engineering tracks."""
+    """Phillip's evidence-grounded paper-to-Proto methodology contract."""
 
     schema_version: Literal["1.0"] = "1.0"
     paper: PaperRef

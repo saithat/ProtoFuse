@@ -1,13 +1,8 @@
 # Phillip and Sai work split
 
-## Shared
-
-Both work on `src/protofuse/scientific_agent/` and jointly own evidence-grounded
-extraction and `MethodologySpec`.
-
 ## Phillip: paper to Proto and final E2E
 
-Phillip owns `src/protofuse/phillip/` and:
+Phillip owns `src/protofuse/phillip/`, `src/protofuse/contracts.py`, and:
 
 - extracts and reviews the methodology;
 - binds only approved Proto components;

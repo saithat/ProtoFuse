@@ -1,15 +1,15 @@
-"""Backend-neutral extraction orchestration."""
+"""Extract an evidence-grounded methodology from paper text."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
 from protofuse.contracts import MethodologySpec
-from protofuse.scientific_agent.prompt import SYSTEM_PROMPT, extraction_prompt
+from protofuse.phillip.prompt import SYSTEM_PROMPT, extraction_prompt
 
 
 class ExtractionBackend(Protocol):
-    """Provider adapter implemented by Anthropic or a deterministic test double."""
+    """Provider adapter used by Phillip's paper-conversion pipeline."""
 
     def extract_json(self, *, system: str, prompt: str) -> str: ...
 

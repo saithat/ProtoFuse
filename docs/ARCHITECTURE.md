@@ -4,7 +4,7 @@
 
 ```text
 Paper
-  -> shared scientific agent
+  -> Phillip's paper extractor
   -> MethodologySpec
   -> Phillip generates executable Proto programs
   -> proto_programs/generated/<collection_id>/

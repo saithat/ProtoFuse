@@ -17,10 +17,9 @@ that defers uncertain or out-of-domain inputs to the original full models.
 
 ```text
 src/protofuse/
-├── scientific_agent/   # shared evidence-grounded extraction
-├── phillip/             # paper -> MethodologySpec -> Proto programs -> final E2E
+├── phillip/             # paper extraction -> MethodologySpec -> Proto programs -> final E2E
 ├── sai/                 # profiling, learned fusion, uncertainty, and deferral
-└── contracts.py         # shared MethodologySpec
+└── contracts.py         # Phillip-owned paper-conversion contracts
 
 proto_programs/generated/  # the Phillip -> Sai handoff
 data/                      # ignored papers, runs, training data, and weights
@@ -56,6 +55,6 @@ Account authentication is separate from package installation. See
 
 ## Current state
 
-The shared methodology contract, scientific-agent adapter, safe component planning, and
+The methodology contract, paper-extraction adapter, safe component planning, and
 Phillip-owned topology selection are implemented. Phillip's collection generator and
 Sai's learned-fusion implementation are the next milestones.
