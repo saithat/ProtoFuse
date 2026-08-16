@@ -35,4 +35,7 @@ proto_programs/generated/gpcr-cxcr4-miniprotein/
 └── design_002.py   # smoke tier
 ```
 
+The numeric suffixes are stable ordinals, not tier names. This two-program collection uses
+`001` for full and `002` for smoke; the module docstrings remain the authority.
+
 Sai fusion targets: `boltz2-prediction` and `structure-iptm` on every rejection-sampling draw.

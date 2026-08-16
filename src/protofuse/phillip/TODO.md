@@ -21,7 +21,9 @@ does not need to define end outputs or fusion acceptance criteria before handing
 
 ## Handoff — commit a signed collection
 
-Infrastructure is done; first real collection is not.
+The handoff infrastructure and 12 reviewed collections are committed. A generated folder
+is not automatically a handoff: `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`, and
+`evo2-enformer-borzoi` currently remain `reviewed=false` pending human scientific review.
 
 - [x] `finalize_collection()` validates `build_program()` without importing programs.
 - [x] `collection.json` generation with stable metadata and SHA-256 hashes.
@@ -36,20 +38,22 @@ Infrastructure is done; first real collection is not.
 
 - [x] Generate `proto_programs/generated/custom-egfp-lung/design_*.py` from CUSTOM fixture.
 - [x] Run `finalize_collection(..., reviewed=True)` for collection ID `custom-egfp-lung`.
-- [ ] Commit `proto_programs/generated/custom-egfp-lung/` to `main`.
-- [ ] Tell Sai the collection ID: `custom-egfp-lung`.
+- [x] Commit `proto_programs/generated/custom-egfp-lung/` to `main`.
+- [x] Tell Sai the collection ID: `custom-egfp-lung`.
 
 After Sai starts analysis, treat the collection as read-only. Any change → new
 `collection_id`.
 
-## Candidate workflows (lower priority)
+## Candidate workflows and review queue
 
-`dnachisel-num1` and `custom-egfp-lung` handoffs are complete on `main`. Wave 1 protein
-workflows are implemented (`esm2-protein-maturation`, `antibody-cdr-maturation`) — see
+The reviewed corpus now includes both DNA handoffs and ten protein workflows, including
+`boltz2-state-sweep`, RFdiffusion3 + Boltz-2 cycling, LigandMPNN enzyme redesign, and
+BioEmu ensemble filtering. See
 [`docs/PROTEIN_WORKFLOW_SCAFFOLD.md`](../../../docs/PROTEIN_WORKFLOW_SCAFFOLD.md).
 
-Next: finalize and commit **`boltz2-state-sweep`** for Sai (`proto_programs/generated/boltz2-state-sweep/`).
-Then `tm-switch-multistate` (candidate B). Then RFdiffusion3 + Boltz-2 cycling, LigandMPNN enzyme redesign, BioEmu ensemble filter. Full backlog in
+The next handoff work is not more builder plumbing. It is human paper-encoding review for
+the three `reviewed=false` joint-objective collections named above, followed by normal
+finalization if accepted. Unbuilt ideas such as `tm-switch-multistate` remain in
 [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md).
 
 ## Out of scope (Sai)
@@ -63,10 +67,7 @@ Then `tm-switch-multistate` (candidate B). Then RFdiffusion3 + Boltz-2 cycling, 
 
 Internal only — not the Sai handoff:
 
-- `workspaces/phillip/fixtures/dnachisel-num1/methodology.json`
-- `workspaces/phillip/fixtures/custom-egfp-lung/methodology.json`
-- `workspaces/phillip/fixtures/esm2-protein-maturation/methodology.json`
-- `workspaces/phillip/fixtures/antibody-cdr-maturation/methodology.json`
+- `workspaces/phillip/fixtures/<fixture-id>/methodology.json`
 - `data/analysis/<collection_id>/` (ignored local Sai node profiles)
 - `workspaces/phillip/PIPELINE_BENCHMARKS.json` (orchestrator wall times, all pipelines)
 

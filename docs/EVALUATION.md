@@ -17,8 +17,10 @@ As of 2026-08-15:
 - Four hand-crafted OOD challenges are rejected. There are no held-out high-value positive
   cases or positive-but-uncertain cases for deferral testing.
 - No learned surrogate is packaged as a reviewed `FusionBundle`.
-- Only 3 of 12 methodology fixtures point to paper text. Across all fixtures, 21 of 51
-  constraints have at least one evidence record.
+- Twelve of 15 methodology fixtures point to a local source path (including the workflow
+  rationale document used by several prototype fixtures). Across all fixtures, 32 of 62
+  constraints have at least one evidence record. A source path or evidence record is not by
+  itself proof that the encoding is a fair reading of the cited paper.
 
 ## Durable proposal trace
 
@@ -91,6 +93,12 @@ If a paper has no executable or numerical reference target, label the result
 Use the same inputs, split, seeds, stopping rule, objective implementation, and final parent
 validation for both paths. Run enough independent seeds to report a distribution rather
 than one wall time.
+
+The executable harness is `protofuse fusion evaluate <artifact> <collection> <program-id>
+--seed <seed> ...`. It records paired wall time, final-sequence agreement, final energy
+difference, and route counts. The broader scientific measures below must be computed from
+real campaign traces and reported before review; the presence of the harness does not mean
+those runs have occurred.
 
 For each pair, report:
 

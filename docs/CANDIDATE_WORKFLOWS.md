@@ -1,17 +1,15 @@
 # Candidate workflows
 
-Backlog of paper → Proto program scenarios. Each entry uses only components and tools
-already in the pinned `proto-language` / `proto-tools` packages — no new models or
-external backends required.
+Living rationale for paper → Proto program scenarios. The detailed entries preserve why a
+workflow was proposed even after it is implemented. Each entry uses components and tools
+already in the pinned `proto-language` / `proto-tools` packages. ProtoFuse never executes
+code, commands, URLs, or model identifiers copied from a paper.
 
-**Recommended next handoff: `boltz2-state-sweep`** (Wave 4 below). It is the only
-candidate that ships with experimental ground truth, so it is the one where Sai can
-report selective risk versus coverage against a published baseline instead of against
-his own predictions.
-
-**Current coverage (active workflows):** 4 / 103 `proto_language` keys
-(`random-nucleotide`, `mcmc`, `gc-content`, `max-homopolymer`); 0 / 140 `proto_tools`
-backends invoked at runtime. Custom ProtoFuse constraints fill the rest.
+As of 2026-08-15, 12 generated collections are reviewed handoffs. This includes the
+previously recommended `boltz2-state-sweep` and the RFdiffusion3 + Boltz-2, LigandMPNN,
+and BioEmu workflows. Three additional joint-objective collections have generated sources
+but remain `reviewed=false`; source generation is not the same as a reviewed handoff or a
+completed scientific run.
 
 **Why these matter for Sai:** Current DNA workflows are CPU-only and poor fusion targets.
 Candidates below emphasize repeated GPU calls (structure prediction, LM scoring,
@@ -23,25 +21,34 @@ regulatory models) inside MCMC, pool, or cycling loops.
 
 | Rank | Scenario ID (proposed) | Domain | Sai value | Effort | Status |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `boltz2-state-sweep` | Protein / conformational states | Very high — Boltz-2 per sweep draw, **labelled ground truth** | Medium | Recommended next |
+| 1 | `boltz2-state-sweep` | Protein / conformational states | Very high — Boltz-2 per sweep draw, **labelled ground truth** | Medium | Reviewed collection |
 | 2 | `tm-switch-multistate` | Membrane protein | High — dual-state Boltz-2 per MCMC step | Medium | Backlog (Wave 4) |
-| 3 | `rfdiffusion3-boltz2-binder` | Protein | Very high — multi-tool cycling | Medium | Backlog |
+| 3 | `rfdiffusion3-boltz2-binder` | Protein | Very high — multi-tool cycling | Medium | Reviewed collection |
 | 4 | `parade-utr-liver` | RNA / mRNA | High — pool × PARADE scoring | Low — reuses pool optimizer | Backlog |
 | 5 | `alphagenome-splice-junction` | DNA / splicing | High — variant scoring in loop | Medium | Backlog |
-| 6 | `ligandmpnn-enzyme-redesign` | Protein / ligand | Medium | Medium | Backlog |
-| 7 | `bioemu-ensemble-filter` | Protein | Medium — ensemble sampling cost | Medium | Backlog |
-| — | `esm2-protein-maturation` | Protein | High — ESMFold every MCMC step | Low | Done |
-| — | `antibody-cdr-maturation` | Antibody | High — region-local + AbLang | Low | Done |
-| — | `freebindcraft-binder` | Protein | High — validation per candidate | Medium | Done |
-| — | `symmetric-oligomer-ring` | Protein | Medium | Medium | Done |
-| — | `ppi-interface-specificity` | Protein | High — dual target/off-target AF3 | Medium | Done |
+| 6 | `ligandmpnn-enzyme-redesign` | Protein / ligand | Medium | Medium | Reviewed collection |
+| 7 | `bioemu-ensemble-filter` | Protein | Medium — ensemble sampling cost | Medium | Reviewed collection |
+| — | `esm2-protein-maturation` | Protein | High — ESMFold every MCMC step | Low | Reviewed collection |
+| — | `antibody-cdr-maturation` | Antibody | High — region-local + AbLang | Low | Reviewed collection |
+| — | `freebindcraft-binder` | Protein | High — validation per candidate | Medium | Reviewed collection |
+| — | `symmetric-oligomer-ring` | Protein | Medium | Medium | Reviewed collection |
+| — | `ppi-interface-specificity` | Protein | High — dual target/off-target AF3 | Medium | Reviewed collection |
 
-Completed rows are the collections listed in
+Reviewed rows are active collections listed in
 [`src/protofuse/sai/TODO.md`](../src/protofuse/sai/TODO.md); they stay here for topology
-reference only.
+reference only. `dnachisel-num1`, `custom-egfp-lung`, and
+`gpcr-cxcr4-miniprotein` are also reviewed baseline handoffs.
 
-Nucleic-acid-only candidates (`codonfm-egfp`, Borzoi/Enformer promoter design) are
-deferred unless we want more DNA/RNA before protein work.
+Generated sources awaiting human review:
+
+| Collection | Programs | Status boundary |
+| --- | --- | --- |
+| `rfdiffusion3-af3-ppi` | five full target variants + one smoke program | `reviewed=false`; not a Sai handoff |
+| `af3-boltz2-state-sweep` | five full target variants + one smoke program | `reviewed=false`; not a Sai handoff |
+| `evo2-enformer-borzoi` | three full regulatory patterns + one smoke program | `reviewed=false`; not a Sai handoff |
+
+Remaining nucleic-acid-only ideas such as `codonfm-egfp` are deferred unless more DNA/RNA
+coverage is needed before additional protein work.
 
 ---
 
@@ -52,7 +59,7 @@ dominant conformation, and the functionally interesting second state is what nei
 prediction nor design reliably reaches. Candidate A predicts alternative states of
 existing proteins; candidate B designs sequences that occupy two states on purpose.
 
-### A. Boltz-2 alternative-state sweep — **recommended next handoff**
+### A. Boltz-2 alternative-state sweep — **reviewed collection**
 
 **Proposed ID:** `boltz2-state-sweep`
 
@@ -360,10 +367,11 @@ learned fusion.
 
 ---
 
-## Nucleic-acid workflows (deferred)
+## Nucleic-acid workflows
 
-These extend the CUSTOM / DNA Chisel line with GPU-backed objectives. Lower priority now
-that `custom-egfp-lung` is complete unless we want more RNA/DNA before protein work.
+These extend the CUSTOM / DNA Chisel line with GPU-backed objectives. PARADE,
+AlphaGenome, and CodonFM remain backlog ideas. The related Evo 2 + Enformer + Borzoi
+joint-objective sources have been generated, but their collection remains unreviewed.
 
 ### PARADE tissue-specific UTR design
 
@@ -417,6 +425,10 @@ MCMC on ~200 bp promoter DNA for Morse-code chromatin accessibility patterns.
 | Role | Proto component |
 | --- | --- |
 | Constraints | `puffin-promoter-activity`, `borzoi-track-activity`, `enformer-chromatin-accessibility-morse`, `borzoi-chromatin-accessibility-morse` |
+
+The implemented related collection is `evo2-enformer-borzoi`: three full Morse-pattern
+programs plus one smoke program. Its manifest currently says `reviewed=false`, so this is
+generator coverage rather than an active handoff or completed model run.
 
 ---
 

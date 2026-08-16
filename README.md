@@ -55,9 +55,11 @@ program = optimize(program)
 results = program.run()
 ```
 
-Until Sai registers a compatible `FusionBundle`, `optimize()` returns the original
-program unchanged. A registered bundle installs a `SelectiveRouter` that uses its
-surrogate only when the calibrated gate accepts the individual input.
+Until a compatible reviewed `FusionBundle` is registered or discovered, `optimize()`
+returns the original program unchanged. By default the runtime lazily checks
+`data/models/`, or `PROTOFUSE_BUNDLE_DIR` when configured, and accepts only hash-valid
+artifacts marked `reviewed=true`. An accepted bundle installs a `SelectiveRouter` that
+uses its surrogate only when the calibrated gate accepts the individual input.
 
 The implementation workflow is available from the CLI:
 

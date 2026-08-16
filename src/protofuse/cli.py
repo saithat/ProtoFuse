@@ -1,4 +1,4 @@
-"""Small CLI for methodology extraction, validation, and Proto planning."""
+"""CLI for reviewed workflow handoffs, execution, and learned-fusion development."""
 
 from __future__ import annotations
 

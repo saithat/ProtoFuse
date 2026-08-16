@@ -9,7 +9,8 @@ Paper
   -> proto_programs/generated/<collection_id>/
   -> Sai inspects many frozen programs and profiles recurring expensive step groups
   -> Sai trains and calibrates a reusable FusionBundle
-  -> FusionBundle is registered with the ProtoFuse runtime
+  -> a human reviews the scientific evidence and marks the artifact reviewed
+  -> the ProtoFuse runtime discovers or receives the reviewed FusionBundle
 ```
 
 `proto_programs/generated/` is the only Phillip-to-Sai artifact interface. Sai derives
@@ -21,17 +22,25 @@ ignored `data/` paths.
 The user does not write a fused program. They build an ordinary Proto program and call
 `protofuse.optimize(program)`. The runtime walks the reviewed fusion registry in order:
 
-1. A bundle performs a static compatibility match against the program's steps, versions,
-   configuration, inputs, outputs, and semantics.
-2. A compatible bundle transforms or wraps that step group.
-3. At execution time, its `SelectiveRouter` evaluates the surrogate prediction and its
-   calibrated applicability/uncertainty gate.
+1. A bundle performs an exact static compatibility match against the program's optimizer
+   position, component identity/version, configuration, inputs, outputs, thresholds,
+   weights, and stochastic semantics.
+2. A compatible bundle deep-copies the program and transactionally replaces only the
+   matched score-only constraint group. A failed transformation leaves the input program
+   untouched.
+3. At execution time, the batch router evaluates the surrogate and applies its calibrated
+   support-distance and ensemble-disagreement gates to each input independently.
 4. Accepted inputs use the surrogate. Rejected, OOD, unsupported, or failed inputs invoke
-   the complete original model group.
+   the complete original model group in a batched fallback call.
+5. An immediate final constraint stage always runs the original matched objectives on the
+   selected output; artifacts that request a weaker validation policy are rejected.
 
 If no bundle matches—or matching/transformation fails—the original program is returned.
-The initial registry is empty, so current behavior is unchanged until a real reviewed
-fusion is registered.
+Callers may register a reviewed bundle programmatically. The default runtime also performs
+one lazy discovery pass under `PROTOFUSE_BUNDLE_DIR`, or `data/models/` when the variable is
+unset, and loads only hash-valid artifacts whose manifest says `reviewed=true`. The
+repository currently contains no reviewed model artifact, so its checked-in default behavior
+still leaves ordinary programs unchanged.
 
 ## Code boundaries
 
@@ -49,4 +58,6 @@ generated fused-program folder is required.
 Paper text is untrusted. Generated programs use only reviewed symbols and typed
 parameters; they never copy or execute paper-provided code, commands, URLs, or unreviewed
 model identifiers. Program collections are hash-checked before analysis. Fusion matching
-and routing fail closed, and the authoritative full-model path remains available.
+and routing fail closed, and the authoritative full-model path remains available. Training
+always writes `reviewed=false`; implementing the pipeline never self-certifies a learned
+artifact or substitutes for real traces, paired evaluation, and scientific approval.

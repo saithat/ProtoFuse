@@ -313,7 +313,7 @@ def benchmark_cpu_pipelines(record: BenchmarkRecord, *, include_full: bool) -> N
         device="local",
         kind="preflight",
         command="uv run protofuse preflight custom-egfp-lung",
-        reason="CLI preflight not implemented for this fixture",
+        reason="Not included in this benchmark path; run the supported CLI preflight separately",
     )
     for device in ("local", "modal"):
         timed_run(
@@ -520,6 +520,9 @@ def render_markdown(data: dict[str, Any]) -> str:
         "",
         "Machine-readable record: [`PIPELINE_BENCHMARKS.json`](PIPELINE_BENCHMARKS.json).",
         "",
+        "This file is a timestamped run record, not a current feature matrix. A `skipped` "
+        "row records only what this benchmark invocation omitted.",
+        "",
         "Per-pipeline handoff timing notes:",
         "",
         "- [`TIMING_gpcr-cxcr4-miniprotein.json`](TIMING_gpcr-cxcr4-miniprotein.json)",
@@ -552,6 +555,10 @@ def render_markdown(data: dict[str, Any]) -> str:
         [
             "",
             "## Primary programs for Sai",
+            "",
+            "The filenames below are ordinal IDs. This snapshot's two-program collections "
+            "map `001` to full and `002` to smoke, but use each generated module's docstring "
+            "as the authority.",
             "",
             "| Collection | Profile this | Skip |",
             "| --- | --- | --- |",

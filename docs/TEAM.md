@@ -32,6 +32,15 @@ or benchmark directories.
 Both coordinate changes to `program_collection.py` and `runtime.py`. These are thin,
 stable contracts; owner-specific implementation stays in the owner packages.
 
+## Implementation status
+
+The shared collection contract and Sai's analyzer, signature, trace/profile, grouped
+training, artifact, matching, transformation, routing, and paired-evaluation code are
+implemented. That means the software path is ready for a reviewed experiment; it does not
+mean a learned fusion has been scientifically accepted. No checked-in artifact is currently
+marked `reviewed=true`. Real campaign traces, target-specific thresholds, paired runs, and
+human acceptance remain the next scientific work.
+
 ## Four check-ins
 
 1. Review the scientific methodology and intended Proto program behavior.

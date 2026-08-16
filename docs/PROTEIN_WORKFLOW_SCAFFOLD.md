@@ -114,18 +114,19 @@ reviewed programs with deliberately reduced parameters.
 - `protofuse.phillip.program_builders` (load_fixture_spec, resolve_workload_params, build_*)
 - No Modal, network, or model loading on import.
 
-## Wave execution plan
+## Collection status
 
-| Wave | Workflows | Parallelism |
-| --- | --- | --- |
-| 1 | `esm2-protein-maturation`, `antibody-cdr-maturation` | Done |
-| 2 | `freebindcraft-binder`, `symmetric-oligomer-ring`, `ppi-interface-specificity` | Done |
-| 3 | `rfdiffusion3-boltz2-binder`, `ligandmpnn-enzyme-redesign`, `bioemu-ensemble-filter` | 3 agents |
+| Status | Workflows |
+| --- | --- |
+| Reviewed handoffs | `esm2-protein-maturation`, `antibody-cdr-maturation`, `freebindcraft-binder`, `symmetric-oligomer-ring`, `ppi-interface-specificity`, `gpcr-cxcr4-miniprotein`, `boltz2-state-sweep`, `rfdiffusion3-boltz2-binder`, `ligandmpnn-enzyme-redesign`, `bioemu-ensemble-filter` |
+| Generated, not reviewed | `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`, `evo2-enformer-borzoi` |
 
-`gpcr-cxcr4-miniprotein` overlaps Wave 2/3 binder work — use it as the RFdiffusion3+Boltz-2
-reference instead of duplicating.
+The three generated-but-unreviewed collections are not Sai handoffs: their manifests say
+`reviewed=false`, so the controlled analyzer rejects them by default. The existence of their
+source files documents generator output, not scientific acceptance.
 
 ## Sai handoff
 
 Phillip stops at frozen collection + collection ID. Do not edit `src/protofuse/sai/`.
-Sai writes node profiles to gitignored `data/analysis/<collection_id>/`.
+Sai uses `protofuse analyze`, `trace`, and `fusion profile` against reviewed collections;
+node profiles and raw traces stay under gitignored `data/analysis/<collection_id>/`.

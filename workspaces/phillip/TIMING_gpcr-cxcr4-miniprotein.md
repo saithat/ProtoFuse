@@ -43,6 +43,9 @@ proto_programs/generated/gpcr-cxcr4-miniprotein/
 └── design_002.py   # smoke: 50 aa binder, 2 rejection samples
 ```
 
+Here `001` and `002` are ordinal filenames. This collection maps them to full and smoke,
+respectively; other multi-design collections may contain several full-tier programs.
+
 **Fusion targets:** `boltz2-prediction`, `structure-iptm` (every rejection-sampling draw).
 
 ## Paperclip status

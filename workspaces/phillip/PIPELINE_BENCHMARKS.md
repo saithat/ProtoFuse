@@ -5,6 +5,10 @@
 **Host:** mac
 **Modal profile:** configured
 
+This is a timestamped run record, not the current feature matrix. A `skipped` row records
+what this benchmark invocation omitted at capture time. In particular, the current CLI
+supports `custom-egfp-lung` preflight even though this snapshot did not record it.
+
 Re-run:
 
 ```bash
@@ -33,7 +37,7 @@ Per-pipeline handoff timing notes:
 | `dnachisel-num1` | `compile_local` | local | ok | 0.0 s | Plan metadata only; MCMC executes locally regardless |
 | `dnachisel-num1` | `compile_modal` | modal | ok | 0.0 s | Plan metadata only; MCMC executes locally regardless |
 | `custom-egfp-lung` | `outer_loop_smoke` | local | ok | 0.5 s | 720 bp, n_pool smoke defaults |
-| `custom-egfp-lung` | `preflight` | local | skipped | — | CLI preflight not implemented for this fixture |
+| `custom-egfp-lung` | `preflight` | local | skipped | — | Not recorded in this snapshot; current CLI supports this preflight |
 | `custom-egfp-lung` | `compile_local` | local | ok | 0.0 s | Plan metadata only; pool loop executes locally regardless |
 | `custom-egfp-lung` | `compile_modal` | modal | ok | 0.0 s | Plan metadata only; pool loop executes locally regardless |
 | `esm2-protein-maturation` | `preflight_smoke` | local | ok | 0.0 s | 80 aa smoke segment; build-only L0 |
@@ -67,6 +71,10 @@ Per-pipeline handoff timing notes:
 | `gpcr-cxcr4-miniprotein` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
 
 ## Primary programs for Sai
+
+The filenames below are ordinal IDs. This snapshot's two-program collections map `001` to
+full and `002` to smoke, but that is a collection convention rather than a global naming
+rule; use each generated module's docstring as the authority.
 
 | Collection | Profile this | Skip |
 | --- | --- | --- |

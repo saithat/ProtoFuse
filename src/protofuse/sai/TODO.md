@@ -13,10 +13,15 @@ Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored)
 
 ## Active handoffs
 
+This table contains only collections whose manifest says `reviewed=true`. Program numbers
+are stable ordinals, not tier names. These two-program collections currently use
+`design_001.py` for full and `design_002.py` for smoke, but the generated docstring is the
+authority. Smoke is a reduced executable workload, not a fake program.
+
 | Collection ID | Path | Primary program | Notes |
 |---------------|------|-----------------|-------|
-| `dnachisel-num1` | `proto_programs/generated/dnachisel-num1/` | **`design_001.py`** (936 bp) | Skip `design_002.py`. Full outer loop **138 s** — see benchmarks. |
-| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | **`design_001.py`** (720 bp) | Skip `design_002.py`. Full pool loop **79 s** — see benchmarks. |
+| `dnachisel-num1` | `proto_programs/generated/dnachisel-num1/` | **`design_001.py`** (936 bp) | Start with full for profiling; `design_002.py` is the reduced smoke tier. Historical full outer loop **138 s** — see benchmarks. |
+| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | **`design_001.py`** (720 bp) | Start with full for profiling; `design_002.py` is the reduced smoke tier. Historical full pool loop **79 s** — see benchmarks. |
 | `esm2-protein-maturation` | `proto_programs/generated/esm2-protein-maturation/` | **`design_001.py`** (129 aa) | GPU MCMC; profile inside `run_esm2_protein_maturation(tier="full")`. |
 | `antibody-cdr-maturation` | `proto_programs/generated/antibody-cdr-maturation/` | **`design_001.py`** (121 aa) | GPU CDR MCMC; best Sai fusion target after esm2. |
 | `gpcr-cxcr4-miniprotein` | `proto_programs/generated/gpcr-cxcr4-miniprotein/` | **`design_001.py`** (70 aa) | RFdiffusion3+Boltz-2; `structure_binding` passes 4RWS hotspots. |
@@ -30,10 +35,16 @@ Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored)
 
 Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashes, source drift, PDB/hotspot binding, preflight). Paper-evidence failures on internal benchmark fixtures are expected until evidence quotes are added.
 
+Generated collections `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`, and
+`evo2-enformer-borzoi` currently have `reviewed=false`. Do not analyze or train on them as
+handoffs until their paper encodings pass human review and the manifest status is updated
+through the normal finalization flow.
+
 ## Analyze program collections
 
 - [x] Load and hash-check the `program_collection.py` handoff without importing it.
-- [ ] **`dnachisel-num1`:** import and profile `design_001.py` inside `run_dnachisel_num1(tier="full")`.
+- [ ] **`dnachisel-num1` experiment:** collect and retain a full-tier campaign profile;
+      the controlled import, tracing, and profiling code is already implemented.
 - [x] Import reviewed `build_program()` entry points in a controlled analyzer.
 - [x] Derive canonical signatures from model/tool identity and version, configuration,
       inputs, stochastic semantics, thresholds, weights, and optimizer position.
@@ -42,8 +53,9 @@ Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashe
       cost measurements remain `null`.
 - [ ] Collect accelerator time, memory, cost, and decision-contribution measurements from
       real model campaigns.
-- [ ] Rank recurring adjacent groups and apply exact caching/batching/shared intermediates
-      before learned approximation.
+- [ ] **Per-target experiment:** use real profiles to compare exact caching/shared
+      intermediates with learned approximation. The runtime already batches surrogate and
+      fallback calls and shares one routed multi-output evaluation across matched constraints.
 
 ## Train one learned fusion
 
@@ -63,12 +75,17 @@ Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashe
 - [x] Leave unmatched or failed program transformations unchanged.
 - [x] Route per input through a surrogate gate with deterministic fail-closed fallback.
 - [x] Implement a real Proto step-signature matcher and transactional transformation.
+- [x] Implement paired full-versus-fused execution with identical seeds and route counts.
 - [ ] Package the trained surrogate and gate as the first reviewed `FusionBundle`.
 - [x] Preserve immediate final full-model validation; artifacts that request another policy
       are rejected.
 
 Raw traces and calibration data stay under `data/analysis/`; weights stay under
 `data/models/`.
+
+All generic application code in this checklist is implemented. Remaining unchecked items
+require real model runs, target-specific scientific choices, reporting, or human approval;
+they are not placeholder functions waiting to be filled in.
 
 ## Future program collections (lower priority)
 

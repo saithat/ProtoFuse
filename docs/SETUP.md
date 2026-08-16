@@ -70,3 +70,46 @@ remain outside Git through the existing `data/runs/*` ignore rule.
 The normal CLI remains local even when GPU-backed Proto tools are dispatched to Modal, so
 the default checkpoint directory persists on the calling machine. If the orchestrator itself
 runs in an ephemeral cloud container, pass `--checkpoint-dir` on a persistent mounted volume.
+
+## Fusion development workflow
+
+Use manifest program IDs such as `design-001`; the filename `design_001.py` is only a stable
+ordinal. In the common two-program collections, `design-001` is the full workload and
+`design-002` is the smoke workload, but always confirm the tier in the generated module
+docstring rather than inferring it from the number.
+
+```bash
+# Inspect an exact program signature without running the model workload.
+uv run protofuse analyze \
+  proto_programs/generated/<collection-id> <program-id>
+
+# Collect append-only parent outputs. Use distinct group IDs for leakage-resistant splits.
+uv run protofuse trace \
+  proto_programs/generated/<collection-id> <program-id> \
+  --out data/analysis/<collection-id>/teacher.jsonl \
+  --run-id <run-id> --group-id <target-or-campaign-id> --tier full
+
+# Summarize the actual calls, then train the portable multi-output baseline.
+uv run protofuse fusion profile \
+  --trace data/analysis/<collection-id>/teacher.jsonl \
+  --out data/analysis/<collection-id>/profile.json
+uv run protofuse fusion train \
+  proto_programs/generated/<collection-id> <program-id> \
+  --trace data/analysis/<collection-id>/teacher.jsonl \
+  --optimizer-index 0 --constraint <label-a> --constraint <label-b> \
+  --fusion-id <fusion-id> --version 1 --out data/models/<fusion-id>
+```
+
+Training artifacts always start with `reviewed=false`. The following flags are for local
+development only; the normal validation and evaluation commands reject unreviewed artifacts:
+
+```bash
+uv run protofuse fusion validate data/models/<fusion-id> --allow-unreviewed
+uv run protofuse fusion evaluate \
+  data/models/<fusion-id> proto_programs/generated/<collection-id> <program-id> \
+  --seed 1 --seed 2 --allow-unreviewed
+```
+
+After human review explicitly changes the manifest status, `protofuse.optimize()` lazily
+discovers hash-valid bundles under `data/models/`. Set `PROTOFUSE_BUNDLE_DIR` to use a
+different artifact root. No model artifact in the repository is currently reviewed.
