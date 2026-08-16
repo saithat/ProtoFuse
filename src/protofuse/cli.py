@@ -86,6 +86,28 @@ def main() -> None:
         default=None,
         help="output directory (defaults to proto_programs/generated/<fixture>)",
     )
+    review_parser = subparsers.add_parser(
+        "review",
+        help="run every machine-checkable handoff gate for a fixture and its collection",
+    )
+    review_parser.add_argument("fixture", nargs="?", choices=FIXTURE_CHOICES, default=None)
+    review_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="review every fixture that has a frozen collection",
+    )
+    review_parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="skip workload feasibility preflight (faster on DNA workloads)",
+    )
+    review_parser.add_argument(
+        "--length",
+        type=int,
+        default=None,
+        help="preflight target length (defaults to fixture global_parameters)",
+    )
+    review_parser.add_argument("--json", action="store_true", help="emit machine-readable report")
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("paper", type=Path)
     extract_parser.add_argument("--out", type=Path, required=True)
@@ -157,12 +179,13 @@ def main() -> None:
 
             program, wall_ms = run_antibody_cdr_maturation(tier=args.tier)
         elif args.fixture == "gpcr-cxcr4-miniprotein":
+            from time import perf_counter
+
             from protofuse.phillip.program_builders import (
                 build_gpcr_cxcr4_miniprotein_program,
                 load_fixture_spec,
                 resolve_workload_params,
             )
-            from time import perf_counter
 
             spec = load_fixture_spec("gpcr-cxcr4-miniprotein")
             params = resolve_workload_params(spec, tier=args.tier)
@@ -199,6 +222,34 @@ def main() -> None:
             f"({len(loaded.manifest.programs)} programs, "
             f"methodology={loaded.manifest.methodology_id})"
         )
+        return
+
+    if args.command == "review":
+        from protofuse.phillip.review import COLLECTIONS_DIR, review_fixture
+
+        if args.all:
+            targets = [name for name in FIXTURE_CHOICES if (COLLECTIONS_DIR / name).is_dir()]
+        elif args.fixture:
+            targets = [args.fixture]
+        else:
+            raise SystemExit("review requires a fixture ID or --all")
+
+        reports = [
+            review_fixture(
+                fixture,
+                run_preflight_check=not args.skip_preflight,
+                preflight_length=args.length,
+            )
+            for fixture in targets
+        ]
+        if args.json:
+            print(json.dumps([report.as_dict() for report in reports], indent=2))
+        else:
+            for report in reports:
+                print(report.summary())
+        blocked = [report.fixture_id for report in reports if not report.ok]
+        if blocked:
+            raise SystemExit(f"blocked: {', '.join(blocked)}")
         return
 
     if args.command == "generate":

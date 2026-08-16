@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal
@@ -51,7 +52,12 @@ from proto_language.optimizer import (
     RejectionSamplingOptimizer,
     RejectionSamplingOptimizerConfig,
 )
-from proto_tools import InverseFoldingStructureInput, PdbFetchFastaInput, run_pdb_fetch_fasta
+from proto_tools import (
+    InverseFoldingStructureInput,
+    PdbFetchFastaInput,
+    is_valid_structure,
+    run_pdb_fetch_fasta,
+)
 from proto_tools.entities.structures.structure import Structure
 from proto_tools.transforms.masking import MaskingStrategy
 
@@ -529,7 +535,7 @@ def _alphafold2_binder_structure_config(
     return {
         "structure_tool": "alphafold2_binder",
         "alphafold2_binder_config": {
-            "target_pdb": pdb_id,
+            "target_pdb": _target_structure_from_pdb(pdb_id),
             "target_chains": target_chains,
             "binder_input_index": 0,
             "target_input_indices": [1],
@@ -547,6 +553,28 @@ def _target_sequence_from_pdb(pdb_id: str, chain_ids: list[str]) -> str:
     raise ValueError(f"no FASTA chain in {pdb_id} matching {chain_ids}")
 
 
+@lru_cache(maxsize=8)
+def _target_structure_from_pdb(pdb_id: str) -> Structure:
+    """Fetch coordinates for a PDB accession and validate them before tool binding.
+
+    Structure fields accept content, a path, or a `Structure` — never an accession, so an
+    unresolved ID only fails once the tool parses it. RCSB omits `.pdb` for entries above
+    that format's size limits, making `.cif` a distinct candidate rather than a retry.
+    """
+
+    attempts: list[str] = []
+    for file_format in ("pdb", "cif"):
+        try:
+            structure = Structure.from_rcsb(pdb_id, file_format=file_format)
+        except Exception as exc:  # noqa: BLE001 - fall through to the next candidate
+            attempts.append(f"{file_format}: {exc}")
+            continue
+        if is_valid_structure(structure.structure):
+            return structure
+        attempts.append(f"{file_format}: fetched but failed structure validation")
+    raise ValueError(f"could not resolve structure {pdb_id!r} from RCSB; tried: {attempts}")
+
+
 def build_gpcr_cxcr4_miniprotein_program(params: dict[str, Any]) -> Program:
     """Rejection-sampling CXCR4 miniprotein binder design (Muratspahić et al. 2026)."""
 
@@ -562,7 +590,7 @@ def build_gpcr_cxcr4_miniprotein_program(params: dict[str, Any]) -> Program:
 
     generator = RFdiffusionMPNNBinderGenerator(
         RFdiffusionMPNNBinderGeneratorConfig(
-            target_structure=pdb_id,
+            target_structure=_target_structure_from_pdb(pdb_id),
             target_chains=target_chains,
             hotspots=hotspots,
         )
@@ -625,7 +653,7 @@ def build_freebindcraft_binder_program(params: dict[str, Any]) -> Program:
 
     generator = FreeBindCraftGenerator(
         FreeBindCraftGeneratorConfig(
-            target_structure=pdb_id,
+            target_structure=_target_structure_from_pdb(pdb_id),
             target_chain=target_chain,
             target_hotspot_residues=hotspot_residues,
         )
@@ -664,7 +692,7 @@ def build_freebindcraft_binder_program(params: dict[str, Any]) -> Program:
             function=structure_rmsd_constraint,
             function_config={
                 **structure_config,
-                "target_structure": pdb_id,
+                "target_structure": _target_structure_from_pdb(pdb_id),
                 "inflection_point_angstroms": float(params["rmsd_inflection_angstroms"]),
             },
             weight=0.5,
@@ -969,7 +997,7 @@ def _ppi_interface_generator(
         mutable_positions = MPNNResidueSelection(
             chains={"A": list(range(active_start + 1, active_end + 1))},
         )
-        structure = Structure.from_rcsb(str(params["target_pdb"]))
+        structure = _target_structure_from_pdb(str(params["target_pdb"]))
         generator = MPNNMutationGenerator(
             MPNNMutationGeneratorConfig(
                 model="proteinmpnn",
