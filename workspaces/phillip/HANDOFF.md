@@ -14,6 +14,10 @@ Commit that folder to `main`, then tell Sai the **collection ID** (the folder na
 
 - Paper → `MethodologySpec` (internal; not the handoff).
 - Readable `design_*.py` with one synchronous `build_program()` per file.
+- Numeric suffixes such as `_001` and `_002` are stable ordinal IDs, not tier labels. In
+  the common two-file profile, `_001` is full and `_002` is smoke, but multi-design
+  profiles may have several full programs. State the tier in each module's docstring and
+  `build_program()` call; never rely on the suffix alone.
 - No execution, network, or model loading on import.
 - `finalize_collection(..., reviewed=True)` after manually reading the generated source.
 - Pinning metadata in `collection.json`: methodology ID, Proto version, registry version,

@@ -2,15 +2,28 @@ import logging
 
 import pytest
 
+from protofuse.phillip.handoff_config import HANDOFF_CONFIGS
 from protofuse.phillip.program_builders import load_fixture_spec, run_dnachisel_num1
 from protofuse.phillip.sequence_init import estimate_filter_pass_rate, generate_filter_safe_sequence
 from protofuse.phillip.workload_preflight import (
+    BUILD_ONLY_PREFLIGHT_WORKLOADS,
+    DNA_PREFLIGHT_WORKLOADS,
     assert_output_length,
     assert_workload_feasible,
     classify_report,
     run_isolation_ladder,
     run_preflight,
 )
+
+
+def test_every_reviewed_fixture_has_an_explicit_preflight_strategy() -> None:
+    supported = DNA_PREFLIGHT_WORKLOADS | BUILD_ONLY_PREFLIGHT_WORKLOADS
+    workloads = {
+        str(load_fixture_spec(fixture_id).global_parameters.get("workload"))
+        for fixture_id in HANDOFF_CONFIGS
+    }
+
+    assert workloads <= supported
 
 
 def test_generate_filter_safe_sequence_passes_hard_filters() -> None:

@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "af3-boltz2-state-sweep",
+  "methodology_id": "af3-boltz2-state-sweep-v1",
+  "proto_version": "7aaca3698da21d8f2ef9a18d235d27f44be51bee",
+  "registry_version": "1",
+  "seed_policy": "paper uses five independent seeds without listing values; prototype uses implementation seeds 0 through 4, paired identically across full/fused arms",
+  "reviewed": false,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "c12ed544a0e0f139f5abe4cd7d579c5bb138d9f1bbee0b18becac360064ce165"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "27db3375b8fb06acb9458ffecc56675c88b0fa0dfa47750a73307e47c25e265f"
+    },
+    {
+      "program_id": "design-003",
+      "path": "design_003.py",
+      "entrypoint": "build_program",
+      "sha256": "68f376d543e1ad7c025b17e7b9ef3e34a8f7ca1586a237eab4721926d9e64eba"
+    },
+    {
+      "program_id": "design-004",
+      "path": "design_004.py",
+      "entrypoint": "build_program",
+      "sha256": "e09e0cc36ff601364ee3662a38e4e62f670aa8ffecaf054b067848645eff9a2b"
+    },
+    {
+      "program_id": "design-005",
+      "path": "design_005.py",
+      "entrypoint": "build_program",
+      "sha256": "419496f7208a61e1ada088126cd9df3115cdbca6828c08f58cc70e0ccd4a6b8b"
+    },
+    {
+      "program_id": "design-006",
+      "path": "design_006.py",
+      "entrypoint": "build_program",
+      "sha256": "35c050d6ae18e667985763a950390614bd9f5bf93b0f84bc349f04d4b5241615"
+    }
+  ]
+}

@@ -87,7 +87,9 @@ SYMMETRIC_OLIGOMER_RING_REGISTRY: dict[str, str] = {
     "ProteinMPNN inverse folding": "proto_language.generator.ProteinMPNNGenerator",
     "protein symmetry ring": "proto_language.constraint.protein_symmetry_ring_constraint",
     "protein globularity": "proto_language.constraint.protein_globularity_constraint",
-    "structure radius of gyration": "proto_language.constraint.structure_radius_gyration_constraint",
+    "structure radius of gyration": (
+        "proto_language.constraint.structure_radius_gyration_constraint"
+    ),
     "structure composite quality": "proto_language.constraint.structure_composite_constraint",
     "overall protein quality": "proto_language.constraint.overall_protein_quality_constraint",
     "rejection sampling design filter": "proto_language.optimizer.RejectionSamplingOptimizer",
@@ -151,6 +153,56 @@ BOLTZ2_STATE_SWEEP_REGISTRY: dict[str, str] = {
     "rejection sampling ensemble filter": "proto_language.optimizer.RejectionSamplingOptimizer",
 }
 
+RFDIFFUSION3_AF3_PPI_REGISTRY: dict[str, str] = {
+    "RFdiffusion3 PPI backbone generation": (
+        "proto_language.generator.RFdiffusionMPNNBinderGenerator"
+    ),
+    "ProteinMPNN inverse folding probability": (
+        "proto_language.constraint.mpnn_sequence_probability_constraint"
+    ),
+    "AlphaFold3 interface confidence proxy": (
+        "proto_language.constraint.structure_iptm_constraint"
+    ),
+    "AlphaFold3 mean PAE proxy": "proto_language.constraint.structure_pae_constraint",
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+    "rejection sampling PPI benchmark": (
+        "proto_language.optimizer.RejectionSamplingOptimizer"
+    ),
+}
+
+AF3_BOLTZ2_STATE_REGISTRY: dict[str, str] = {
+    "fixed sequence cross-model sweep": (
+        "protofuse.phillip.state_sweep_generators.FixedSequenceSweepGenerator"
+    ),
+    "AlphaFold3 dominant-state TM-score": (
+        "proto_language.constraint.structure_tmscore_constraint"
+    ),
+    "AlphaFold3 alternative-state TM-score": (
+        "proto_language.constraint.structure_tmscore_constraint"
+    ),
+    "Boltz-2 dominant-state TM-score": (
+        "proto_language.constraint.structure_tmscore_constraint"
+    ),
+    "Boltz-2 alternative-state TM-score": (
+        "proto_language.constraint.structure_tmscore_constraint"
+    ),
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+    "rejection sampling state ensemble": (
+        "proto_language.optimizer.RejectionSamplingOptimizer"
+    ),
+}
+
+EVO2_REGULATORY_REGISTRY: dict[str, str] = {
+    "Evo 2 autoregressive generation": "proto_language.generator.Evo2Generator",
+    "Enformer chromatin pattern loss": (
+        "proto_language.constraint.enformer_chromatin_accessibility_morse_constraint"
+    ),
+    "Borzoi chromatin pattern loss": (
+        "proto_language.constraint.borzoi_chromatin_accessibility_morse_constraint"
+    ),
+    "chunked beam search": "proto_language.optimizer.BeamSearchOptimizer",
+}
+
 FREEBINDCRAFT_REGISTRY: dict[str, str] = {
     "FreeBindCraft binder design": "proto_language.generator.FreeBindCraftGenerator",
     "structure ipTM filter": "proto_language.constraint.structure_iptm_constraint",
@@ -177,6 +229,9 @@ REGISTRY_BY_NAME: dict[str, dict[str, str]] = {
     "ligandmpnn-enzyme-redesign": LIGANDMPNN_ENZYME_REGISTRY,
     "bioemu-ensemble-filter": BIOEMU_ENSEMBLE_REGISTRY,
     "boltz2-state-sweep": BOLTZ2_STATE_SWEEP_REGISTRY,
+    "rfdiffusion3-af3-ppi": RFDIFFUSION3_AF3_PPI_REGISTRY,
+    "af3-boltz2-state-sweep": AF3_BOLTZ2_STATE_REGISTRY,
+    "evo2-enformer-borzoi": EVO2_REGULATORY_REGISTRY,
 }
 
 WorkloadTier = Literal["smoke", "full"]
@@ -332,7 +387,8 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_002.py",
                 tier="smoke",
                 docstring=(
-                    "Smoke-tier FreeBindCraft binder design (50 aa, 5 samples) for fast GPU sanity checks."
+                    "Smoke-tier FreeBindCraft binder design (50 aa, 5 samples) "
+                    "for fast GPU sanity checks."
                 ),
                 builder_call="build_freebindcraft_binder_program(params)",
             ),
@@ -383,7 +439,8 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_001.py",
                 tier="full",
                 docstring=(
-                    "Full-tier PPI interface specificity (65-aa binder, 100 MCMC steps, 2 interface passes).\n\n"
+                    "Full-tier PPI interface specificity (65-aa binder, 100 MCMC steps, "
+                    "2 interface passes).\n\n"
                     "Represents one region-pass in the region-local solver: MPNN mutations within\n"
                     "the active interface patch, AF3/Boltz on-target scoring, AF3 off-target\n"
                     "specificity margin, and AF2 interface contact loss vs PD-L1 (4ZQK)."
@@ -417,8 +474,10 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_001.py",
                 tier="full",
                 docstring=(
-                    "Full-tier antibody CDR maturation (121-aa nanobody, 100 MCMC steps, 3 CDR passes).\n\n"
-                    "Represents one region-pass in the region-local solver: ESM-2 mutations within\n"
+                    "Full-tier antibody CDR maturation (121-aa nanobody, 100 MCMC steps, "
+                    "3 CDR passes).\n\n"
+                    "Represents one region-pass in the region-local solver: ESM-2 mutations "
+                    "within\n"
                     "the active CDR, AbLang naturalness, ESMFold ipTM vs peptide antigen stub,\n"
                     "protein complexity, and gap Gini vs seed framework."
                 ),
@@ -465,7 +524,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         fixture_id="ligandmpnn-enzyme-redesign",
         registry_name="ligandmpnn-enzyme-redesign",
         builder_symbol="build_ligandmpnn_enzyme_redesign_program",
-        required_global_parameters=("workload", "enzyme_pdb", "enzyme_chain", "active_site_positions"),
+        required_global_parameters=(
+            "workload",
+            "enzyme_pdb",
+            "enzyme_chain",
+            "active_site_positions",
+        ),
         variants=(
             ProgramVariant(
                 filename="design_001.py",
@@ -506,7 +570,8 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_002.py",
                 tier="smoke",
                 docstring=(
-                    "Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, 20 steps, 2 BioEmu samples)."
+                    "Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, "
+                    "20 steps, 2 BioEmu samples)."
                 ),
                 builder_call="build_bioemu_ensemble_filter_program(params)",
             ),
@@ -545,6 +610,147 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                     "full XylE IOMemP transporter benchmark."
                 ),
                 builder_call="build_boltz2_state_sweep_program(params)",
+            ),
+        ),
+    ),
+    "rfdiffusion3_af3_ppi": WorkloadProfile(
+        workload_key="rfdiffusion3_af3_ppi",
+        fixture_id="rfdiffusion3-af3-ppi",
+        registry_name="rfdiffusion3-af3-ppi",
+        builder_symbol="build_rfdiffusion3_af3_ppi_program",
+        required_global_parameters=(
+            "workload",
+            "benchmark_targets",
+            "num_samples",
+            "proteinmpnn_num_sequences_per_structure",
+        ),
+        variants=tuple(
+            ProgramVariant(
+                filename=f"design_{target_index + 1:03d}.py",
+                tier="full",
+                docstring=(
+                    "Full-tier RFdiffusion3 PPI benchmark target.\n\n"
+                    "Generate 400 backbones, sample four ProteinMPNN sequences per backbone, "
+                    "and retain separate ProteinMPNN probability, AlphaFold3 ipTM-proxy, and "
+                    "AlphaFold3 mean-PAE-proxy scores. Paper binder-pTM and minimum interchain "
+                    "pAE endpoints remain separate benchmark measurements."
+                ),
+                builder_call=(
+                    f"build_rfdiffusion3_af3_ppi_program(params, target_index={target_index})"
+                ),
+            )
+            for target_index in range(5)
+        )
+        + (
+            ProgramVariant(
+                filename="design_006.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier RFdiffusion3/ProteinMPNN/AlphaFold3 joint-objective build "
+                    "for the first PPI benchmark target."
+                ),
+                builder_call="build_rfdiffusion3_af3_ppi_program(params, target_index=0)",
+            ),
+        ),
+    ),
+    "af3_boltz2_state_sweep": WorkloadProfile(
+        workload_key="af3_boltz2_state_sweep",
+        fixture_id="af3-boltz2-state-sweep",
+        registry_name="af3-boltz2-state-sweep",
+        builder_symbol="build_af3_boltz2_state_sweep_program",
+        required_global_parameters=(
+            "workload",
+            "dominant_state_pdb",
+            "alternative_state_pdb",
+            "num_samples",
+        ),
+        variants=tuple(
+            ProgramVariant(
+                filename=f"design_{seed + 1:03d}.py",
+                tier="full",
+                docstring=(
+                    "Full-tier cross-model conformational diagnostic.\n\n"
+                    "For one of five explicit implementation seeds, score the fixed sequence "
+                    "with separate AlphaFold3 and Boltz-2 TM-scores to each of two reference "
+                    "states. This is a ProtoFuse joint-surrogate extension; the paper uses "
+                    "AlphaFold3 only as an external baseline."
+                ),
+                builder_call=f"build_af3_boltz2_state_sweep_program(params, seed={seed})",
+            )
+            for seed in range(5)
+        )
+        + (
+            ProgramVariant(
+                filename="design_006.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier AlphaFold3/Boltz-2 dual-state TM-score diagnostic on "
+                    "adenylate kinase."
+                ),
+                builder_call="build_af3_boltz2_state_sweep_program(params, seed=0)",
+            ),
+        ),
+    ),
+    "evo2_regulatory_design": WorkloadProfile(
+        workload_key="evo2_regulatory_design",
+        fixture_id="evo2-enformer-borzoi",
+        registry_name="evo2-enformer-borzoi",
+        builder_symbol="build_evo2_regulatory_design_program",
+        required_global_parameters=(
+            "workload",
+            "segment_length_bp",
+            "beam_length",
+            "num_results",
+            "proposals_per_result",
+        ),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier Evo 2 regulatory design for the EVO2 Morse pattern.\n\n"
+                    "Generate 128-bp chunks with Evo 2 and retain separate Enformer and "
+                    "four-replicate Borzoi pattern losses; the paper ranks their 0.5/0.5 mean."
+                ),
+                builder_call=(
+                    'build_evo2_regulatory_design_program(params, morse_pattern=". ...- --- '
+                    '..---", dot_bp=384)'
+                ),
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="full",
+                docstring=(
+                    "Full-tier Evo 2 regulatory design for the ARC Morse pattern with separate "
+                    "Enformer and Borzoi losses."
+                ),
+                builder_call=(
+                    'build_evo2_regulatory_design_program(params, morse_pattern=".- .-. -.-.", '
+                    "dot_bp=384)"
+                ),
+            ),
+            ProgramVariant(
+                filename="design_003.py",
+                tier="full",
+                docstring=(
+                    "Full-tier Evo 2 regulatory design for the LO Morse pattern with separate "
+                    "Enformer and Borzoi losses."
+                ),
+                builder_call=(
+                    'build_evo2_regulatory_design_program(params, morse_pattern=".-.. ---", '
+                    "dot_bp=768)"
+                ),
+            ),
+            ProgramVariant(
+                filename="design_004.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier Evo 2/Enformer/Borzoi joint-objective build using one "
+                    "128-bp accessibility pulse."
+                ),
+                builder_call=(
+                    'build_evo2_regulatory_design_program(params, morse_pattern=".", dot_bp=128)'
+                ),
             ),
         ),
     ),

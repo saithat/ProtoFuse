@@ -57,8 +57,8 @@ Contract: [`docs/PROGRAM_COLLECTION.md`](PROGRAM_COLLECTION.md),
 | --- | --- | --- |
 | [`PIPELINE_BENCHMARKS.json`](../workspaces/phillip/PIPELINE_BENCHMARKS.json) | `scripts/benchmark_pipelines.py` | Yes — orchestrator wall times |
 | `workspaces/phillip/TIMING_<id>.json` | `run_handoff_pipeline.py` | Optional — generation timing |
-| `data/analysis/<collection_id>/` | Sai (not built) | No — gitignored node profiles |
-| `data/models/` | Sai (not built) | No — gitignored surrogate weights |
+| `data/analysis/<collection_id>/` | Sai CLI tracing/profiling | No — gitignored traces and profiles |
+| `data/models/` | Sai CLI training | No — gitignored surrogate artifacts |
 
 After adding a workflow, extend `benchmark_pipelines.py` with preflight, handoff, compile,
 and Modal `execute_smoke` runs, then:
@@ -91,6 +91,13 @@ uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU + handoff
 | `cycling` | (new) | dedicated `cycling_builders.py` module |
 
 ## Smoke / full tier conventions
+
+`full` and `smoke` describe workload configuration, not filename numbering. Most existing
+two-program collections happen to map `design_001.py` to full and `design_002.py` to
+smoke, but the suffixes are only ordinal IDs. A collection may contain multiple full
+designs, so confirm the tier in the generated module docstring and `build_program()` call.
+Do not describe full-tier programs as "real"; smoke-tier programs are also executable,
+reviewed programs with deliberately reduced parameters.
 
 | Workflow | Smoke | Full |
 | --- | --- | --- |

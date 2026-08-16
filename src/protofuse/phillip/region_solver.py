@@ -5,12 +5,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Literal
+from typing import Literal, Protocol, cast
 
 from proto_language.core import Program
 
+from protofuse.checkpoints import run_program
+
 ConstraintScoreFn = Callable[[Program], float]
 ProgramRunDevice = Literal["modal"] | None
+
+
+class _StepsConfig(Protocol):
+    num_steps: int
 
 
 @dataclass(frozen=True)
@@ -52,23 +58,26 @@ def run_region_local_program(
 
     for region_pass in range(config.max_region_passes):
         program = build_program(region_pass=region_pass)
-        program.run(device=run_device)
+        run_program(program, device=run_device)
         region_passes = region_pass + 1
 
         if config.inner_refinement_steps > 0:
-            refinements_this_pass = 0
-            for window_index in range(config.max_windows_per_pass):
+            for refinements_this_pass, window_index in enumerate(
+                range(config.max_windows_per_pass)
+            ):
                 worst_score = score_program(program)
-                if worst_score <= 0.0 and refinements_this_pass >= config.min_inner_refinements_per_pass:
+                if (
+                    worst_score <= 0.0
+                    and refinements_this_pass >= config.min_inner_refinements_per_pass
+                ):
                     break
                 program = build_program(
                     region_pass=region_pass,
                     inner_refinement=window_index + 1,
                 )
                 _set_optimizer_steps(program, config.inner_refinement_steps)
-                program.run(device=run_device)
+                run_program(program, device=run_device)
                 inner_refinements += 1
-                refinements_this_pass += 1
 
         final_violations = _count_violations(program)
         if (
@@ -92,7 +101,9 @@ def run_region_local_program(
 
 def _set_optimizer_steps(program: Program, num_steps: int) -> None:
     for optimizer in program.optimizers:
-        optimizer.config.num_steps = num_steps
+        if not hasattr(optimizer.config, "num_steps"):
+            raise TypeError("region solver requires an optimizer config with num_steps")
+        cast(_StepsConfig, optimizer.config).num_steps = num_steps
 
 
 def _default_score_program(program: Program) -> float:

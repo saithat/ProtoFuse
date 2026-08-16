@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from proto_language.constraint import (
     ablang_perplexity_constraint,
     af3_offtarget_iptm_specificity_constraint,
     balanced_aa_constraint,
     boltz_binding_strength_constraint,
+    borzoi_chromatin_accessibility_morse_constraint,
+    enformer_chromatin_accessibility_morse_constraint,
     esm2_perplexity_constraint,
     gap_gini_constraint,
     gc_content_constraint,
@@ -25,17 +28,20 @@ from proto_language.constraint import (
     structure_composite_constraint,
     structure_ensemble_rmsd_constraint,
     structure_interface_contact_constraint,
-    structure_iptm_constraint,
     structure_ipae_constraint,
+    structure_iptm_constraint,
     structure_pae_constraint,
     structure_plddt_constraint,
     structure_radius_gyration_constraint,
     structure_rmsd_constraint,
+    structure_tmscore_constraint,
 )
 from proto_language.core import Constraint, Construct, Program, Segment
 from proto_language.generator import (
     ESM2Generator,
     ESM2GeneratorConfig,
+    Evo2Generator,
+    Evo2GeneratorConfig,
     FreeBindCraftGenerator,
     FreeBindCraftGeneratorConfig,
     MPNNMutationGenerator,
@@ -49,8 +55,9 @@ from proto_language.generator import (
     RFdiffusionMPNNBinderGenerator,
     RFdiffusionMPNNBinderGeneratorConfig,
 )
-from proto_language.generator.mpnn_mutation_generator import ResidueSelection as MPNNResidueSelection
 from proto_language.optimizer import (
+    BeamSearchOptimizer,
+    BeamSearchOptimizerConfig,
     CyclingOptimizer,
     CyclingOptimizerConfig,
     MCMCOptimizer,
@@ -61,18 +68,25 @@ from proto_language.optimizer import (
 from proto_tools import (
     InverseFoldingStructureInput,
     PdbFetchFastaInput,
+    ProteinMPNNSampleConfig,
+    RFdiffusion3Config,
     is_valid_structure,
     run_pdb_fetch_fasta,
 )
+from proto_tools.entities.structures.selection import (
+    ChainSelection,
+    ResidueSelection,
+)
 from proto_tools.entities.structures.structure import Structure
+from proto_tools.tools.masked_models.esm2.esm2_sample import ESM2_MODEL_CHECKPOINTS
 from proto_tools.transforms.masking import MaskingStrategy
 
 from protofuse.phillip.contracts import MethodologySpec
+from protofuse.phillip.custom_constraints import tissue_codon_constraint
 from protofuse.phillip.cycling_builders import (
     bioemu_constraint_config,
     make_rfdiffusion_boltz_cycling_conditioning_fn,
 )
-from protofuse.phillip.custom_constraints import tissue_codon_constraint
 from protofuse.phillip.dnachisel_constraints import (
     codon_usage_constraint,
     kmer_uniqueness_constraint,
@@ -81,13 +95,17 @@ from protofuse.phillip.dnachisel_constraints import (
     sliding_window_gc_constraint,
 )
 from protofuse.phillip.handoff_config import program_run_device, run_compiled_program
+from protofuse.phillip.pool_optimizer import (
+    PoolOptimizerConfig,
+    PoolOptimizerResult,
+    run_pool_optimizer,
+)
+from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
+from protofuse.phillip.sequence_init import generate_filter_safe_sequence
 from protofuse.phillip.state_sweep_generators import (
     FixedSequenceSweepGenerator,
     FixedSequenceSweepGeneratorConfig,
 )
-from protofuse.phillip.pool_optimizer import PoolOptimizerConfig, PoolOptimizerResult, run_pool_optimizer
-from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
-from protofuse.phillip.sequence_init import generate_filter_safe_sequence
 
 WorkloadTier = Literal["smoke", "full"]
 
@@ -165,6 +183,44 @@ BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
     "num_results": 3,
     "max_msa_seqs": 128,
 }
+
+RFDIFFUSION3_AF3_PPI_SMOKE_DEFAULTS: dict[str, int] = {
+    "num_samples": 8,
+    "num_results": 4,
+    "diffusion_batch_size": 2,
+}
+
+AF3_BOLTZ2_STATE_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
+    "dominant_state_pdb": "4AKE",
+    "alternative_state_pdb": "1AKE",
+    "num_samples": 2,
+    "num_results": 2,
+    "max_msa_seqs": 128,
+}
+
+EVO2_REGULATORY_SMOKE_DEFAULTS: dict[str, int] = {
+    "segment_length_bp": 512,
+    "num_results": 1,
+    "proposals_per_result": 2,
+}
+
+_SMOKE_DEFAULTS_BY_WORKLOAD: dict[str, Mapping[str, object]] = {
+    "antibody_cdr_maturation": ANTIBODY_CDR_SMOKE_DEFAULTS,
+    "bioemu_ensemble_filter": BIOEMU_ENSEMBLE_SMOKE_DEFAULTS,
+    "boltz2_state_sweep": BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS,
+    "rfdiffusion3_af3_ppi": RFDIFFUSION3_AF3_PPI_SMOKE_DEFAULTS,
+    "af3_boltz2_state_sweep": AF3_BOLTZ2_STATE_SMOKE_DEFAULTS,
+    "evo2_regulatory_design": EVO2_REGULATORY_SMOKE_DEFAULTS,
+    "custom_egfp_pool": CUSTOM_SMOKE_DEFAULTS,
+    "esm2_protein_maturation": ESM2_SMOKE_DEFAULTS,
+    "freebindcraft_binder": FREEBINDCRAFT_SMOKE_DEFAULTS,
+    "gpcr_cxcr4_binder": GPCR_CXCR4_SMOKE_DEFAULTS,
+    "ligandmpnn_enzyme_redesign": LIGANDMPNN_ENZYME_SMOKE_DEFAULTS,
+    "ppi_interface_specificity": PPI_INTERFACE_SMOKE_DEFAULTS,
+    "rfdiffusion3_boltz2_binder": RFDIFFUSION3_BOLTZ2_SMOKE_DEFAULTS,
+    "symmetric_oligomer_ring": SYMMETRIC_OLIGOMER_SMOKE_DEFAULTS,
+}
+_SEEDED_PROTEIN_WORKLOADS = {"bioemu_ensemble_filter", "esm2_protein_maturation"}
 
 GFP_SEQUENCE = (
     "MSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTFSYGVQCFSRYPDHMK"
@@ -277,7 +333,6 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         "enzyme_chain": spec.global_parameters.get("enzyme_chain", "A"),
         "active_site_positions": list(spec.global_parameters.get("active_site_positions", [])),
         "mpnn_temperature": float(spec.global_parameters.get("mpnn_temperature", 0.1)),
-        "target_chain_id": spec.global_parameters.get("target_chain_id", "A"),
         "bioemu_num_samples": int(spec.global_parameters.get("bioemu_num_samples", 8)),
         "max_ensemble_rmsd": float(spec.global_parameters.get("max_ensemble_rmsd", 4.0)),
         "target_name": spec.global_parameters.get("target_name", "XylE"),
@@ -295,54 +350,44 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         "step_scale": float(spec.global_parameters.get("step_scale", 1.5)),
         "recycling_steps": int(spec.global_parameters.get("recycling_steps", 3)),
         "boltz2_seed": spec.global_parameters.get("boltz2_seed"),
+        "benchmark_targets": list(spec.global_parameters.get("benchmark_targets", [])),
+        "generation_seed": int(spec.global_parameters.get("generation_seed", 0)),
+        "diffusion_batch_size": int(spec.global_parameters.get("diffusion_batch_size", 8)),
+        "rfdiffusion3_num_timesteps": int(
+            spec.global_parameters.get("rfdiffusion3_num_timesteps", 200)
+        ),
+        "rfdiffusion3_step_scale": float(
+            spec.global_parameters.get("rfdiffusion3_step_scale", 1.5)
+        ),
+        "proteinmpnn_num_sequences_per_structure": int(
+            spec.global_parameters.get("proteinmpnn_num_sequences_per_structure", 4)
+        ),
+        "proteinmpnn_temperature": float(
+            spec.global_parameters.get("proteinmpnn_temperature", 0.1)
+        ),
+        "af3_seed": int(spec.global_parameters.get("af3_seed", 0)),
+        "af3_num_diffusion_samples": int(
+            spec.global_parameters.get("af3_num_diffusion_samples", 1)
+        ),
+        "evo2_prompt_sequence": str(spec.global_parameters.get("evo2_prompt_sequence", "ACGT")),
+        "evo2_model_checkpoint": str(
+            spec.global_parameters.get("evo2_model_checkpoint", "evo2_7b")
+        ),
+        "evo2_temperature": float(spec.global_parameters.get("evo2_temperature", 1.0)),
+        "evo2_top_k": int(spec.global_parameters.get("evo2_top_k", 4)),
+        "beam_length": int(spec.global_parameters.get("beam_length", 128)),
+        "enformer_output_tracks": list(spec.global_parameters.get("enformer_output_tracks", [11])),
+        "borzoi_output_tracks": list(spec.global_parameters.get("borzoi_output_tracks", [741])),
+        "right_context_sequence": str(spec.global_parameters.get("right_context_sequence", "A")),
     }
-    if workload == "esm2_protein_maturation":
-        params["seed_sequence"] = _resolve_protein_seed_sequence(
-            spec,
-            tier=tier,
-            segment_length_aa=int(params["segment_length_aa"]),
-        )
-    if workload == "bioemu_ensemble_filter":
-        params["seed_sequence"] = _resolve_protein_seed_sequence(
-            spec,
-            tier=tier,
-            segment_length_aa=int(params["segment_length_aa"]),
-        )
     if tier == "smoke":
-        if workload == "custom_egfp_pool":
-            params.update(CUSTOM_SMOKE_DEFAULTS)
-        elif workload == "gpcr_cxcr4_binder":
-            params.update(GPCR_CXCR4_SMOKE_DEFAULTS)
-        elif workload == "freebindcraft_binder":
-            params.update(FREEBINDCRAFT_SMOKE_DEFAULTS)
-        elif workload == "esm2_protein_maturation":
-            params.update(ESM2_SMOKE_DEFAULTS)
-            params["seed_sequence"] = _resolve_protein_seed_sequence(
-                spec,
-                tier="smoke",
-                segment_length_aa=int(params["segment_length_aa"]),
-            )
-        elif workload == "antibody_cdr_maturation":
-            params.update(ANTIBODY_CDR_SMOKE_DEFAULTS)
-        elif workload == "symmetric_oligomer_ring":
-            params.update(SYMMETRIC_OLIGOMER_SMOKE_DEFAULTS)
-        elif workload == "ppi_interface_specificity":
-            params.update(PPI_INTERFACE_SMOKE_DEFAULTS)
-        elif workload == "rfdiffusion3_boltz2_binder":
-            params.update(RFDIFFUSION3_BOLTZ2_SMOKE_DEFAULTS)
-        elif workload == "ligandmpnn_enzyme_redesign":
-            params.update(LIGANDMPNN_ENZYME_SMOKE_DEFAULTS)
-        elif workload == "bioemu_ensemble_filter":
-            params.update(BIOEMU_ENSEMBLE_SMOKE_DEFAULTS)
-            params["seed_sequence"] = _resolve_protein_seed_sequence(
-                spec,
-                tier="smoke",
-                segment_length_aa=int(params["segment_length_aa"]),
-            )
-        elif workload == "boltz2_state_sweep":
-            params.update(BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS)
-        else:
-            params.update(SMOKE_DEFAULTS)
+        params.update(_SMOKE_DEFAULTS_BY_WORKLOAD.get(str(workload), SMOKE_DEFAULTS))
+    if workload in _SEEDED_PROTEIN_WORKLOADS:
+        params["seed_sequence"] = _resolve_protein_seed_sequence(
+            spec,
+            tier=tier,
+            segment_length_aa=int(params["segment_length_aa"]),
+        )
     return params
 
 
@@ -515,7 +560,7 @@ def run_dnachisel_num1(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
 
     program = build_dnachisel_num1_program(params, region_pass=0)
     start = perf_counter()
-    program.run()
+    run_compiled_program(program, fixture_id="dnachisel-num1")
     return program, (perf_counter() - start) * 1000
 
 
@@ -631,7 +676,7 @@ def _target_sequence_from_pdb(pdb_id: str, chain_ids: list[str]) -> str:
     fetched = run_pdb_fetch_fasta(inputs=PdbFetchFastaInput(pdb_id=pdb_id))
     for chain in fetched.chains:
         if any(chain_id in chain.chain_ids for chain_id in chain_ids):
-            return chain.sequence
+            return str(chain.sequence)
     raise ValueError(f"no FASTA chain in {pdb_id} matching {chain_ids}")
 
 
@@ -715,6 +760,17 @@ def build_gpcr_cxcr4_miniprotein_program(params: dict[str, Any]) -> Program:
         ),
     )
     return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_gpcr_cxcr4_miniprotein(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    """Run the CXCR4 miniprotein workload and return program plus wall time."""
+
+    spec = load_fixture_spec("gpcr-cxcr4-miniprotein")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_gpcr_cxcr4_miniprotein_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="gpcr-cxcr4-miniprotein")
+    return program, (perf_counter() - start) * 1000
 
 
 def build_freebindcraft_binder_program(params: dict[str, Any]) -> Program:
@@ -804,7 +860,7 @@ def build_freebindcraft_binder_program(params: dict[str, Any]) -> Program:
 
 
 def run_freebindcraft_binder(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
-    """Run FreeBindCraft binder design and return the final program plus wall time in milliseconds."""
+    """Run FreeBindCraft binder design and return its program and wall time."""
 
     spec = load_fixture_spec("freebindcraft-binder")
     params = resolve_workload_params(spec, tier=tier)
@@ -936,9 +992,11 @@ def run_esm2_protein_maturation(*, tier: WorkloadTier = "full") -> tuple[Program
 
 
 def _framework_fixed_positions(length: int, cdr_start: int, cdr_end: int) -> list[int]:
-    """Return 1-indexed positions outside the active CDR (0-based half-open [cdr_start, cdr_end))."""
+    """Return 1-indexed positions outside the 0-based, half-open active CDR."""
 
-    return [index for index in range(1, length + 1) if index - 1 < cdr_start or index - 1 >= cdr_end]
+    return [
+        index for index in range(1, length + 1) if index - 1 < cdr_start or index - 1 >= cdr_end
+    ]
 
 
 def build_antibody_cdr_maturation_program(
@@ -968,7 +1026,7 @@ def build_antibody_cdr_maturation_program(
 
     generator = ESM2Generator(
         ESM2GeneratorConfig(
-            model_checkpoint=str(params["esm2_checkpoint"]),
+            model_checkpoint=cast(ESM2_MODEL_CHECKPOINTS, str(params["esm2_checkpoint"])),
             masking_strategy=MaskingStrategy(
                 num_mutations=int(params["mutations_per_step"]) + region_pass,
                 fixed_positions=fixed_positions,
@@ -1078,10 +1136,11 @@ def _ppi_interface_generator(
     if str(params["proposal_generator"]).lower() == "mpnn":
         interface_regions = [[int(s), int(e)] for s, e in params["interface_regions"]]
         active_start, active_end = interface_regions[region_pass % len(interface_regions)]
-        mutable_positions = MPNNResidueSelection(
+        mutable_positions = ResidueSelection(
             chains={"A": list(range(active_start + 1, active_end + 1))},
         )
         structure = _target_structure_from_pdb(str(params["target_pdb"]))
+        generator: ESM2Generator | MPNNMutationGenerator
         generator = MPNNMutationGenerator(
             MPNNMutationGeneratorConfig(
                 model="proteinmpnn",
@@ -1093,7 +1152,10 @@ def _ppi_interface_generator(
     else:
         generator = ESM2Generator(
             ESM2GeneratorConfig(
-                model_checkpoint=str(params["esm2_checkpoint"]),
+                model_checkpoint=cast(
+                    ESM2_MODEL_CHECKPOINTS,
+                    str(params["esm2_checkpoint"]),
+                ),
                 masking_strategy=MaskingStrategy(
                     num_mutations=mutations,
                     fixed_positions=fixed_positions,
@@ -1109,7 +1171,7 @@ def build_ppi_interface_specificity_program(
     *,
     region_pass: int = 0,
 ) -> Program:
-    """Region-local MCMC refinement of a binder interface for on-target vs off-target specificity."""
+    """Refine a binder interface for on-target versus off-target specificity."""
 
     binder_sequence = str(params["binder_sequence"])
     interface_regions = [[int(start), int(end)] for start, end in params["interface_regions"]]
@@ -1200,7 +1262,7 @@ def build_ppi_interface_specificity_program(
 
 
 def run_ppi_interface_specificity(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
-    """Run PPI interface specificity MCMC and return the final program plus wall time in milliseconds."""
+    """Run PPI interface specificity MCMC and return its program and wall time."""
 
     spec = load_fixture_spec("ppi-interface-specificity")
     params = resolve_workload_params(spec, tier=tier)
@@ -1436,14 +1498,16 @@ def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
     construct = Construct([enzyme])
     structure_input = InverseFoldingStructureInput(
         structure=enzyme_structure,
-        chains_to_redesign=[enzyme_chain],
-        fixed_positions={
-            enzyme_chain: [
-                position
-                for position in range(1, chain_length + 1)
-                if position not in active_site_positions
-            ]
-        },
+        chains_to_redesign=ChainSelection(chains=[enzyme_chain]),
+        fixed_positions=ResidueSelection(
+            chains={
+                enzyme_chain: [
+                    position
+                    for position in range(1, chain_length + 1)
+                    if position not in active_site_positions
+                ]
+            }
+        ),
     )
     generator = MPNNMutationGenerator(
         MPNNMutationGeneratorConfig(
@@ -1451,7 +1515,7 @@ def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
             structure_inputs=[structure_input],
             output_chain_id=enzyme_chain,
             num_mutations=int(params["mutations_per_step"]),
-            mutable_positions=MPNNResidueSelection(
+            mutable_positions=ResidueSelection(
                 chains={enzyme_chain: active_site_positions},
             ),
             replacement_temperature=float(params["mpnn_temperature"]),
@@ -1675,4 +1739,300 @@ def run_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program, flo
     program = build_boltz2_state_sweep_program(params)
     start = perf_counter()
     run_compiled_program(program, fixture_id="boltz2-state-sweep")
+    return program, (perf_counter() - start) * 1000
+
+
+def build_rfdiffusion3_af3_ppi_program(
+    params: dict[str, Any],
+    *,
+    target_index: int = 0,
+) -> Program:
+    """RFD3 -> ProteinMPNN -> AF3 PPI benchmark with vector-valued model scores."""
+
+    targets = list(params["benchmark_targets"])
+    if not 0 <= target_index < len(targets):
+        raise ValueError(f"target_index {target_index} outside benchmark target list")
+    target_spec = dict(targets[target_index])
+    pdb_id = str(target_spec["pdb_id"])
+    target_chains = [str(item) for item in target_spec["target_chains"]]
+    hotspots = [str(item) for item in target_spec["hotspots"]]
+    binder_length = int(target_spec["prototype_binder_length_aa"])
+
+    target_structure = _target_structure_from_pdb(pdb_id)
+    target_sequence = _target_sequence_from_pdb(pdb_id, target_chains)
+    binder = Segment(length=binder_length, sequence_type="protein", label="binder")
+    target = Segment(sequence=target_sequence, sequence_type="protein", label="target")
+    construct = Construct([binder, target])
+
+    generation_seed = int(params["generation_seed"])
+    generator = RFdiffusionMPNNBinderGenerator(
+        RFdiffusionMPNNBinderGeneratorConfig(
+            target_structure=target_structure,
+            target_chains=target_chains,
+            hotspots=hotspots,
+            inverse_folding="proteinmpnn",
+            rfdiffusion3_config=RFdiffusion3Config(
+                diffusion_batch_size=int(params["diffusion_batch_size"]),
+                num_timesteps=int(params["rfdiffusion3_num_timesteps"]),
+                seed=generation_seed,
+                step_scale=float(params["rfdiffusion3_step_scale"]),
+            ),
+            proteinmpnn_config=ProteinMPNNSampleConfig(
+                num_sequences_per_structure=int(params["proteinmpnn_num_sequences_per_structure"]),
+                seed=generation_seed,
+                temperature=float(params["proteinmpnn_temperature"]),
+            ),
+        )
+    )
+    generator.assign(binder)
+
+    af3_config = {
+        "structure_tool": "alphafold3",
+        "alphafold3_config": {
+            "seeds": [int(params["af3_seed"])],
+            "num_diffusion_samples": int(params["af3_num_diffusion_samples"]),
+            "include_pae_matrix": True,
+        },
+    }
+    constraints = [
+        Constraint(
+            inputs=[binder],
+            function=mpnn_sequence_probability_constraint,
+            function_config={
+                "model": "proteinmpnn",
+                "structure_source": "proposal_structure",
+                "output_chain_id": "B",
+                "score_mode": "probability_loss",
+                "seed": generation_seed,
+            },
+            weight=1.0,
+            label="proteinmpnn_probability",
+        ),
+        Constraint(
+            inputs=[binder, target],
+            function=structure_iptm_constraint,
+            function_config=af3_config,
+            weight=1.0,
+            label="af3_iptm_proxy",
+        ),
+        Constraint(
+            inputs=[binder, target],
+            function=structure_pae_constraint,
+            function_config=af3_config,
+            weight=1.0,
+            label="af3_mean_pae_proxy",
+        ),
+        Constraint(
+            inputs=[binder],
+            function=protein_length_constraint,
+            function_config={"min_length": binder_length, "max_length": binder_length},
+            threshold=0.0,
+            label="length",
+        ),
+    ]
+    optimizer = RejectionSamplingOptimizer(
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=RejectionSamplingOptimizerConfig(
+            num_results=int(params["num_results"]),
+            num_samples=int(params["num_samples"]),
+            seed=generation_seed,
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def _af3_state_sweep_structure_config(params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "structure_tool": "alphafold3",
+        "alphafold3_config": {
+            "seeds": [int(params["af3_seed"])],
+            "num_diffusion_samples": int(params["af3_num_diffusion_samples"]),
+        },
+    }
+
+
+def build_af3_boltz2_state_sweep_program(
+    params: dict[str, Any],
+    *,
+    seed: int = 0,
+) -> Program:
+    """Cross-model state-recovery diagnostic for separate AF3 and Boltz-2 surrogates."""
+
+    sequence = _resolve_state_sweep_sequence(params)
+    segment = Segment(sequence=sequence, sequence_type="protein", label="target")
+    construct = Construct([segment])
+    generator = FixedSequenceSweepGenerator(FixedSequenceSweepGeneratorConfig())
+    generator.assign(segment)
+
+    model_params = {**params, "af3_seed": seed, "boltz2_seed": seed}
+    af3_config = _af3_state_sweep_structure_config(model_params)
+    boltz2_config = _boltz2_sweep_structure_config(model_params)
+    dominant = _target_structure_from_pdb(str(params["dominant_state_pdb"]))
+    alternative = _target_structure_from_pdb(str(params["alternative_state_pdb"]))
+
+    constraints = []
+    for model_name, tool_config in (("af3", af3_config), ("boltz2", boltz2_config)):
+        constraints.extend(
+            [
+                Constraint(
+                    inputs=[segment],
+                    function=structure_tmscore_constraint,
+                    function_config={**tool_config, "target_structure": dominant},
+                    weight=1.0,
+                    label=f"{model_name}_one_minus_tm_dominant",
+                ),
+                Constraint(
+                    inputs=[segment],
+                    function=structure_tmscore_constraint,
+                    function_config={**tool_config, "target_structure": alternative},
+                    weight=1.0,
+                    label=f"{model_name}_one_minus_tm_alternative",
+                ),
+            ]
+        )
+    constraints.append(
+        Constraint(
+            inputs=[segment],
+            function=protein_length_constraint,
+            function_config={"min_length": len(sequence), "max_length": len(sequence)},
+            threshold=0.0,
+            label="length",
+        )
+    )
+    optimizer = RejectionSamplingOptimizer(
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=RejectionSamplingOptimizerConfig(
+            num_results=int(params["num_results"]),
+            num_samples=int(params["num_samples"]),
+            seed=seed,
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def build_evo2_regulatory_design_program(
+    params: dict[str, Any],
+    *,
+    morse_pattern: str,
+    dot_bp: int,
+) -> Program:
+    """Evo 2 beam search with separate Enformer and Borzoi accessibility objectives."""
+
+    prompt = str(params["evo2_prompt_sequence"])
+    left_context = Segment(sequence=prompt, sequence_type="dna", label="Left Flank")
+    target = Segment(
+        length=int(params["segment_length_bp"]),
+        sequence_type="dna",
+        label="Target",
+    )
+    right_context = Segment(
+        sequence=str(params["right_context_sequence"]),
+        sequence_type="dna",
+        label="Right Flank",
+    )
+    construct = Construct([left_context, target, right_context])
+
+    generator = Evo2Generator(
+        Evo2GeneratorConfig(
+            prompts=[prompt],
+            model_checkpoint=cast(Any, params["evo2_model_checkpoint"]),
+            temperature=float(params["evo2_temperature"]),
+            top_k=int(params["evo2_top_k"]),
+            cached_generation=True,
+            store_kv_cache=True,
+            prepend_prompt=False,
+        )
+    )
+    generator.assign(target)
+
+    pattern_config = {
+        "organism": "mouse",
+        "pattern": morse_pattern,
+        "dot_bp": dot_bp,
+        "dash_bp": dot_bp * 3,
+        "intra_symbol_gap_bp": dot_bp,
+        "inter_letter_gap_bp": dot_bp * 3,
+        "pattern_start_bp": 0,
+        "pattern_normalization": "global_max",
+    }
+    constraints = [
+        Constraint(
+            inputs=[left_context, target, right_context],
+            function=enformer_chromatin_accessibility_morse_constraint,
+            function_config={
+                **pattern_config,
+                "enformer_output_tracks": params["enformer_output_tracks"],
+            },
+            weight=0.5,
+            label="enformer_pattern_mae_proxy",
+        ),
+        Constraint(
+            inputs=[left_context, target, right_context],
+            function=borzoi_chromatin_accessibility_morse_constraint,
+            function_config={
+                **pattern_config,
+                "borzoi_output_tracks": params["borzoi_output_tracks"],
+                "borzoi_ensemble_reduce_method": "lcb",
+            },
+            weight=0.5,
+            label="borzoi_pattern_mae_proxy",
+        ),
+    ]
+    optimizer = BeamSearchOptimizer(
+        target_segment=target,
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=BeamSearchOptimizerConfig(
+            prompt=prompt,
+            beam_length=int(params["beam_length"]),
+            num_results=int(params["num_results"]),
+            proposals_per_result=int(params["proposals_per_result"]),
+            score_by="last",
+            prepend_prompt=False,
+            use_kv_caching=True,
+            seed=int(params["generation_seed"]),
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_rfdiffusion3_af3_ppi(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    """Run the first benchmark target through the reviewed RFD3/AF3 workflow."""
+
+    spec = load_fixture_spec("rfdiffusion3-af3-ppi")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_rfdiffusion3_af3_ppi_program(params, target_index=0)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="rfdiffusion3-af3-ppi")
+    return program, (perf_counter() - start) * 1000
+
+
+def run_af3_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    """Run the reviewed seed-zero cross-model state-recovery diagnostic."""
+
+    spec = load_fixture_spec("af3-boltz2-state-sweep")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_af3_boltz2_state_sweep_program(params, seed=0)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="af3-boltz2-state-sweep")
+    return program, (perf_counter() - start) * 1000
+
+
+def run_evo2_regulatory_design(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    """Run the primary EVO2 Morse-pattern program from the reviewed collection."""
+
+    spec = load_fixture_spec("evo2-enformer-borzoi")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_evo2_regulatory_design_program(
+        params,
+        morse_pattern=". ...- --- ..---",
+        dot_bp=384,
+    )
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="evo2-enformer-borzoi")
     return program, (perf_counter() - start) * 1000

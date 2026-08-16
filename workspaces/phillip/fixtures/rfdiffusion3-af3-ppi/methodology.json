@@ -1,0 +1,335 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "De novo Design of All-atom Biomolecular Interactions with RFdiffusion3",
+    "identifier": "10.1101/2025.09.18.676967",
+    "source_path": null
+  },
+  "generators": [
+    {
+      "name": "RFdiffusion3 PPI backbone generation",
+      "description": "Generate target-conditioned binder backbones and sample four ProteinMPNN sequences per backbone.",
+      "parameters": {
+        "backbones_per_target": 400,
+        "sequences_per_backbone": 4,
+        "targets": 5
+      },
+      "evidence": [
+        {
+          "quote": "For each target, we generated 400 RFdiffusion3 and RFdiffusion2 designs. For each backbone, we design 4 sequences using ProteinMPNN.",
+          "section": "PPI benchmark methods"
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "ProteinMPNN inverse folding probability",
+      "description": "Retain the ProteinMPNN sequence probability loss as its own surrogate target rather than folding it into the AlphaFold3 scores.",
+      "parameters": {
+        "model": "proteinmpnn",
+        "score_mode": "probability_loss",
+        "sequences_per_backbone": 4
+      },
+      "evidence": [
+        {
+          "quote": "For each backbone, we design 4 sequences using ProteinMPNN.",
+          "section": "PPI benchmark methods"
+        }
+      ],
+      "metric": "proteinmpnn_probability_loss",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "AlphaFold3 interface confidence proxy",
+      "description": "Record Proto's 1-ipTM score separately. This is a surrogate-friendly proxy and not the paper's binder-pTM endpoint.",
+      "parameters": {
+        "structure_tool": "alphafold3",
+        "paper_endpoint": "binder_pTM >= 0.8"
+      },
+      "evidence": [
+        {
+          "quote": "binder pTM >= 0.8",
+          "section": "PPI benchmark success criteria"
+        }
+      ],
+      "metric": "one_minus_iptm_proxy",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "AlphaFold3 mean PAE proxy",
+      "description": "Record Proto's normalized mean full-complex PAE separately. It must not be compared directly with the paper's minimum interchain pAE threshold.",
+      "parameters": {
+        "structure_tool": "alphafold3",
+        "paper_endpoint": "minimum_interchain_pAE <= 1.5"
+      },
+      "evidence": [
+        {
+          "quote": "minimum interchain pAE <= 1.5",
+          "section": "PPI benchmark success criteria"
+        }
+      ],
+      "metric": "normalized_mean_full_pae_proxy",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep each prototype binder at a fixed length chosen inside the paper's target-specific allowed interval.",
+      "parameters": {
+        "paper_ranges_aa": [[50, 120], [40, 120], [50, 120], [65, 120], [65, 120]]
+      },
+      "evidence": [
+        {
+          "quote": "We varied the length of the designed chain uniformly in the ranges listed in Table S4.",
+          "section": "PPI benchmark methods"
+        }
+      ],
+      "metric": "binder_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "rejection sampling PPI benchmark",
+      "description": "Enumerate 1,600 sequence candidates per target and retain their named per-model scores for later scalar or vector surrogate experiments.",
+      "parameters": {
+        "num_samples": 1600,
+        "num_results": 1600
+      },
+      "evidence": [
+        {
+          "quote": "For each target, we generated 400 RFdiffusion3 and RFdiffusion2 designs. For each backbone, we design 4 sequences using ProteinMPNN.",
+          "section": "PPI benchmark methods"
+        }
+      ],
+      "strategy": "rejection_sampling",
+      "stopping_criteria": {
+        "num_samples": 1600,
+        "num_results": 1600
+      }
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "RFdiffusion3",
+      "version_or_checkpoint": null,
+      "provider": "Baker Lab / IPD",
+      "purpose": "All-atom target-conditioned binder backbone generation",
+      "evidence": [
+        {
+          "quote": "RFdiffusion3 directly generates all-atom biomolecular structures.",
+          "section": "Abstract"
+        }
+      ]
+    },
+    {
+      "name": "ProteinMPNN",
+      "version_or_checkpoint": null,
+      "provider": "Dauparas et al.",
+      "purpose": "Four inverse-folded sequences per generated backbone",
+      "evidence": [
+        {
+          "quote": "For each backbone, we design 4 sequences using ProteinMPNN.",
+          "section": "PPI benchmark methods"
+        }
+      ]
+    },
+    {
+      "name": "AlphaFold3",
+      "version_or_checkpoint": null,
+      "provider": "Google DeepMind",
+      "purpose": "Binder-target complex validation",
+      "evidence": [
+        {
+          "quote": "We evaluate each sequence using AlphaFold3.",
+          "section": "PPI benchmark methods"
+        }
+      ]
+    }
+  ],
+  "global_parameters": {
+    "workload": "rfdiffusion3_af3_ppi",
+    "benchmark_targets": [
+      {
+        "name": "PD-L1",
+        "pdb_id": "5O45",
+        "target_chains": ["A"],
+        "residue_span": "A17-131",
+        "hotspots": ["A56", "A115", "A123"],
+        "paper_binder_length_range_aa": [50, 120],
+        "prototype_binder_length_aa": 85
+      },
+      {
+        "name": "InsulinR",
+        "pdb_id": "4ZXB",
+        "target_chains": ["E"],
+        "residue_span": "E6-155",
+        "hotspots": ["E64", "E88", "E96"],
+        "paper_binder_length_range_aa": [40, 120],
+        "prototype_binder_length_aa": 80
+      },
+      {
+        "name": "IL-7Ra",
+        "pdb_id": "3DI3",
+        "target_chains": ["B"],
+        "residue_span": "B17-209",
+        "hotspots": ["B58", "B80", "B139"],
+        "paper_binder_length_range_aa": [50, 120],
+        "prototype_binder_length_aa": 85
+      },
+      {
+        "name": "Tie2",
+        "pdb_id": "2GY5",
+        "target_chains": ["A"],
+        "residue_span": "A23-210",
+        "hotspots": ["A154", "A156", "A157", "A161", "A162", "A176", "A178", "A189", "A194"],
+        "paper_binder_length_range_aa": [65, 120],
+        "prototype_binder_length_aa": 90
+      },
+      {
+        "name": "IL-2Ra",
+        "pdb_id": "1Z92",
+        "target_chains": ["B"],
+        "residue_span": "B0-47/B53-64/B104-165",
+        "hotspots": ["B2", "B25", "B42", "B43", "B120"],
+        "paper_binder_length_range_aa": [65, 120],
+        "prototype_binder_length_aa": 90
+      }
+    ],
+    "num_samples": 1600,
+    "num_results": 1600,
+    "diffusion_batch_size": 8,
+    "rfdiffusion3_num_timesteps": 200,
+    "rfdiffusion3_step_scale": 1.5,
+    "proteinmpnn_num_sequences_per_structure": 4,
+    "proteinmpnn_temperature": 0.1,
+    "generation_seed": 0,
+    "af3_seed": 0,
+    "af3_num_diffusion_samples": 1,
+    "paired_full_fused_seed_required": true,
+    "evaluation_seeds": [0, 1, 2, 3, 4]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "generate_backbones",
+        "operation": "RFdiffusion3 target-conditioned binder backbone generation",
+        "inputs": ["target_structure", "hotspots", "binder_length"],
+        "outputs": ["binder_backbones"],
+        "parameters": {"backbones_per_target": 400},
+        "evidence": []
+      },
+      {
+        "id": "inverse_fold",
+        "operation": "ProteinMPNN sequence sampling and probability scoring",
+        "inputs": ["binder_backbones"],
+        "outputs": ["binder_sequences", "proteinmpnn_probability_loss"],
+        "parameters": {"sequences_per_backbone": 4},
+        "evidence": []
+      },
+      {
+        "id": "predict_complex",
+        "operation": "AlphaFold3 binder-target complex prediction",
+        "inputs": ["binder_sequences", "target_sequence"],
+        "outputs": ["predicted_complexes"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "score_joint_objectives",
+        "operation": "Persist ProteinMPNN, AlphaFold3 interface-confidence, and PAE objectives plus paper endpoints",
+        "inputs": ["proteinmpnn_probability_loss", "predicted_complexes"],
+        "outputs": ["objective_vectors", "paper_success_flags"],
+        "parameters": {},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "generate_backbones", "target": "inverse_fold", "artifact": "binder_backbones"},
+      {"source": "inverse_fold", "target": "predict_complex", "artifact": "binder_sequences"},
+      {"source": "inverse_fold", "target": "score_joint_objectives", "artifact": "proteinmpnn_probability_loss"},
+      {"source": "predict_complex", "target": "score_joint_objectives", "artifact": "predicted_complexes"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "minimum interchain pAE",
+      "metric": "minimum_interchain_pae",
+      "operator": "<=",
+      "value": 1.5,
+      "unit": "angstrom-like PAE score",
+      "applies_to": "AlphaFold3 binder-target prediction",
+      "evidence": [{"quote": "minimum interchain pAE <= 1.5", "section": "PPI benchmark success criteria"}]
+    },
+    {
+      "name": "binder pTM",
+      "metric": "binder_ptm",
+      "operator": ">=",
+      "value": 0.8,
+      "unit": "score",
+      "applies_to": "AlphaFold3 binder chain",
+      "evidence": [{"quote": "binder pTM >= 0.8", "section": "PPI benchmark success criteria"}]
+    },
+    {
+      "name": "binder RMSD",
+      "metric": "target_aligned_binder_ca_rmsd",
+      "operator": "<",
+      "value": 2.5,
+      "unit": "angstrom",
+      "applies_to": "target-aligned designed versus predicted binder",
+      "evidence": [{"quote": "target-aligned binder C-alpha RMSD < 2.5 Angstrom", "section": "PPI benchmark success criteria"}]
+    }
+  ],
+  "experimental_measurements": [
+    {
+      "name": "benchmark targets",
+      "value": 5,
+      "unit": "targets",
+      "conditions": {"task": "PPI binder design"},
+      "role": "input",
+      "evidence": [{"quote": "We test RFdiffusion3 and RFdiffusion2 on 5 PPI targets.", "section": "PPI benchmark"}]
+    },
+    {
+      "name": "targets with higher raw backbone success",
+      "value": 4,
+      "unit": "of 5 targets",
+      "conditions": {"comparison": "RFdiffusion3 versus RFdiffusion2"},
+      "role": "validation",
+      "evidence": [{"quote": "RFdiffusion3 achieves a higher success rate than RFdiffusion2 on four of the five targets.", "section": "PPI benchmark results"}]
+    },
+    {
+      "name": "mean unique successful clusters RFdiffusion3",
+      "value": 8.2,
+      "unit": "clusters per target",
+      "conditions": {"TM_cluster_cutoff": 0.6},
+      "role": "validation",
+      "evidence": [{"quote": "8.2 vs. 1.4 unique successful clusters per target", "section": "PPI benchmark results"}]
+    },
+    {
+      "name": "mean unique successful clusters RFdiffusion2",
+      "value": 1.4,
+      "unit": "clusters per target",
+      "conditions": {"TM_cluster_cutoff": 0.6},
+      "role": "validation",
+      "evidence": [{"quote": "8.2 vs. 1.4 unique successful clusters per target", "section": "PPI benchmark results"}]
+    }
+  ],
+  "assumptions": [
+    "Each prototype uses one fixed binder length inside the paper's per-target range so the generated Program has a stable segment shape.",
+    "The per-model constraint labels are the joint surrogate target vector; downstream scalarization is deliberately deferred.",
+    "Implementation seeds 0 are reproducibility controls chosen by ProtoFuse, not seeds reported by the paper.",
+    "Every full-Proto versus fused-Proto comparison must use the same evaluation seed in both arms."
+  ],
+  "unknowns": [
+    "The paper does not disclose exact RFdiffusion3, ProteinMPNN, or AlphaFold3 generation seeds.",
+    "Proto's structure_iptm_constraint returns 1-ipTM, not binder-pTM, and structure_pae_constraint uses normalized mean full PAE, not minimum interchain pAE.",
+    "Exact paper success flags and TM-cluster counts require offline post-processing that is not encoded in the Program constraints.",
+    "The target residue-span cropping in the paper table is recorded but the current prototype fetches the complete named chain.",
+    "This fixture has not passed verbatim local-full-text paper review and must remain reviewed=false."
+  ]
+}

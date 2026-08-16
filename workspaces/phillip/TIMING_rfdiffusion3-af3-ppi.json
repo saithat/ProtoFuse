@@ -1,0 +1,29 @@
+{
+  "fixture_id": "rfdiffusion3-af3-ppi",
+  "collection_id": "rfdiffusion3-af3-ppi",
+  "methodology_id": "rfdiffusion3-af3-ppi-v1",
+  "paper_identifier": "10.1101/2025.09.18.676967",
+  "paper_source_path": null,
+  "topology": "multiobjective_search",
+  "compile_device": "modal",
+  "total_elapsed_s": 0.012,
+  "stages": [
+    {
+      "stage": "methodology_fixture",
+      "elapsed_s": 0.0
+    },
+    {
+      "stage": "compile_proto_plan",
+      "elapsed_s": 0.0
+    },
+    {
+      "stage": "generate_program_sources",
+      "elapsed_s": 0.001
+    },
+    {
+      "stage": "finalize_collection",
+      "elapsed_s": 0.012
+    }
+  ],
+  "handoff_path": "proto_programs/generated/rfdiffusion3-af3-ppi"
+}

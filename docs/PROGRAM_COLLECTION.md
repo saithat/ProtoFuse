@@ -6,8 +6,20 @@ Phillip saves each reviewed collection at:
 proto_programs/generated/<collection_id>/
 ├── collection.json
 ├── design_001.py
-└── design_002.py
+├── design_002.py
+└── ...
 ```
+
+This tree shows the common current shape, not a requirement that a collection contain
+exactly two programs. The numeric suffix is an opaque ordinal used to give each program
+a stable filename and manifest ID; it does not identify a stage, version, or workload
+tier. In the existing two-program profiles, `design_001.py` is conventionally the full
+workload and `design_002.py` is conventionally the reduced smoke workload. Profiles with
+several full variants do not follow that shortcut. Read the generated module docstring and
+its `build_program()` tier selection rather than inferring semantics from the filename.
+
+Use **full**, not **real**, for the primary workload. A smoke program is still an ordinary,
+reviewed program; it is merely configured to run quickly enough for sanity checks.
 
 Every design exposes one synchronous `build_program()` and performs no execution,
 network access, or model loading during import. Phillip's `finalize_collection()` checks

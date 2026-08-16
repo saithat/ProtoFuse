@@ -1,0 +1,305 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Genome modelling and design across all domains of life with Evo 2",
+    "identifier": "10.1038/s41586-026-10176-5",
+    "source_path": null
+  },
+  "generators": [
+    {
+      "name": "Evo 2 autoregressive generation",
+      "description": "Propose 128-bp continuations from the retained regulatory sequence prompts with the 7B Evo 2 model.",
+      "parameters": {
+        "checkpoint": "evo2_7b",
+        "chunk_bp": 128,
+        "temperature": 1.0,
+        "top_k": 4
+      },
+      "evidence": [
+        {
+          "quote": "We sample 128-bp chunks from the Evo 2 7B model with temperature 1.0 and top-k 4.",
+          "section": "Regulatory sequence design methods"
+        }
+      ],
+      "output": "dna"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "Enformer chromatin pattern loss",
+      "description": "Compare normalized Enformer chromatin-accessibility output with the requested binary pattern and retain this model loss separately.",
+      "parameters": {
+        "context_bp": 196608,
+        "output_bp": 114688,
+        "output_resolution_bp": 128,
+        "paper_loss": "L1 sum",
+        "proto_loss": "mean absolute error proxy"
+      },
+      "evidence": [
+        {
+          "quote": "We define the Enformer objective as the L1 distance between the target pattern and the normalized Enformer prediction.",
+          "section": "Regulatory sequence design methods"
+        }
+      ],
+      "metric": "normalized_pattern_mae_proxy",
+      "direction": "minimize",
+      "weight": 0.5
+    },
+    {
+      "name": "Borzoi chromatin pattern loss",
+      "description": "Compare the target pattern with the lower-confidence-bound signal from the four-model Borzoi ensemble and retain this loss separately.",
+      "parameters": {
+        "input_bp": 524288,
+        "output_bp": 196608,
+        "output_resolution_bp": 32,
+        "ensemble_replicates": 4,
+        "ensemble_reduce": "mean_minus_standard_deviation",
+        "paper_loss": "L1 sum",
+        "proto_loss": "mean absolute error proxy"
+      },
+      "evidence": [
+        {
+          "quote": "We combine the four Borzoi model replicates using a lower confidence bound, computed as the mean minus the standard deviation.",
+          "section": "Regulatory sequence design methods"
+        }
+      ],
+      "metric": "normalized_pattern_mae_proxy",
+      "direction": "minimize",
+      "weight": 0.5
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "chunked beam search",
+      "description": "At each 128-bp iteration, score 42 chunks for each of two retained prompts using both predictive objectives, then retain the top two.",
+      "parameters": {
+        "chunk_bp": 128,
+        "proposals_per_retained_prompt": 42,
+        "retained_prompts": 2,
+        "paper_scalarization": "0.5 * (Enformer L1 + Borzoi L1)"
+      },
+      "evidence": [
+        {
+          "quote": "For the main design experiments, we use K = 42 sampled chunks per retained prompt and retain K-prime = 2 prompts after each iteration.",
+          "section": "Regulatory sequence design methods"
+        }
+      ],
+      "strategy": "beam_search",
+      "stopping_criteria": {
+        "designed_length_bp": 19968,
+        "beam_length_bp": 128,
+        "proposals_per_result": 42,
+        "num_results": 2
+      }
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "Evo 2",
+      "version_or_checkpoint": "7B",
+      "provider": "Arc Institute / NVIDIA",
+      "purpose": "Autoregressive proposal model",
+      "evidence": [
+        {
+          "quote": "We sample 128-bp chunks from the Evo 2 7B model with temperature 1.0 and top-k 4.",
+          "section": "Regulatory sequence design methods"
+        }
+      ]
+    },
+    {
+      "name": "Enformer",
+      "version_or_checkpoint": null,
+      "provider": "DeepMind",
+      "purpose": "Chromatin-accessibility pattern objective at 128-bp resolution",
+      "evidence": [
+        {
+          "quote": "Enformer takes a 196,608-bp input sequence and predicts 896 bins at 128-bp resolution.",
+          "section": "Regulatory sequence design methods"
+        }
+      ]
+    },
+    {
+      "name": "Borzoi",
+      "version_or_checkpoint": "four-model ensemble",
+      "provider": "Calico",
+      "purpose": "Chromatin-accessibility pattern objective at 32-bp resolution",
+      "evidence": [
+        {
+          "quote": "Borzoi takes a 524,288-bp input sequence and predicts 6,144 bins at 32-bp resolution.",
+          "section": "Regulatory sequence design methods"
+        }
+      ]
+    }
+  ],
+  "global_parameters": {
+    "workload": "evo2_regulatory_design",
+    "segment_length_bp": 19968,
+    "beam_length": 128,
+    "num_results": 2,
+    "proposals_per_result": 42,
+    "evo2_model_checkpoint": "evo2_7b",
+    "evo2_temperature": 1.0,
+    "evo2_top_k": 4,
+    "generation_seed": 0,
+    "evo2_prompt_reference": "mouse mm39 chrX:52,051,929-52,123,468; 40,960 bp immediately upstream used as prompt",
+    "evo2_prompt_sequence": "ACGT",
+    "right_context_sequence": "A",
+    "enformer_output_tracks": [11],
+    "borzoi_output_tracks": [741],
+    "paired_full_fused_seed_required": true,
+    "evaluation_seeds": [0, 1, 2, 3, 4]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "sample_chunks",
+        "operation": "Sample Evo 2 continuations for each retained prompt",
+        "inputs": ["retained_prompts"],
+        "outputs": ["candidate_chunks"],
+        "parameters": {"chunk_bp": 128, "temperature": 1.0, "top_k": 4},
+        "evidence": []
+      },
+      {
+        "id": "score_enformer",
+        "operation": "Compute normalized Enformer pattern loss",
+        "inputs": ["candidate_chunks", "target_pattern"],
+        "outputs": ["enformer_losses"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "score_borzoi",
+        "operation": "Compute normalized four-model Borzoi lower-confidence-bound pattern loss",
+        "inputs": ["candidate_chunks", "target_pattern"],
+        "outputs": ["borzoi_losses"],
+        "parameters": {"replicates": 4, "reduce": "mean_minus_standard_deviation"},
+        "evidence": []
+      },
+      {
+        "id": "retain_joint_best",
+        "operation": "Persist both losses and retain the two candidates with lowest equal-weight mean",
+        "inputs": ["enformer_losses", "borzoi_losses"],
+        "outputs": ["retained_prompts", "joint_objective_vectors"],
+        "parameters": {"weights": {"enformer": 0.5, "borzoi": 0.5}},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "sample_chunks", "target": "score_enformer", "artifact": "candidate_chunks"},
+      {"source": "sample_chunks", "target": "score_borzoi", "artifact": "candidate_chunks"},
+      {"source": "score_enformer", "target": "retain_joint_best", "artifact": "enformer_losses"},
+      {"source": "score_borzoi", "target": "retain_joint_best", "artifact": "borzoi_losses"},
+      {"source": "retain_joint_best", "target": "sample_chunks", "artifact": "retained_prompts"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "paper scalar objective",
+      "metric": "equal_weight_mean_model_loss",
+      "operator": "==",
+      "value": "0.5 * (f_enformer + f_borzoi)",
+      "unit": "normalized L1 loss",
+      "applies_to": "candidate ranking only; vector components remain stored",
+      "evidence": [
+        {
+          "quote": "The final objective is f(x) = 0.5(f_Enformer(x) + f_Borzoi(x)).",
+          "section": "Regulatory sequence design methods"
+        }
+      ]
+    },
+    {
+      "name": "reported design-success AUROC threshold",
+      "metric": "target_pattern_auroc",
+      "operator": ">",
+      "value": 0.95,
+      "unit": "AUROC",
+      "applies_to": "best computational regulatory designs",
+      "evidence": [
+        {
+          "quote": "Evo 2 is the first model to achieve an AUROC greater than 0.95 on this task.",
+          "section": "Regulatory design results"
+        }
+      ]
+    }
+  ],
+  "experimental_measurements": [
+    {
+      "name": "designed sequence length",
+      "value": 19968,
+      "unit": "bp",
+      "conditions": {"chunk_bp": 128, "iterations": 156},
+      "role": "input",
+      "evidence": [{"quote": "We design 19,968 bp of sequence in 128-bp increments.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "candidate chunks per iteration",
+      "value": 84,
+      "unit": "chunks",
+      "conditions": {"K": 42, "K_prime": 2},
+      "role": "input",
+      "evidence": [{"quote": "For the main design experiments, we use K = 42 sampled chunks per retained prompt and retain K-prime = 2 prompts after each iteration.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "derived Evo 2 chunk proposals per full design",
+      "value": 13104,
+      "unit": "chunk proposals",
+      "conditions": {"derivation": "156 iterations * 84 chunks", "paper_reported": false},
+      "role": "input",
+      "evidence": [{"quote": "We design 19,968 bp of sequence in 128-bp increments.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "derived Enformer evaluations per full design",
+      "value": 13104,
+      "unit": "model evaluations",
+      "conditions": {"one_per_chunk": true, "paper_reported": false},
+      "role": "input",
+      "evidence": [{"quote": "Each candidate is scored by Enformer and Borzoi.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "derived Borzoi replicate evaluations per full design",
+      "value": 52416,
+      "unit": "model-replicate evaluations",
+      "conditions": {"replicates_per_chunk": 4, "paper_reported": false},
+      "role": "input",
+      "evidence": [{"quote": "We use an ensemble of four Borzoi model replicates.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "Morse-pattern experimental AUROC range",
+      "value": "0.92-0.95",
+      "unit": "AUROC",
+      "conditions": {"assay": "experimental regulatory designs", "patterns": "Morse-code"},
+      "role": "validation",
+      "evidence": [{"quote": "The Morse-code designs achieve experimental AUROCs ranging from 0.92 to 0.95.", "section": "Experimental validation"}]
+    },
+    {
+      "name": "simpler-pattern experimental AUROC",
+      "value": ">0.89",
+      "unit": "AUROC",
+      "conditions": {"assay": "experimental regulatory designs", "patterns": "long, medium, and short"},
+      "role": "validation",
+      "evidence": [{"quote": "All three simpler accessibility patterns achieve experimental AUROC above 0.89.", "section": "Experimental validation"}]
+    },
+    {
+      "name": "beam scaling configurations",
+      "value": "1,2,3,6,9,12,15,30,60",
+      "unit": "generated tokens per output bp",
+      "conditions": {"K_prime_1_K": [1, 2, 3, 6, 9, 12, 15], "K_prime_2_K": [15, 30]},
+      "role": "validation",
+      "evidence": [{"quote": "We evaluate generation budgets from 1 to 60 generated tokens per output base pair.", "section": "Regulatory sequence design scaling"}]
+    }
+  ],
+  "assumptions": [
+    "The two named constraint outputs form the joint surrogate target vector; their 0.5 weights reproduce the paper's ranking scalarization up to Proto's mean-versus-sum factor.",
+    "Proto's mean absolute error has the same candidate ordering as the paper L1 sum when the scored output length is fixed.",
+    "The smoke variant reduces only the target length and proposal count; it is a wiring test and has no paper-comparable AUROC.",
+    "BeamSearchOptimizer seed 0 controls local proposal selection, but Evo2Generator itself exposes no seed parameter.",
+    "Every full-Proto versus fused-Proto comparison uses the same BeamSearchOptimizer seed; Evo 2 model-internal seed control remains explicitly false in both arms."
+  ],
+  "unknowns": [
+    "The paper does not disclose a model-generation random seed.",
+    "The exact 40,960-bp mm39 prompt sequence and downstream right-flank sequence are not embedded in the paper text; ACGT/A are explicit non-comparable placeholders.",
+    "The exact 129 ES-E14 Enformer and Borzoi track identifiers were not recovered; local mouse defaults [11] and [741] are implementation placeholders.",
+    "Proto scores mean absolute error while the paper reports an L1 sum; raw score magnitudes therefore require multiplication by the number of scored bins before direct comparison.",
+    "This fixture has not passed verbatim local-full-text paper review and must remain reviewed=false."
+  ]
+}

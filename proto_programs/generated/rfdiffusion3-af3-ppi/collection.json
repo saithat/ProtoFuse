@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "rfdiffusion3-af3-ppi",
+  "methodology_id": "rfdiffusion3-af3-ppi-v1",
+  "proto_version": "7aaca3698da21d8f2ef9a18d235d27f44be51bee",
+  "registry_version": "1",
+  "seed_policy": "paper generation seeds not reported; prototype fixes RFdiffusion3 and ProteinMPNN seed 0 and AlphaFold3 seed 0; paired full/fused arms must match",
+  "reviewed": false,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "a449cc766439c8d03fc385932c9bcb9cd33a1b05d3ba0b5e68ddd7403e4eafdf"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "1afb468bc3d698ca66da7e289654eb1d0b94b3b6009dc62c7fec2d9b3a831a47"
+    },
+    {
+      "program_id": "design-003",
+      "path": "design_003.py",
+      "entrypoint": "build_program",
+      "sha256": "128c52a881340704cc45f2c8f251c7c123debdee1660e506dd31c26565389cea"
+    },
+    {
+      "program_id": "design-004",
+      "path": "design_004.py",
+      "entrypoint": "build_program",
+      "sha256": "f6c7616fdaeb6bd1acd9e7548eeaba446049ff4a88786b14d371d25c29d7bde8"
+    },
+    {
+      "program_id": "design-005",
+      "path": "design_005.py",
+      "entrypoint": "build_program",
+      "sha256": "180b003113dba68251533b1ff0af40d7ac78a83268cc44e99f7288d8fab15e44"
+    },
+    {
+      "program_id": "design-006",
+      "path": "design_006.py",
+      "entrypoint": "build_program",
+      "sha256": "7bf1c289b8c29a4e4f73343944cf2df07ba615a9ece43ffbcd76b9dc309de7cf"
+    }
+  ]
+}

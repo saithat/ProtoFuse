@@ -29,6 +29,10 @@ data/models/*
 # Proto model/tool caches belong outside Git.
 .proto/
 
+# Local agent skill bundles and deployment logs are machine-specific tooling/output.
+.agents/
+logs/
+
 # Per-contributor local agent instructions stay out of the shared repo.
 AGENTS.local.md
 **/AGENTS.local.md

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal
 
 from proto_language.core import Program
+
+from protofuse.checkpoints import run_program
 
 ProgramRunDevice = Literal["modal"] | None
 
@@ -80,7 +83,7 @@ def _extract_scores(program: Program) -> tuple[float, float]:
 
 
 def run_pool_optimizer(
-    build_program: callable,
+    build_program: Callable[[], Program],
     *,
     config: PoolOptimizerConfig,
     target_gc: float = 50.0,
@@ -94,7 +97,7 @@ def run_pool_optimizer(
 
     for _ in range(config.n_pool):
         program = build_program()
-        program.run(device=run_device)
+        run_program(program, device=run_device)
         sequence = program.constructs[0].joined_sequences[0].sequence.upper()
         max_run = _max_homopolymer_run(sequence)
         homopolymer_ok = max_run < config.homopolymer_max

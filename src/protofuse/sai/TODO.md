@@ -34,11 +34,14 @@ Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashe
 
 - [x] Load and hash-check the `program_collection.py` handoff without importing it.
 - [ ] **`dnachisel-num1`:** import and profile `design_001.py` inside `run_dnachisel_num1(tier="full")`.
-- [ ] Import reviewed `build_program()` entry points in a controlled analyzer.
-- [ ] Derive canonical signatures from model/tool identity and version, configuration,
-      inputs, outputs, stochastic semantics, thresholds, and optimizer position.
-- [ ] Profile call count, latency, accelerator time, memory, failures, cost, and decision
-      contribution across many programs.
+- [x] Import reviewed `build_program()` entry points in a controlled analyzer.
+- [x] Derive canonical signatures from model/tool identity and version, configuration,
+      inputs, stochastic semantics, thresholds, weights, and optimizer position.
+- [x] Record and profile observed call count, proposal count, parent latency, failures, and
+      structure/logit outputs from append-only traces; unavailable accelerator, memory, and
+      cost measurements remain `null`.
+- [ ] Collect accelerator time, memory, cost, and decision-contribution measurements from
+      real model campaigns.
 - [ ] Rank recurring adjacent groups and apply exact caching/batching/shared intermediates
       before learned approximation.
 
@@ -46,10 +49,11 @@ Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashe
 
 - [ ] Jointly choose one expensive group and define all teacher inputs/outputs,
       applicability domain, thresholds, and asymmetric error costs.
-- [ ] Collect joint full-model traces and split by target, scaffold, sequence family, or
-      another leakage-resistant grouping.
-- [ ] Train a supervised multi-output baseline before considering fine-tuning or RL.
-- [ ] Calibrate ensemble disagreement plus prediction intervals or conformal scores.
+- [x] Implement append-only joint full-model tracing and leakage-resistant group splits.
+- [x] Implement a portable supervised multi-output ensemble baseline.
+- [x] Calibrate ensemble disagreement, support distance, and held-out absolute-error bounds.
+- [ ] Collect the real traces and approve the grouping and calibration thresholds for the
+      first scientific target.
 - [ ] Report selective risk versus coverage, false decisions, top-k recall, subgroup/OOD
       performance, full-model calls avoided, runtime, and cost.
 
@@ -58,9 +62,10 @@ Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashe
 - [x] Register versioned fusion bundles with compatibility matchers.
 - [x] Leave unmatched or failed program transformations unchanged.
 - [x] Route per input through a surrogate gate with deterministic fail-closed fallback.
-- [ ] Implement a real Proto step-signature matcher and transformation.
+- [x] Implement a real Proto step-signature matcher and transactional transformation.
 - [ ] Package the trained surrogate and gate as the first reviewed `FusionBundle`.
-- [ ] Preserve final full-model validation unless both explicitly change the policy.
+- [x] Preserve immediate final full-model validation; artifacts that request another policy
+      are rejected.
 
 Raw traces and calibration data stay under `data/analysis/`; weights stay under
 `data/models/`.

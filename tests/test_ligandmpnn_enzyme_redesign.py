@@ -1,9 +1,10 @@
+from proto_language.optimizer.mcmc_optimizer import MCMCOptimizer
+
 from protofuse.phillip.program_builders import (
     build_ligandmpnn_enzyme_redesign_program,
     load_fixture_spec,
     resolve_workload_params,
 )
-from proto_language.optimizer.mcmc_optimizer import MCMCOptimizer
 
 
 def test_ligandmpnn_fixture_is_valid() -> None:

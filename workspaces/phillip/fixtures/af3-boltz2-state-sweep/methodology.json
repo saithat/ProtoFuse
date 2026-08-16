@@ -1,0 +1,330 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Steering Conformational Sampling in Boltz-2 via Pair Representation Scaling",
+    "identifier": "10.64898/2026.01.23.701250",
+    "source_path": null
+  },
+  "generators": [
+    {
+      "name": "fixed sequence cross-model sweep",
+      "description": "Keep a protein sequence fixed and repeat AlphaFold3 and Boltz-2 structure prediction under five explicit implementation seeds.",
+      "parameters": {
+        "implementation_seeds": [0, 1, 2, 3, 4],
+        "diffusion_samples_per_seed": 10
+      },
+      "evidence": [
+        {
+          "quote": "Unless otherwise noted, we generate 50 models for each target using 5 independent random seeds and sample 10 structures per seed.",
+          "section": "Evaluation protocol"
+        }
+      ],
+      "output": "structure"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "AlphaFold3 dominant-state TM-score",
+      "description": "Minimize 1 minus AlphaFold3 TM-score to the dominant reference state as a model-specific surrogate objective.",
+      "parameters": {"structure_tool": "alphafold3", "reference_state": "dominant"},
+      "evidence": [
+        {
+          "quote": "We evaluate structural similarity using TM-score computed with US-align.",
+          "section": "Evaluation metrics"
+        }
+      ],
+      "metric": "one_minus_tm_score",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "AlphaFold3 alternative-state TM-score",
+      "description": "Minimize 1 minus AlphaFold3 TM-score to the alternative reference state as a distinct coverage objective.",
+      "parameters": {"structure_tool": "alphafold3", "reference_state": "alternative"},
+      "evidence": [
+        {
+          "quote": "For each target, we compute the maximum TM-score to each of the two reference conformations.",
+          "section": "Evaluation metrics"
+        }
+      ],
+      "metric": "one_minus_tm_score",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "Boltz-2 dominant-state TM-score",
+      "description": "Minimize 1 minus Boltz-2 TM-score to the dominant reference state.",
+      "parameters": {"structure_tool": "boltz2", "reference_state": "dominant"},
+      "evidence": [
+        {
+          "quote": "We evaluate structural similarity using TM-score computed with US-align.",
+          "section": "Evaluation metrics"
+        }
+      ],
+      "metric": "one_minus_tm_score",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "Boltz-2 alternative-state TM-score",
+      "description": "Minimize 1 minus Boltz-2 TM-score to the alternative reference state.",
+      "parameters": {"structure_tool": "boltz2", "reference_state": "alternative"},
+      "evidence": [
+        {
+          "quote": "We define dual-state coverage as achieving a maximum TM-score greater than 0.8 to both reference conformations.",
+          "section": "Evaluation metrics"
+        }
+      ],
+      "metric": "one_minus_tm_score",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep the benchmark sequence fixed across every model call and reference-state objective.",
+      "parameters": {"mutations": 0},
+      "evidence": [
+        {
+          "quote": "All methods receive the same input sequence and MSA for each target.",
+          "section": "Evaluation protocol"
+        }
+      ],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "rejection sampling state ensemble",
+      "description": "Collect repeated predictions without mutating the sequence, preserving four model-by-state objective components for joint surrogate experiments.",
+      "parameters": {"num_samples_per_seed": 10, "seed_count": 5},
+      "evidence": [
+        {
+          "quote": "Unless otherwise noted, we generate 50 models for each target using 5 independent random seeds and sample 10 structures per seed.",
+          "section": "Evaluation protocol"
+        }
+      ],
+      "strategy": "rejection_sampling",
+      "stopping_criteria": {"num_samples": 10, "num_results": 10, "seed_variants": 5}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "Boltz-2",
+      "version_or_checkpoint": null,
+      "provider": "MIT J-Clinic",
+      "purpose": "Primary conformational sampler and source of the pair-scaling intervention",
+      "evidence": [
+        {
+          "quote": "Boltz-sample scales the latent pair representation prior to the diffusion module.",
+          "section": "Method"
+        }
+      ]
+    },
+    {
+      "name": "AlphaFold3",
+      "version_or_checkpoint": "server",
+      "provider": "Google DeepMind",
+      "purpose": "Paper baseline and ProtoFuse cross-model diagnostic objective",
+      "evidence": [
+        {
+          "quote": "For AlphaFold3, we use the default server output of 5 models per target.",
+          "section": "Evaluation protocol"
+        }
+      ]
+    },
+    {
+      "name": "US-align",
+      "version_or_checkpoint": null,
+      "provider": "Zhang Lab",
+      "purpose": "TM-score computation against both experimental conformations",
+      "evidence": [
+        {
+          "quote": "We evaluate structural similarity using TM-score computed with US-align.",
+          "section": "Evaluation metrics"
+        }
+      ]
+    }
+  ],
+  "global_parameters": {
+    "workload": "af3_boltz2_state_sweep",
+    "target_name": "adenylate_kinase_cross_model_diagnostic",
+    "target_chain_id": "A",
+    "dominant_state_pdb": "4AKE",
+    "alternative_state_pdb": "1AKE",
+    "protein_sequence": "",
+    "num_samples": 10,
+    "num_results": 10,
+    "subsample_msa": false,
+    "max_msa_seqs": 512,
+    "diffusion_samples": 1,
+    "step_scale": 1.5,
+    "recycling_steps": 3,
+    "af3_seed": 0,
+    "af3_num_diffusion_samples": 1,
+    "paired_full_fused_seed_required": true,
+    "evaluation_seeds": [0, 1, 2, 3, 4]
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "enumerate_seed",
+        "operation": "Enumerate five implementation seeds and ten draws per seed",
+        "inputs": ["fixed_sequence"],
+        "outputs": ["seeded_draws"],
+        "parameters": {"seeds": [0, 1, 2, 3, 4], "draws_per_seed": 10},
+        "evidence": []
+      },
+      {
+        "id": "predict_af3",
+        "operation": "AlphaFold3 structure prediction",
+        "inputs": ["seeded_draws"],
+        "outputs": ["af3_structures"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "predict_boltz2",
+        "operation": "Boltz-2 structure prediction",
+        "inputs": ["seeded_draws"],
+        "outputs": ["boltz2_structures"],
+        "parameters": {"pair_scaling_beta": "unavailable"},
+        "evidence": []
+      },
+      {
+        "id": "score_both_states",
+        "operation": "Score each model output against both reference states",
+        "inputs": ["af3_structures", "boltz2_structures", "dominant_reference", "alternative_reference"],
+        "outputs": ["four_component_objective_vectors"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "evaluate_ensemble",
+        "operation": "Compute best-minimum TM-score, dual-state coverage, and fill ratio offline",
+        "inputs": ["four_component_objective_vectors"],
+        "outputs": ["paper_comparable_metrics"],
+        "parameters": {"dual_state_threshold": 0.8, "fill_ratio_bins": 100},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "enumerate_seed", "target": "predict_af3", "artifact": "seeded_draws"},
+      {"source": "enumerate_seed", "target": "predict_boltz2", "artifact": "seeded_draws"},
+      {"source": "predict_af3", "target": "score_both_states", "artifact": "af3_structures"},
+      {"source": "predict_boltz2", "target": "score_both_states", "artifact": "boltz2_structures"},
+      {"source": "score_both_states", "target": "evaluate_ensemble", "artifact": "four_component_objective_vectors"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "dual-state coverage",
+      "metric": "maximum_tm_score_to_each_reference",
+      "operator": ">",
+      "value": 0.8,
+      "unit": "TM-score",
+      "applies_to": "both reference conformations",
+      "evidence": [
+        {
+          "quote": "We define dual-state coverage as achieving a maximum TM-score greater than 0.8 to both reference conformations.",
+          "section": "Evaluation metrics"
+        }
+      ]
+    },
+    {
+      "name": "meaningful best-minimum improvement",
+      "metric": "best_minimum_tm_score_delta",
+      "operator": ">=",
+      "value": 0.05,
+      "unit": "TM-score",
+      "applies_to": "Boltz-sample versus vanilla Boltz-2",
+      "evidence": [
+        {
+          "quote": "18 targets (31%) improve by at least 0.05 in best-minimum TM-score, while only one target (1.7%) decreases by this amount.",
+          "section": "Sequence-only results"
+        }
+      ]
+    }
+  ],
+  "experimental_measurements": [
+    {
+      "name": "vanilla Boltz-2 budget",
+      "value": 50,
+      "unit": "models per target",
+      "conditions": {"method": "vanilla", "seeds": 5, "samples_per_seed": 10},
+      "role": "input",
+      "evidence": [{"quote": "Unless otherwise noted, we generate 50 models for each target using 5 independent random seeds and sample 10 structures per seed.", "section": "Evaluation protocol"}]
+    },
+    {
+      "name": "Boltz-sample uniform budget",
+      "value": 500,
+      "unit": "models per target",
+      "conditions": {"beta_values": [-0.75, -0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6, 0.75]},
+      "role": "input",
+      "evidence": [{"quote": "Boltz-sample (uniform) uses 500 models per target.", "section": "Evaluation protocol, Table 3"}]
+    },
+    {
+      "name": "Boltz-sample Laplacian budget",
+      "value": 500,
+      "unit": "models per target",
+      "conditions": {"beta_values": [-0.75, -0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6, 0.75]},
+      "role": "input",
+      "evidence": [{"quote": "Boltz-sample (Laplacian) uses 500 models per target.", "section": "Evaluation protocol, Table 3"}]
+    },
+    {
+      "name": "AlphaFold3 server budget",
+      "value": 5,
+      "unit": "models per target",
+      "conditions": {"server": "default output"},
+      "role": "input",
+      "evidence": [{"quote": "For AlphaFold3, we use the default server output of 5 models per target.", "section": "Evaluation protocol"}]
+    },
+    {
+      "name": "targets improved by at least 0.05",
+      "value": 18,
+      "unit": "targets (31%)",
+      "conditions": {"metric": "best-minimum TM-score", "comparison": "Boltz-sample versus vanilla"},
+      "role": "validation",
+      "evidence": [{"quote": "18 targets (31%) improve by at least 0.05 in best-minimum TM-score, while only one target (1.7%) decreases by this amount.", "section": "Sequence-only results"}]
+    },
+    {
+      "name": "MFSD2A best-minimum TM-score vanilla",
+      "value": 0.58,
+      "unit": "TM-score",
+      "conditions": {"target": "MFSD2A", "method": "vanilla"},
+      "role": "validation",
+      "evidence": [{"quote": "For MFSD2A, best-minimum TM-score improves from 0.58 to 0.79.", "section": "Sequence-only results"}]
+    },
+    {
+      "name": "MFSD2A best-minimum TM-score Boltz-sample",
+      "value": 0.79,
+      "unit": "TM-score",
+      "conditions": {"target": "MFSD2A", "method": "Boltz-sample", "delta": 0.21},
+      "role": "validation",
+      "evidence": [{"quote": "For MFSD2A, best-minimum TM-score improves from 0.58 to 0.79.", "section": "Sequence-only results"}]
+    },
+    {
+      "name": "fill ratio bins",
+      "value": 100,
+      "unit": "bins",
+      "conditions": {"projection": "line between reference states", "weighting": "symmetric parabolic endpoint"},
+      "role": "objective",
+      "evidence": [{"quote": "We divide the line segment between the two reference states into 100 equal-width bins.", "section": "Fill-ratio metric"}]
+    }
+  ],
+  "assumptions": [
+    "The ProtoFuse Program is a deliberate cross-model extension: the paper's AlphaFold3 server result is a baseline, not part of a joint optimizer.",
+    "The Program emits 1-TM-score constraints; raw TM-score needed by paper endpoints is recovered as 1 minus the stored score.",
+    "Implementation seeds 0 through 4 reproduce the paper's seed count but are not claimed to be the paper's undisclosed seed values.",
+    "Adenylate kinase 4AKE/1AKE is a buildable diagnostic pair, not one of the paper's reported aggregate targets.",
+    "Every full-Proto versus fused-Proto comparison uses the same seed-specific Program variant in both arms."
+  ],
+  "unknowns": [
+    "proto-tools does not expose Boltz-2 pair-representation scaling beta, so the defining Boltz-sample intervention cannot yet be encoded.",
+    "The exact five random seed values are not reported.",
+    "Best-minimum TM-score, dual-state coverage, and fill ratio require ensemble-level offline aggregation beyond individual constraint calls.",
+    "The ProtoFuse diagnostic must not be compared numerically with the paper aggregates until a paper target and beta scaling are wired.",
+    "This fixture has not passed verbatim local-full-text paper review and must remain reviewed=false."
+  ]
+}

@@ -1785,6 +1785,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "modal" },
+    { name = "numpy" },
     { name = "proto-language" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -1803,6 +1804,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.119.0,<1" },
     { name = "modal", specifier = ">=1.5.2,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.17,<2" },
+    { name = "numpy", specifier = ">=2,<3" },
     { name = "proto-language", git = "https://github.com/evo-design/proto-language.git?rev=edf64afbcf84cc7c5e4e1404418c8ef1f16c34ce" },
     { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4,<9" },

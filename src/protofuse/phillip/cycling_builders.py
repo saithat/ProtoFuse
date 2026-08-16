@@ -11,6 +11,7 @@ from proto_language.generator import (
     RFdiffusionMPNNBinderGeneratorConfig,
 )
 from proto_tools import Chain, Complex, InverseFoldingStructureInput, Structure, predict_structures
+from proto_tools.entities.structures.selection import ChainSelection, ResidueSelection
 
 
 def _binder_chain_id(structure: Structure, target_chains: list[str]) -> str:
@@ -36,8 +37,8 @@ def _inverse_folding_input_from_complex(
     binder_chain = _binder_chain_id(structure, target_chains)
     return InverseFoldingStructureInput(
         structure=structure,
-        chains_to_redesign=[binder_chain],
-        fixed_positions=_fixed_target_positions(structure, target_chains),
+        chains_to_redesign=ChainSelection(chains=[binder_chain]),
+        fixed_positions=ResidueSelection(chains=_fixed_target_positions(structure, target_chains)),
     )
 
 
@@ -88,13 +89,17 @@ def make_rfdiffusion_boltz_cycling_conditioning_fn(
                     Chain(sequence=target_sequence, entity_type="protein"),
                 ]
             )
-            folded = predict_structures([complex_input], structure_tool, {"use_msa": False}).structures[0]
+            folded = predict_structures(
+                [complex_input], structure_tool, {"use_msa": False}
+            ).structures[0]
             sequence.structure = folded
             outputs.append(
                 InverseFoldingStructureInput(
                     structure=folded,
-                    chains_to_redesign=["A"],
-                    fixed_positions={"B": list(range(1, len(target_sequence) + 1))},
+                    chains_to_redesign=ChainSelection(chains=["A"]),
+                    fixed_positions=ResidueSelection(
+                        chains={"B": list(range(1, len(target_sequence) + 1))}
+                    ),
                 )
             )
         return outputs

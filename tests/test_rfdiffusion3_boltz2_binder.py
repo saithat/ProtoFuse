@@ -1,9 +1,10 @@
+from proto_language.optimizer.cycling_optimizer import CyclingOptimizer
+
 from protofuse.phillip.program_builders import (
     build_rfdiffusion3_boltz2_binder_program,
     load_fixture_spec,
     resolve_workload_params,
 )
-from proto_language.optimizer.cycling_optimizer import CyclingOptimizer
 
 
 def test_rfdiffusion3_fixture_is_valid() -> None:

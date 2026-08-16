@@ -83,9 +83,15 @@ _REFERENCE_KMERS: dict[tuple[int, int, int], set[str]] = {}
 
 
 class SlidingWindowGCConfig(BaseConfig):
-    min_gc: float = ConfigField(ge=0, le=100, title="Min GC", description="Minimum GC percent per window")
-    max_gc: float = ConfigField(ge=0, le=100, title="Max GC", description="Maximum GC percent per window")
-    window_bp: int = ConfigField(ge=1, title="Window size (bp)", description="Sliding window length in bp")
+    min_gc: float = ConfigField(
+        ge=0, le=100, title="Min GC", description="Minimum GC percent per window"
+    )
+    max_gc: float = ConfigField(
+        ge=0, le=100, title="Max GC", description="Maximum GC percent per window"
+    )
+    window_bp: int = ConfigField(
+        ge=1, title="Window size (bp)", description="Sliding window length in bp"
+    )
 
 
 class PatternAvoidanceConfig(BaseConfig):
@@ -99,7 +105,9 @@ class PatternAvoidanceConfig(BaseConfig):
 
 
 class KmerUniquenessConfig(BaseConfig):
-    k: int = ConfigField(ge=2, le=8, title="K-mer length", description="K-mer length for uniqueness scan")
+    k: int = ConfigField(
+        ge=2, le=8, title="K-mer length", description="K-mer length for uniqueness scan"
+    )
     max_frequency: float = ConfigField(
         default=0.02,
         ge=0.0,
@@ -296,7 +304,8 @@ def kmer_uniqueness_constraint(
         else:
             score = min(
                 1.0,
-                (worst_frequency - config.max_frequency) / max(config.max_frequency, _FRACTIONAL_EPSILON),
+                (worst_frequency - config.max_frequency)
+                / max(config.max_frequency, _FRACTIONAL_EPSILON),
             )
         results.append(
             ConstraintOutput(
@@ -333,7 +342,9 @@ def codon_usage_constraint(
         seq_str = seq.sequence.upper()
         codon_count = len(seq_str) // 3
         if codon_count == 0:
-            results.append(ConstraintOutput(score=MAX_ENERGY, metadata={"mean_relative_usage": 0.0}))
+            results.append(
+                ConstraintOutput(score=MAX_ENERGY, metadata={"mean_relative_usage": 0.0})
+            )
             continue
 
         relative_scores: list[float] = []

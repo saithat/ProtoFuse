@@ -116,7 +116,7 @@ def _paperclip_ingest(doi: str, *, preprint_doi: str | None = None) -> str | Non
 
 def _http_fetch_text(url: str) -> str:
     with urlopen(url, timeout=60) as response:  # noqa: S310 -- trusted public preprint URL
-        raw = response.read()
+        raw: bytes = response.read()
     return raw.decode("utf-8", errors="replace")
 
 

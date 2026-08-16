@@ -21,12 +21,19 @@ from protofuse.phillip.dnachisel_constraints import (
     sliding_window_gc_constraint,
 )
 from protofuse.phillip.program_builders import (
+    build_af3_boltz2_state_sweep_program,
     build_antibody_cdr_maturation_program,
+    build_bioemu_ensemble_filter_program,
     build_boltz2_state_sweep_program,
     build_dnachisel_num1_program,
     build_esm2_protein_maturation_program,
+    build_evo2_regulatory_design_program,
     build_freebindcraft_binder_program,
+    build_gpcr_cxcr4_miniprotein_program,
+    build_ligandmpnn_enzyme_redesign_program,
     build_ppi_interface_specificity_program,
+    build_rfdiffusion3_af3_ppi_program,
+    build_rfdiffusion3_boltz2_binder_program,
     build_symmetric_oligomer_ring_program,
     load_fixture_spec,
     resolve_workload_params,
@@ -44,6 +51,25 @@ PREFLIGHT_MCMC_DEFAULTS: dict[str, Any] = {
     "max_temperature": 1.0,
     "mutations_per_step": 3,
 }
+
+DNA_PREFLIGHT_WORKLOADS = frozenset({"num1_gene", "custom_egfp_pool"})
+BUILD_ONLY_PREFLIGHT_WORKLOADS = frozenset(
+    {
+        "af3_boltz2_state_sweep",
+        "antibody_cdr_maturation",
+        "bioemu_ensemble_filter",
+        "boltz2_state_sweep",
+        "esm2_protein_maturation",
+        "evo2_regulatory_design",
+        "freebindcraft_binder",
+        "gpcr_cxcr4_binder",
+        "ligandmpnn_enzyme_redesign",
+        "ppi_interface_specificity",
+        "rfdiffusion3_af3_ppi",
+        "rfdiffusion3_boltz2_binder",
+        "symmetric_oligomer_ring",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -80,7 +106,9 @@ class PreflightReport:
         ]
         for step in self.ladder_steps:
             status = "PASS" if step.passed else "FAIL"
-            lines.append(f"  {step.level}: {status} output={step.output_length} {step.detail}".rstrip())
+            lines.append(
+                f"  {step.level}: {status} output={step.output_length} {step.detail}".rstrip()
+            )
         return "\n".join(lines)
 
 
@@ -344,14 +372,7 @@ def run_preflight(
 
     spec = load_fixture_spec(fixture_id)
     workload = spec.global_parameters.get("workload")
-    if workload in {
-        "esm2_protein_maturation",
-        "antibody_cdr_maturation",
-        "freebindcraft_binder",
-        "symmetric_oligomer_ring",
-        "ppi_interface_specificity",
-        "boltz2_state_sweep",
-    }:
+    if workload in BUILD_ONLY_PREFLIGHT_WORKLOADS:
         params = resolve_workload_params(spec, tier="smoke")
         if workload == "esm2_protein_maturation":
             length = target_length or int(spec.global_parameters.get("segment_length_aa", 80))
@@ -368,6 +389,48 @@ def run_preflight(
             length = target_length or int(params["binder_length_aa"])
             program = build_freebindcraft_binder_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "gpcr_cxcr4_binder":
+            length = target_length or int(params["binder_length_aa"])
+            if target_length is not None:
+                params["binder_length_aa"] = target_length
+            program = build_gpcr_cxcr4_miniprotein_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "rfdiffusion3_boltz2_binder":
+            length = target_length or int(params["binder_length_aa"])
+            if target_length is not None:
+                params["binder_length_aa"] = target_length
+            program = build_rfdiffusion3_boltz2_binder_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "rfdiffusion3_af3_ppi":
+            targets = [dict(item) for item in params["benchmark_targets"]]
+            if target_length is not None:
+                targets[0]["prototype_binder_length_aa"] = target_length
+                params["benchmark_targets"] = targets
+            program = build_rfdiffusion3_af3_ppi_program(params, target_index=0)
+            built_length = program.constructs[0].segments[0].sequence_length
+            length = target_length or built_length
+        elif workload == "ligandmpnn_enzyme_redesign":
+            program = build_ligandmpnn_enzyme_redesign_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+            length = target_length or built_length
+        elif workload == "bioemu_ensemble_filter":
+            program = build_bioemu_ensemble_filter_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+            length = target_length or built_length
+        elif workload == "af3_boltz2_state_sweep":
+            program = build_af3_boltz2_state_sweep_program(params, seed=0)
+            built_length = program.constructs[0].segments[0].sequence_length
+            length = target_length or built_length
+        elif workload == "evo2_regulatory_design":
+            if target_length is not None:
+                params["segment_length_bp"] = target_length
+            program = build_evo2_regulatory_design_program(
+                params,
+                morse_pattern=". ...- --- ..---",
+                dot_bp=384,
+            )
+            built_length = program.constructs[0].segments[1].sequence_length
+            length = target_length or built_length
         elif workload == "symmetric_oligomer_ring":
             length = target_length or int(params["segment_length_aa"])
             program = build_symmetric_oligomer_ring_program(params)
@@ -398,6 +461,9 @@ def run_preflight(
             mcmc_accepted_any=False,
             filter_pass_samples=0,
         )
+
+    if workload not in DNA_PREFLIGHT_WORKLOADS:
+        raise ValueError(f"preflight not implemented for workload={workload!r}")
 
     length = target_length or int(spec.global_parameters.get("segment_length_bp", 100))
     filter_rate = estimate_filter_pass_rate(length, n=filter_samples)

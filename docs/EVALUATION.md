@@ -22,12 +22,14 @@ As of 2026-08-15:
 
 ## Durable proposal trace
 
-The execution layer now writes a crash-safe operational checkpoint after every completed
-MCMC step, cycling round, or rejection-sampling proposal batch. It also appends a summary row with
-the completed-unit index, energy vector, and result-sequence hashes. This is sufficient to
-resume paid model work and audit which units completed, but it is **not yet the eval-grade
-teacher trace described below**: raw parent outputs, objective-level values, surrogate
-predictions, routing decisions, and latency/cost fields are still missing.
+The execution layer writes a crash-safe operational checkpoint after every completed MCMC
+step, cycling round, or rejection-sampling proposal batch. Separately, `protofuse trace`
+instruments a reviewed program and appends proposal-level parent objective outputs, input and
+program hashes, callable/config identity, latency, errors, and available structure/logit flags.
+`protofuse fusion profile` aggregates calls once per batch so latency is not multiplied by the
+proposal count. Raw campaign traces have not yet been collected for a reviewed fusion, and
+accelerator time, memory, retries, cache status, and cost stay `null` until an execution backend
+reports them.
 
 Store one row per proposal under the ignored analysis data area. A row must contain:
 
@@ -42,9 +44,11 @@ Store one row per proposal under the ignored analysis data area. A row must cont
 - accelerator time, peak memory, retry count, cache status, and cost when available;
 - final parent validation and any execution error.
 
-The trace writer should be append-only and crash-tolerant. Store large/raw records and
-teacher traces outside Git as required by repository policy. Commit only aggregate reports,
-schemas, and small test fixtures with no sensitive or licensed content.
+The implemented trace writer is append-only, flushes each batch, and calls `fsync` before
+returning. Store large/raw records and teacher traces outside Git as required by repository
+policy. Commit only aggregate reports, schemas, and small test fixtures with no sensitive or
+licensed content. Surrogate predictions and routes are currently reported by paired evaluation;
+they must be joined into the durable campaign trace before the first artifact is approved.
 
 ## Split policy
 

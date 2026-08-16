@@ -29,8 +29,12 @@ src/protofuse/
 │   ├── generator.py        # finalize generated Proto collections
 │   └── pipeline.py         # paper -> Proto end to end
 └── sai/
-    ├── registry.py         # registered compatible fusions
-    ├── optimizer.py        # program-level matching/transformation
+    ├── analyzer.py         # controlled reviewed-program loading
+    ├── signatures.py       # exact Proto component signatures
+    ├── tracing.py          # append-only parent-output traces
+    ├── training.py         # grouped multi-output baseline and calibration
+    ├── artifacts.py        # safe JSON model manifests and discovery
+    ├── transform.py        # transactional replacement plus parent validation
     └── router.py           # uncertainty/OOD gate and full-model fallback
 
 proto_programs/generated/   # frozen program collections Phillip gives Sai
@@ -54,6 +58,23 @@ results = program.run()
 Until Sai registers a compatible `FusionBundle`, `optimize()` returns the original
 program unchanged. A registered bundle installs a `SelectiveRouter` that uses its
 surrogate only when the calibrated gate accepts the individual input.
+
+The implementation workflow is available from the CLI:
+
+```bash
+protofuse analyze proto_programs/generated/<collection> <program-id>
+protofuse trace proto_programs/generated/<collection> <program-id> \
+  --out data/analysis/<collection>/teacher.jsonl --run-id <run> --group-id <split-group>
+protofuse fusion profile --trace data/analysis/<collection>/teacher.jsonl
+protofuse fusion train proto_programs/generated/<collection> <program-id> \
+  --trace data/analysis/<collection>/teacher.jsonl --optimizer-index 0 \
+  --constraint <objective-a> --constraint <objective-b> \
+  --fusion-id <id> --version 1 --out data/models/<id>
+```
+
+Training deliberately writes `reviewed=false`. A generated model is not auto-registered
+until its scientific interpretation, calibration thresholds, and paired evaluation have
+been reviewed and that status is explicitly changed in its manifest.
 
 ## Setup
 
@@ -89,7 +110,9 @@ normalized aggregate JSON. See [reports/README.md](reports/README.md).
 
 ## Current state
 
-Paper extraction and planning, collection manifest generation/hash validation, fusion
-registration, automatic no-op fallback, and per-input fail-closed routing are implemented.
-Phillip's Proto source generator and Sai's real program analyzer, trained surrogate, and
-calibrated fusion bundle remain to be built.
+Paper extraction and planning, Proto source generation, collection validation, controlled
+analysis, exact matching, tracing/profiling, grouped baseline training, safe artifact loading,
+transactional transformation, per-input fallback, and final parent validation are implemented.
+No repository model is currently marked as a reviewed fusion: collecting real teacher traces,
+choosing scientific error thresholds, running paired full-versus-fused evaluation, and approving
+the first artifact remain experiment/review work rather than missing application code.
