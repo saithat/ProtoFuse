@@ -204,6 +204,48 @@ def test_verify_quotes_remote_keeps_confirmed_quotes_when_later_searches_fail() 
     assert all(check.error is None for check in checks if check.found)
 
 
+def test_declared_full_text_doi_is_searched_instead_of_local_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fixture citing a condensed paper is checked against its declared full text."""
+
+    spec = load_fixture_spec("gpcr-cxcr4-miniprotein")
+    assert spec.paper.full_text_identifier == "10.1101/2025.03.23.644666"
+    searched: list[str] = []
+
+    def document_path(doi: str) -> str:
+        searched.append(doi)
+        return "/papers/preprint"
+
+    monkeypatch.setattr(paper_review_module, "fetch_paper_record", lambda *a, **k: None)
+    monkeypatch.setattr(paper_review_module, "paperclip_document_path", document_path)
+    monkeypatch.setattr(paper_review_module, "paperclip_grep", _fake_grep({1: "nothing here"}))
+
+    review = build_paper_review("gpcr-cxcr4-miniprotein")
+
+    assert searched == ["10.1101/2025.03.23.644666"]
+    assert review.quote_source == "paperclip:/papers/preprint"
+    assert review.full_text_path is None
+    assert any("rather than the cited" in note for note in review.notes)
+
+
+def test_explicit_text_override_beats_declared_full_text(tmp_path: Path) -> None:
+    spec = load_fixture_spec("gpcr-cxcr4-miniprotein")
+    quotes = [
+        evidence.quote
+        for group in (spec.generators, spec.constraints, spec.optimizers)
+        for item in group
+        for evidence in item.evidence
+    ]
+    source = tmp_path / "methods.txt"
+    source.write_text(" ".join(quotes))
+
+    review = build_paper_review("gpcr-cxcr4-miniprotein", offline=True, text_path=source)
+
+    assert review.quote_source == f"local:{source}"
+    assert all(check.found for check in review.quote_checks)
+
+
 def test_review_advises_authentication_when_paperclip_has_no_document(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

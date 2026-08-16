@@ -438,8 +438,16 @@ def build_paper_review(
         else:
             review.notes.append(f"{identifier!r} did not resolve in the Crossref registry")
 
-    if search_doi:
-        return _verify_against_paperclip(review, spec, identifier=search_doi, offline=offline)
+    # An explicit override wins; otherwise a declared full-text DOI outranks local text,
+    # which for these fixtures is often the condensed published version.
+    full_text_doi = search_doi or (None if text_path else spec.paper.full_text_identifier)
+    if full_text_doi:
+        if full_text_doi != identifier:
+            review.notes.append(
+                f"quotes checked against {full_text_doi!r}, the full text declared for this "
+                f"methodology, rather than the cited {identifier!r}"
+            )
+        return _verify_against_paperclip(review, spec, identifier=full_text_doi, offline=offline)
 
     local = local_paper_text(spec, text_path=text_path)
     if local is None:

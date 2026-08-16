@@ -30,6 +30,13 @@ class PaperRef(ContractModel):
         default=None, description="DOI, PMID, arXiv identifier, or Paperclip path"
     )
     source_path: str | None = None
+    full_text_identifier: str | None = Field(
+        default=None,
+        description=(
+            "DOI whose full text carries the quoted methods, when that is not the cited "
+            "publication — typically a preprint, whose Methods survive journal condensing"
+        ),
+    )
 
 
 class ComponentSpec(ContractModel):

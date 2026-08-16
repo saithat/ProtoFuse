@@ -3,7 +3,8 @@
   "paper": {
     "title": "De novo design of miniproteins targeting GPCRs",
     "identifier": "10.1038/s41586-026-10656-8",
-    "source_path": "data/papers/gpcr-miniprotein.txt"
+    "source_path": "data/papers/gpcr-miniprotein.txt",
+    "full_text_identifier": "10.1101/2025.03.23.644666"
   },
   "generators": [
     {
