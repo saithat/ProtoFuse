@@ -8,14 +8,9 @@ from pathlib import Path
 
 from protofuse.phillip import compile_proto_plan, recommend_topologies
 from protofuse.phillip.contracts import MethodologySpec
+from protofuse.phillip.handoff_config import HANDOFF_CONFIGS
 
-FIXTURE_CHOICES = (
-    "dnachisel-num1",
-    "custom-egfp-lung",
-    "esm2-protein-maturation",
-    "antibody-cdr-maturation",
-    "gpcr-cxcr4-miniprotein",
-)
+FIXTURE_CHOICES = tuple(sorted(HANDOFF_CONFIGS))
 
 
 def _load(path: Path) -> MethodologySpec:
@@ -175,6 +170,18 @@ def main() -> None:
             start = perf_counter()
             program.run()
             wall_ms = (perf_counter() - start) * 1000
+        elif args.fixture == "freebindcraft-binder":
+            from protofuse.phillip.program_builders import run_freebindcraft_binder
+
+            program, wall_ms = run_freebindcraft_binder(tier=args.tier)
+        elif args.fixture == "symmetric-oligomer-ring":
+            from protofuse.phillip.program_builders import run_symmetric_oligomer_ring
+
+            program, wall_ms = run_symmetric_oligomer_ring(tier=args.tier)
+        elif args.fixture == "ppi-interface-specificity":
+            from protofuse.phillip.program_builders import run_ppi_interface_specificity
+
+            program, wall_ms = run_ppi_interface_specificity(tier=args.tier)
         else:
             raise SystemExit(f"run not implemented for fixture={args.fixture}")
         sequence = program.constructs[0].joined_sequences[0].sequence

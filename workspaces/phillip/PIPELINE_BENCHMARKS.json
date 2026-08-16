@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
-  "recorded_at": "2026-08-15T23:56:22.017920+00:00",
+  "recorded_at": "2026-08-16T00:03:26.989657+00:00",
   "environment": {
     "host": "mac",
     "platform": "macOS-15.7.5-arm64-arm-64bit",
-    "proto_version": "109e7e4bc6647f7884d94b08f8c0951c2e4af6c2",
+    "proto_version": "dec375b04fa26b1c809b248f1a6af2767da32293",
     "modal_profile": "configured"
   },
   "runs": [
@@ -15,7 +15,7 @@
       "kind": "preflight",
       "command": "uv run protofuse preflight dnachisel-num1 --length 2808",
       "status": "ok",
-      "wall_ms": 7559.486,
+      "wall_ms": 6647.033,
       "output_summary": {
         "classification": "ok"
       },
@@ -29,7 +29,7 @@
       "kind": "preflight",
       "command": "uv run protofuse preflight dnachisel-num1 --length 936 --strict",
       "status": "ok",
-      "wall_ms": 631.388,
+      "wall_ms": 579.955,
       "output_summary": {
         "classification": "ok"
       },
@@ -43,10 +43,10 @@
       "kind": "execute",
       "command": "uv run protofuse run dnachisel-num1 --tier smoke",
       "status": "ok",
-      "wall_ms": 24.919,
+      "wall_ms": 23.857,
       "output_summary": {
         "tier": "smoke",
-        "wall_ms": 24.418,
+        "wall_ms": 23.369,
         "output_length_bp": 100
       },
       "error": null,
@@ -59,7 +59,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/dnachisel-num1/methodology.json --registry dnachisel-num1 --device local",
       "status": "ok",
-      "wall_ms": 0.277,
+      "wall_ms": 0.276,
       "output_summary": {
         "fixture": "dnachisel-num1",
         "device": "local",
@@ -77,7 +77,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/dnachisel-num1/methodology.json --registry dnachisel-num1 --device modal",
       "status": "ok",
-      "wall_ms": 0.123,
+      "wall_ms": 0.136,
       "output_summary": {
         "fixture": "dnachisel-num1",
         "device": "modal",
@@ -95,10 +95,10 @@
       "kind": "execute",
       "command": "uv run protofuse run custom-egfp-lung --tier smoke",
       "status": "ok",
-      "wall_ms": 468.234,
+      "wall_ms": 489.375,
       "output_summary": {
         "tier": "smoke",
-        "wall_ms": 466.251,
+        "wall_ms": 488.063,
         "output_length_bp": 720
       },
       "error": null,
@@ -123,7 +123,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/custom-egfp-lung/methodology.json --registry custom-egfp --device local",
       "status": "ok",
-      "wall_ms": 0.262,
+      "wall_ms": 0.379,
       "output_summary": {
         "fixture": "custom-egfp-lung",
         "device": "local",
@@ -141,7 +141,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/custom-egfp-lung/methodology.json --registry custom-egfp --device modal",
       "status": "ok",
-      "wall_ms": 0.119,
+      "wall_ms": 0.247,
       "output_summary": {
         "fixture": "custom-egfp-lung",
         "device": "modal",
@@ -159,7 +159,7 @@
       "kind": "preflight",
       "command": "uv run protofuse preflight esm2-protein-maturation --length 80",
       "status": "ok",
-      "wall_ms": 1.391,
+      "wall_ms": 0.963,
       "output_summary": {
         "classification": "ok"
       },
@@ -173,9 +173,9 @@
       "kind": "handoff_generate",
       "command": "uv run python scripts/run_handoff_pipeline.py esm2-protein-maturation",
       "status": "ok",
-      "wall_ms": 31.652,
+      "wall_ms": 23.914,
       "output_summary": {
-        "total_elapsed_s": 0.031,
+        "total_elapsed_s": 0.024,
         "topology": "multiobjective_search",
         "handoff_path": "proto_programs/generated/esm2-protein-maturation"
       },
@@ -189,7 +189,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/esm2-protein-maturation/methodology.json --registry esm2-protein-maturation --device local",
       "status": "ok",
-      "wall_ms": 0.185,
+      "wall_ms": 0.199,
       "output_summary": {
         "fixture": "esm2-protein-maturation",
         "device": "local",
@@ -207,7 +207,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/esm2-protein-maturation/methodology.json --registry esm2-protein-maturation --device modal",
       "status": "ok",
-      "wall_ms": 0.113,
+      "wall_ms": 0.107,
       "output_summary": {
         "fixture": "esm2-protein-maturation",
         "device": "modal",
@@ -237,7 +237,7 @@
       "kind": "preflight",
       "command": "uv run protofuse preflight antibody-cdr-maturation --length 121",
       "status": "ok",
-      "wall_ms": 0.74,
+      "wall_ms": 0.902,
       "output_summary": {
         "classification": "ok"
       },
@@ -251,9 +251,9 @@
       "kind": "handoff_generate",
       "command": "uv run python scripts/run_handoff_pipeline.py antibody-cdr-maturation",
       "status": "ok",
-      "wall_ms": 24.928,
+      "wall_ms": 22.548,
       "output_summary": {
-        "total_elapsed_s": 0.025,
+        "total_elapsed_s": 0.022,
         "topology": "multiobjective_search",
         "handoff_path": "proto_programs/generated/antibody-cdr-maturation"
       },
@@ -267,7 +267,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/antibody-cdr-maturation/methodology.json --registry antibody-cdr-maturation --device local",
       "status": "ok",
-      "wall_ms": 0.188,
+      "wall_ms": 0.235,
       "output_summary": {
         "fixture": "antibody-cdr-maturation",
         "device": "local",
@@ -285,7 +285,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/antibody-cdr-maturation/methodology.json --registry antibody-cdr-maturation --device modal",
       "status": "ok",
-      "wall_ms": 0.109,
+      "wall_ms": 0.115,
       "output_summary": {
         "fixture": "antibody-cdr-maturation",
         "device": "modal",
@@ -309,15 +309,249 @@
       "notes": "--skip-modal-exec"
     },
     {
+      "run_id": "preflight_smoke",
+      "pipeline": "freebindcraft-binder",
+      "device": "local",
+      "kind": "preflight",
+      "command": "uv run protofuse preflight freebindcraft-binder --length 50",
+      "status": "ok",
+      "wall_ms": 919.266,
+      "output_summary": {
+        "classification": "ok"
+      },
+      "error": null,
+      "notes": "50 aa smoke binder; build-only L0"
+    },
+    {
+      "run_id": "handoff_pipeline",
+      "pipeline": "freebindcraft-binder",
+      "device": "local",
+      "kind": "handoff_generate",
+      "command": "uv run python scripts/run_handoff_pipeline.py freebindcraft-binder",
+      "status": "ok",
+      "wall_ms": 64.921,
+      "output_summary": {
+        "total_elapsed_s": 0.065,
+        "topology": "multiobjective_search",
+        "handoff_path": "proto_programs/generated/freebindcraft-binder"
+      },
+      "error": null,
+      "notes": "compile \u2192 generate \u2192 finalize via run_handoff_pipeline"
+    },
+    {
+      "run_id": "compile_local",
+      "pipeline": "freebindcraft-binder",
+      "device": "local",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/freebindcraft-binder/methodology.json --registry freebindcraft-binder --device local",
+      "status": "ok",
+      "wall_ms": 0.229,
+      "output_summary": {
+        "fixture": "freebindcraft-binder",
+        "device": "local",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/freebindcraft-binder/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "compile_modal",
+      "pipeline": "freebindcraft-binder",
+      "device": "modal",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/freebindcraft-binder/methodology.json --registry freebindcraft-binder --device modal",
+      "status": "ok",
+      "wall_ms": 0.116,
+      "output_summary": {
+        "fixture": "freebindcraft-binder",
+        "device": "modal",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/freebindcraft-binder/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "execute_smoke",
+      "pipeline": "freebindcraft-binder",
+      "device": "modal",
+      "kind": "execute",
+      "command": "build_program().run() via design_002.py",
+      "status": "skipped",
+      "wall_ms": null,
+      "output_summary": {},
+      "error": null,
+      "notes": "--skip-modal-exec"
+    },
+    {
+      "run_id": "preflight_smoke",
+      "pipeline": "symmetric-oligomer-ring",
+      "device": "local",
+      "kind": "preflight",
+      "command": "uv run protofuse preflight symmetric-oligomer-ring --length 60",
+      "status": "ok",
+      "wall_ms": 1.639,
+      "output_summary": {
+        "classification": "ok"
+      },
+      "error": null,
+      "notes": "60 aa C3 monomer smoke; build-only L0"
+    },
+    {
+      "run_id": "handoff_pipeline",
+      "pipeline": "symmetric-oligomer-ring",
+      "device": "local",
+      "kind": "handoff_generate",
+      "command": "uv run python scripts/run_handoff_pipeline.py symmetric-oligomer-ring",
+      "status": "ok",
+      "wall_ms": 40.958,
+      "output_summary": {
+        "total_elapsed_s": 0.037,
+        "topology": "multiobjective_search",
+        "handoff_path": "proto_programs/generated/symmetric-oligomer-ring"
+      },
+      "error": null,
+      "notes": "compile \u2192 generate \u2192 finalize via run_handoff_pipeline"
+    },
+    {
+      "run_id": "compile_local",
+      "pipeline": "symmetric-oligomer-ring",
+      "device": "local",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/symmetric-oligomer-ring/methodology.json --registry symmetric-oligomer-ring --device local",
+      "status": "ok",
+      "wall_ms": 3.626,
+      "output_summary": {
+        "fixture": "symmetric-oligomer-ring",
+        "device": "local",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/symmetric-oligomer-ring/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "compile_modal",
+      "pipeline": "symmetric-oligomer-ring",
+      "device": "modal",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/symmetric-oligomer-ring/methodology.json --registry symmetric-oligomer-ring --device modal",
+      "status": "ok",
+      "wall_ms": 0.921,
+      "output_summary": {
+        "fixture": "symmetric-oligomer-ring",
+        "device": "modal",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/symmetric-oligomer-ring/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "execute_smoke",
+      "pipeline": "symmetric-oligomer-ring",
+      "device": "modal",
+      "kind": "execute",
+      "command": "build_program().run() via design_002.py",
+      "status": "skipped",
+      "wall_ms": null,
+      "output_summary": {},
+      "error": null,
+      "notes": "--skip-modal-exec"
+    },
+    {
+      "run_id": "preflight_smoke",
+      "pipeline": "ppi-interface-specificity",
+      "device": "local",
+      "kind": "preflight",
+      "command": "uv run protofuse preflight ppi-interface-specificity --length 65",
+      "status": "ok",
+      "wall_ms": 656.228,
+      "output_summary": {
+        "classification": "ok"
+      },
+      "error": null,
+      "notes": "65 aa binder seed; build-only L0"
+    },
+    {
+      "run_id": "handoff_pipeline",
+      "pipeline": "ppi-interface-specificity",
+      "device": "local",
+      "kind": "handoff_generate",
+      "command": "uv run python scripts/run_handoff_pipeline.py ppi-interface-specificity",
+      "status": "ok",
+      "wall_ms": 59.382,
+      "output_summary": {
+        "total_elapsed_s": 0.059,
+        "topology": "multiobjective_search",
+        "handoff_path": "proto_programs/generated/ppi-interface-specificity"
+      },
+      "error": null,
+      "notes": "compile \u2192 generate \u2192 finalize via run_handoff_pipeline"
+    },
+    {
+      "run_id": "compile_local",
+      "pipeline": "ppi-interface-specificity",
+      "device": "local",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/ppi-interface-specificity/methodology.json --registry ppi-interface-specificity --device local",
+      "status": "ok",
+      "wall_ms": 0.219,
+      "output_summary": {
+        "fixture": "ppi-interface-specificity",
+        "device": "local",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/ppi-interface-specificity/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "compile_modal",
+      "pipeline": "ppi-interface-specificity",
+      "device": "modal",
+      "kind": "compile_plan",
+      "command": "uv run protofuse compile workspaces/phillip/fixtures/ppi-interface-specificity/methodology.json --registry ppi-interface-specificity --device modal",
+      "status": "ok",
+      "wall_ms": 0.216,
+      "output_summary": {
+        "fixture": "ppi-interface-specificity",
+        "device": "modal",
+        "executable": true,
+        "unresolved": [],
+        "methodology_path": "workspaces/phillip/fixtures/ppi-interface-specificity/methodology.json"
+      },
+      "error": null,
+      "notes": "GPU constraints require Modal at program.run() time"
+    },
+    {
+      "run_id": "execute_smoke",
+      "pipeline": "ppi-interface-specificity",
+      "device": "modal",
+      "kind": "execute",
+      "command": "build_program().run() via design_002.py",
+      "status": "skipped",
+      "wall_ms": null,
+      "output_summary": {},
+      "error": null,
+      "notes": "--skip-modal-exec"
+    },
+    {
       "run_id": "handoff_pipeline",
       "pipeline": "gpcr-cxcr4-miniprotein",
       "device": "local",
       "kind": "handoff_generate",
       "command": "uv run python scripts/run_gpcr_cxcr4_pipeline.py",
       "status": "ok",
-      "wall_ms": 13691.412,
+      "wall_ms": 16577.383,
       "output_summary": {
-        "total_elapsed_s": 0.022,
+        "total_elapsed_s": 0.023,
         "topology": "multiobjective_search",
         "handoff_path": "proto_programs/generated/gpcr-cxcr4-miniprotein"
       },
@@ -331,7 +565,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/gpcr-cxcr4-miniprotein/methodology.json --registry gpcr-cxcr4 --device local",
       "status": "ok",
-      "wall_ms": 0.766,
+      "wall_ms": 0.929,
       "output_summary": {
         "fixture": "gpcr-cxcr4-miniprotein",
         "device": "local",
@@ -349,7 +583,7 @@
       "kind": "compile_plan",
       "command": "uv run protofuse compile workspaces/phillip/fixtures/gpcr-cxcr4-miniprotein/methodology.json --registry gpcr-cxcr4 --device modal",
       "status": "ok",
-      "wall_ms": 0.158,
+      "wall_ms": 0.16,
       "output_summary": {
         "fixture": "gpcr-cxcr4-miniprotein",
         "device": "modal",

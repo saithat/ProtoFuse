@@ -6,7 +6,7 @@
   "paper_source_path": "docs/CANDIDATE_WORKFLOWS.md",
   "topology": "multiobjective_search",
   "compile_device": "modal",
-  "total_elapsed_s": 0.031,
+  "total_elapsed_s": 0.024,
   "stages": [
     {
       "stage": "methodology_fixture",
@@ -22,7 +22,7 @@
     },
     {
       "stage": "finalize_collection",
-      "elapsed_s": 0.031
+      "elapsed_s": 0.024
     }
   ],
   "handoff_path": "proto_programs/generated/esm2-protein-maturation"

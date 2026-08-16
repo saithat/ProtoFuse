@@ -1,0 +1,20 @@
+{
+  "integration_version": "1",
+  "scenario_id": "ppi-interface-specificity",
+  "scenario_version": 1,
+  "title": "PPI interface specificity engineering (region-local MCMC)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": [
+        "Built dual target/off-target interface MCMC baseline (PD-L1 on-target, CXCR4 off-target)"
+      ]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "ppi-interface-specificity-v1",
+  "status": "active",
+  "notes": "Smoke: 20 steps, ESM-2. Full: 100 steps, MPNN. Sai fusion target: dual structure scoring every step."
+}

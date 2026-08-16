@@ -24,6 +24,9 @@ from protofuse.phillip.program_builders import (
     build_antibody_cdr_maturation_program,
     build_dnachisel_num1_program,
     build_esm2_protein_maturation_program,
+    build_freebindcraft_binder_program,
+    build_ppi_interface_specificity_program,
+    build_symmetric_oligomer_ring_program,
     load_fixture_spec,
     resolve_workload_params,
 )
@@ -340,19 +343,36 @@ def run_preflight(
 
     spec = load_fixture_spec(fixture_id)
     workload = spec.global_parameters.get("workload")
-    if workload in {"esm2_protein_maturation", "antibody_cdr_maturation"}:
+    if workload in {
+        "esm2_protein_maturation",
+        "antibody_cdr_maturation",
+        "freebindcraft_binder",
+        "symmetric_oligomer_ring",
+        "ppi_interface_specificity",
+    }:
+        params = resolve_workload_params(spec, tier="smoke")
         if workload == "esm2_protein_maturation":
             length = target_length or int(spec.global_parameters.get("segment_length_aa", 80))
-            params = resolve_workload_params(spec, tier="smoke")
             if target_length is not None:
                 params["segment_length_aa"] = target_length
                 params["seed_sequence"] = str(params["seed_sequence"])[:target_length]
             program = build_esm2_protein_maturation_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
-        else:
+        elif workload == "antibody_cdr_maturation":
             length = target_length or len(str(spec.global_parameters.get("framework_sequence", "")))
-            params = resolve_workload_params(spec, tier="smoke")
             program = build_antibody_cdr_maturation_program(params, region_pass=0)
+            built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "freebindcraft_binder":
+            length = target_length or int(params["binder_length_aa"])
+            program = build_freebindcraft_binder_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "symmetric_oligomer_ring":
+            length = target_length or int(params["segment_length_aa"])
+            program = build_symmetric_oligomer_ring_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        else:
+            length = target_length or len(str(spec.global_parameters.get("binder_sequence", "")))
+            program = build_ppi_interface_specificity_program(params, region_pass=0)
             built_length = program.constructs[0].segments[0].sequence_length
         ladder = [
             LadderStepResult(

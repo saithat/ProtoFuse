@@ -1,23 +1,23 @@
 {
   "schema_version": "1.0",
-  "collection_id": "gpcr-cxcr4-miniprotein",
-  "methodology_id": "gpcr-cxcr4-v1",
+  "collection_id": "symmetric-oligomer-ring",
+  "methodology_id": "symmetric-oligomer-ring-v1",
   "proto_version": "dec375b04fa26b1c809b248f1a6af2767da32293",
   "registry_version": "1",
-  "seed_policy": "RFdiffusion3/ProteinMPNN seeds from generator; rejection sampling is stateless",
+  "seed_policy": "random-protein init per pool member; symmetry order from fixture parameters",
   "reviewed": true,
   "programs": [
     {
       "program_id": "design-001",
       "path": "design_001.py",
       "entrypoint": "build_program",
-      "sha256": "5e2a65f3be3ae872983471ea38b3569e218d392e96e8fa8323be06b8b10ec1e6"
+      "sha256": "5f9933dee49163c281e66668541ee235f838dcdd1f91bf155ea678e676efb729"
     },
     {
       "program_id": "design-002",
       "path": "design_002.py",
       "entrypoint": "build_program",
-      "sha256": "9109c59e621f58fc6b0f5433971344370e597e6d07983c141f7f7f46c62de9c1"
+      "sha256": "25f622172b114c3df9a386634ff16935b7f50b206b56b3703752b2467080df04"
     }
   ]
 }

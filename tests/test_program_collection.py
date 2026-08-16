@@ -95,6 +95,25 @@ def test_antibody_cdr_maturation_collection_is_reviewed_and_hashed() -> None:
     assert len(loaded.manifest.programs) == 2
 
 
+@pytest.mark.parametrize(
+    "collection_id",
+    [
+        "freebindcraft-binder",
+        "symmetric-oligomer-ring",
+        "ppi-interface-specificity",
+    ],
+)
+def test_wave2_collections_are_reviewed_and_hashed(collection_id: str) -> None:
+    loaded = load_collection(
+        REPO_ROOT / "proto_programs/generated" / collection_id,
+        require_reviewed=True,
+    )
+
+    assert loaded.manifest.collection_id == collection_id
+    assert loaded.manifest.reviewed is True
+    assert len(loaded.manifest.programs) == 2
+
+
 def test_custom_egfp_lung_collection_is_reviewed_and_hashed() -> None:
     loaded = load_collection(CUSTOM_COLLECTION, require_reviewed=True)
 

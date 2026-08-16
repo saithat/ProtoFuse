@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "collection_id": "antibody-cdr-maturation",
   "methodology_id": "antibody-cdr-maturation-v1",
-  "proto_version": "109e7e4bc6647f7884d94b08f8c0951c2e4af6c2",
+  "proto_version": "dec375b04fa26b1c809b248f1a6af2767da32293",
   "registry_version": "1",
   "seed_policy": "ESM-2 seeds from framework_sequence; CDR masking via region_pass",
   "reviewed": true,

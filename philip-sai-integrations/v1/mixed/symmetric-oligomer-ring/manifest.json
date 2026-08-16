@@ -1,0 +1,18 @@
+{
+  "integration_version": "1",
+  "scenario_id": "symmetric-oligomer-ring",
+  "scenario_version": 1,
+  "title": "Cn-symmetric oligomer ring design (pool propose-score-select)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": ["Built symmetric ring pool optimizer with structure composite scoring"]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "symmetric-oligomer-ring-v1",
+  "status": "active",
+  "notes": "Smoke: C3, pool=100. Full: C6, pool=1000. Sai fusion target: symmetry + structure composite per candidate."
+}

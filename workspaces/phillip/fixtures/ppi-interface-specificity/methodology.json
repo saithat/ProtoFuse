@@ -1,0 +1,240 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Protein-protein interface specificity engineering",
+    "identifier": "ppi-interface-specificity-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "interface ESM-2 mutation",
+      "description": "Propose amino-acid substitutions within the active interface region using ESM-2 masked sampling while non-interface positions remain fixed.",
+      "parameters": {"mutations_per_step": 2, "model_checkpoint": "esm2_t6_8M_UR50D"},
+      "evidence": [
+        {
+          "quote": "Generator | mpnn-mutation or esm2",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    },
+    {
+      "name": "interface MPNN mutation",
+      "description": "Propose structure-conditioned mutations on interface residues using ProteinMPNN against the on-target PDB template.",
+      "parameters": {"mutations_per_step": 2, "model": "proteinmpnn"},
+      "evidence": [
+        {
+          "quote": "Optimize an existing binder interface for high target binding and low off-target binding.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "target interface ipTM",
+      "description": "Require high predicted interface confidence for binder-on-target complex.",
+      "parameters": {"structure_tool": "alphafold3", "min_iptm": 0.4},
+      "evidence": [
+        {
+          "quote": "Constraints: structure-iptm, boltz2-binding-strength, af3-offtarget-iptm-specificity",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "iptm",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "Boltz2 binding strength",
+      "description": "Score on-target binding affinity and complex confidence with Boltz-2.",
+      "parameters": {},
+      "evidence": [],
+      "metric": "boltz_binding",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "AF3 off-target ipTM specificity",
+      "description": "Prefer high on-target ipTM margin over best off-target ipTM in batched AF3 folding.",
+      "parameters": {
+        "structure_tool": "alphafold3",
+        "desired_margin": 0.1,
+        "include_reverse_complement": false
+      },
+      "evidence": [
+        {
+          "quote": "Sai fusion target: dual target + off-target structure scoring every step.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "iptm_advantage",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "interface contact loss",
+      "description": "Maintain AF2 binder interface contacts against the on-target template PDB.",
+      "parameters": {"structure_tool": "alphafold2_binder"},
+      "evidence": [
+        {
+          "quote": "Constraints: structure-interface-contact",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "i_con",
+      "direction": "minimize",
+      "weight": 0.75
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "region-local MCMC refinement",
+      "description": "Optimize one interface patch per pass with masked proposals and dual target/off-target structure scoring.",
+      "parameters": {"num_steps": 100, "max_temperature": 1.0, "max_region_passes": 2},
+      "evidence": [
+        {
+          "quote": "Optimizer | mcmc (region-local on interface residues)",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "strategy": "region_local_markov_chain_monte_carlo",
+      "stopping_criteria": {"num_steps": 100, "max_region_passes": 2}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "ESM-2",
+      "version_or_checkpoint": "esm2_t6_8M_UR50D (smoke) / ProteinMPNN (full)",
+      "provider": "Meta AI / Dauparas et al.",
+      "purpose": "Interface mutation proposals during MCMC",
+      "evidence": []
+    },
+    {
+      "name": "AlphaFold3",
+      "version_or_checkpoint": null,
+      "provider": "Google DeepMind",
+      "purpose": "On-target ipTM and off-target specificity margin scoring",
+      "evidence": []
+    },
+    {
+      "name": "Boltz-2",
+      "version_or_checkpoint": null,
+      "provider": "MIT J-Clinic",
+      "purpose": "On-target binding strength scoring",
+      "evidence": []
+    },
+    {
+      "name": "AlphaFold2 binder",
+      "version_or_checkpoint": null,
+      "provider": "Jumper et al. / dl_binder_design",
+      "purpose": "Interface contact loss on target PDB template",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "ppi_interface_specificity",
+    "binder_sequence": "ACDEFGHIKLMNPQRSTVWYACDEFGHIKLMNPQRSTVWYACDEFGHIKLMNPQRSTVWYACDEF",
+    "target_pdb": "4ZQK",
+    "off_target_pdb": "4RWS",
+    "target_chains": ["A"],
+    "off_target_chains": ["A"],
+    "target_hotspots": ["A56", "A64", "A88"],
+    "interface_regions": [[18, 30], [40, 52]],
+    "target_dna_sequence": "ACGTACGTACGTACGTACGTACGTACGTACGT",
+    "target_motif": "ACGT",
+    "off_target_motifs": ["TTTT", "GCGC"],
+    "dna_indices": [8, 9, 10, 11],
+    "desired_margin": 0.1,
+    "include_reverse_complement": false,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 2,
+    "max_region_passes": 2,
+    "max_temperature": 1.0,
+    "min_iptm": 0.4,
+    "proposal_generator": "mpnn",
+    "esm2_checkpoint": "esm2_t33_650M_UR50D"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "select_interface",
+        "operation": "Select active interface patch for this region pass",
+        "inputs": ["binder_sequence", "interface_regions"],
+        "outputs": ["interface_mask"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "propose",
+        "operation": "ESM-2 or MPNN masked mutation within active interface",
+        "inputs": ["binder_sequence", "interface_mask"],
+        "outputs": ["candidate_binder"],
+        "parameters": {"mutations_per_step": 2},
+        "evidence": []
+      },
+      {
+        "id": "score",
+        "operation": "Score target ipTM, Boltz binding, AF3 specificity margin, and interface contacts",
+        "inputs": ["candidate_binder", "target_pdb", "off_target_pdb"],
+        "outputs": ["constraint_scores"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "accept",
+        "operation": "MCMC accept/reject on weighted constraint scores",
+        "inputs": ["candidate_binder", "constraint_scores"],
+        "outputs": ["specific_binder"],
+        "parameters": {"num_steps": 100},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "select_interface", "target": "propose", "artifact": "interface_mask"},
+      {"source": "propose", "target": "score", "artifact": "candidate_binder"},
+      {"source": "score", "target": "accept", "artifact": "constraint_scores"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "minimum on-target ipTM",
+      "metric": "iptm",
+      "operator": ">=",
+      "value": 0.4,
+      "unit": "score",
+      "applies_to": "binder-on-target complex",
+      "evidence": []
+    },
+    {
+      "name": "minimum AF3 specificity margin",
+      "metric": "iptm_advantage",
+      "operator": ">=",
+      "value": 0.1,
+      "unit": "score",
+      "applies_to": "target vs off-target AF3 batch",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "65-aa miniprotein binder seed substitutes a published PD-L1 antagonist helix bundle.",
+    "On-target template PDB 4ZQK (PD-L1) and off-target PDB 4RWS (CXCR4) proxy cross-reactivity.",
+    "AF3 off-target ipTM specificity uses proto_language DNA-operator batch folding on the binder chain.",
+    "Interface IMGT-like patches are approximate 0-based half-open indices on the binder sequence.",
+    "Smoke tier uses ESM-2 on interface patch 1 only; full tier uses MPNN across two interface passes."
+  ],
+  "unknowns": [
+    "proto_language af3-offtarget-iptm-specificity is protein-DNA; true protein-protein dual AF3 margin may need a future constraint.",
+    "Experimental binding affinity and cellular specificity are not modeled.",
+    "MPNN structure conditioning uses on-target PDB only; off-target structure is scored via AF3 specificity config."
+  ]
+}

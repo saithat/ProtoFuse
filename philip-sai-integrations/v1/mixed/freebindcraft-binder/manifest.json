@@ -1,0 +1,18 @@
+{
+  "integration_version": "1",
+  "scenario_id": "freebindcraft-binder",
+  "scenario_version": 1,
+  "title": "FreeBindCraft de novo binder design (staged_filter)",
+  "source_lane": "mixed",
+  "contributors": [
+    {
+      "id": "phillip",
+      "role": "phillip",
+      "contributions": ["Built FreeBindCraft rejection-sampling binder baseline against 4RWS"]
+    }
+  ],
+  "methodology_path": "methodology.json",
+  "handoff_decision_id": "freebindcraft-binder-v1",
+  "status": "active",
+  "notes": "Smoke: 50 aa, 5 samples. Full: 70 aa, 50 samples. Sai fusion target: AF2 validation per candidate."
+}

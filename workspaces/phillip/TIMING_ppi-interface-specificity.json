@@ -1,12 +1,12 @@
 {
-  "fixture_id": "antibody-cdr-maturation",
-  "collection_id": "antibody-cdr-maturation",
-  "methodology_id": "antibody-cdr-maturation-v1",
-  "paper_identifier": "antibody-cdr-maturation-v1",
+  "fixture_id": "ppi-interface-specificity",
+  "collection_id": "ppi-interface-specificity",
+  "methodology_id": "ppi-interface-specificity-v1",
+  "paper_identifier": "ppi-interface-specificity-v1",
   "paper_source_path": "docs/CANDIDATE_WORKFLOWS.md",
   "topology": "multiobjective_search",
   "compile_device": "modal",
-  "total_elapsed_s": 0.022,
+  "total_elapsed_s": 0.059,
   "stages": [
     {
       "stage": "methodology_fixture",
@@ -18,12 +18,12 @@
     },
     {
       "stage": "generate_program_sources",
-      "elapsed_s": 0.0
+      "elapsed_s": 0.001
     },
     {
       "stage": "finalize_collection",
-      "elapsed_s": 0.022
+      "elapsed_s": 0.059
     }
   ],
-  "handoff_path": "proto_programs/generated/antibody-cdr-maturation"
+  "handoff_path": "proto_programs/generated/ppi-interface-specificity"
 }

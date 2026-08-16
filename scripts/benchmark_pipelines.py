@@ -517,6 +517,9 @@ def render_markdown(data: dict[str, Any]) -> str:
         "- [`TIMING_gpcr-cxcr4-miniprotein.json`](TIMING_gpcr-cxcr4-miniprotein.json)",
         "- [`TIMING_esm2-protein-maturation.json`](TIMING_esm2-protein-maturation.json)",
         "- [`TIMING_antibody-cdr-maturation.json`](TIMING_antibody-cdr-maturation.json)",
+        "- [`TIMING_freebindcraft-binder.json`](TIMING_freebindcraft-binder.json)",
+        "- [`TIMING_symmetric-oligomer-ring.json`](TIMING_symmetric-oligomer-ring.json)",
+        "- [`TIMING_ppi-interface-specificity.json`](TIMING_ppi-interface-specificity.json)",
         "",
         "## Summary",
         "",
@@ -551,6 +554,12 @@ def render_markdown(data: dict[str, Any]) -> str:
             "| `esm2-protein-maturation` | `design_001.py` (129 aa lysozyme, 200 steps) "
             "| `design_002.py` smoke |",
             "| `antibody-cdr-maturation` | `design_001.py` (121 aa, 3 CDR passes) "
+            "| `design_002.py` smoke |",
+            "| `freebindcraft-binder` | `design_001.py` (70 aa, 50 samples) "
+            "| `design_002.py` smoke |",
+            "| `symmetric-oligomer-ring` | `design_001.py` (C6, pool=1000) "
+            "| `design_002.py` smoke |",
+            "| `ppi-interface-specificity` | `design_001.py` (100 steps, MPNN) "
             "| `design_002.py` smoke |",
             "| `gpcr-cxcr4-miniprotein` | `design_001.py` (70 aa, 10 samples) "
             "| `design_002.py` unless debugging |",
@@ -618,6 +627,33 @@ def main() -> int:
         preflight_length=121,
         preflight_notes="121 aa nanobody framework; build-only L0",
         execute_notes="ESM-2 + AbLang + ESMFold on Modal (smoke: CDR1, 30 steps)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="freebindcraft-binder",
+        registry_name="freebindcraft-binder",
+        preflight_length=50,
+        preflight_notes="50 aa smoke binder; build-only L0",
+        execute_notes="FreeBindCraft + AF2 validation on Modal (smoke: 5 samples)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="symmetric-oligomer-ring",
+        registry_name="symmetric-oligomer-ring",
+        preflight_length=60,
+        preflight_notes="60 aa C3 monomer smoke; build-only L0",
+        execute_notes="Symmetry + ESMFold composite on Modal (smoke: pool=100)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="ppi-interface-specificity",
+        registry_name="ppi-interface-specificity",
+        preflight_length=65,
+        preflight_notes="65 aa binder seed; build-only L0",
+        execute_notes="Dual target/off-target scoring on Modal (smoke: 20 MCMC steps)",
         skip_modal_exec=args.skip_modal_exec,
     )
     benchmark_gpcr_handoff(record)

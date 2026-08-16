@@ -1,7 +1,7 @@
 # Pipeline benchmarks (all Phillip workloads)
 
-**Recorded:** 2026-08-15T23:56:22.017920+00:00
-**Proto commit:** `109e7e4bc6647f7884d94b08f8c0951c2e4af6c2`
+**Recorded:** 2026-08-16T00:03:26.989657+00:00
+**Proto commit:** `dec375b04fa26b1c809b248f1a6af2767da32293`
 **Host:** mac
 **Modal profile:** configured
 
@@ -19,12 +19,15 @@ Per-pipeline handoff timing notes:
 - [`TIMING_gpcr-cxcr4-miniprotein.json`](TIMING_gpcr-cxcr4-miniprotein.json)
 - [`TIMING_esm2-protein-maturation.json`](TIMING_esm2-protein-maturation.json)
 - [`TIMING_antibody-cdr-maturation.json`](TIMING_antibody-cdr-maturation.json)
+- [`TIMING_freebindcraft-binder.json`](TIMING_freebindcraft-binder.json)
+- [`TIMING_symmetric-oligomer-ring.json`](TIMING_symmetric-oligomer-ring.json)
+- [`TIMING_ppi-interface-specificity.json`](TIMING_ppi-interface-specificity.json)
 
 ## Summary
 
 | Pipeline | Run | Device | Status | Wall time | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `dnachisel-num1` | `preflight_2808` | local | ok | 7.6 s | Paper construct length binding ladder |
+| `dnachisel-num1` | `preflight_2808` | local | ok | 6.6 s | Paper construct length binding ladder |
 | `dnachisel-num1` | `preflight_936` | local | ok | 0.6 s | Executable fixture length |
 | `dnachisel-num1` | `outer_loop_smoke` | local | ok | 0.0 s | 100 bp, 1 region pass |
 | `dnachisel-num1` | `compile_local` | local | ok | 0.0 s | Plan metadata only; MCMC executes locally regardless |
@@ -43,7 +46,22 @@ Per-pipeline handoff timing notes:
 | `antibody-cdr-maturation` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `antibody-cdr-maturation` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `antibody-cdr-maturation` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 13.7 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
+| `freebindcraft-binder` | `preflight_smoke` | local | ok | 0.9 s | 50 aa smoke binder; build-only L0 |
+| `freebindcraft-binder` | `handoff_pipeline` | local | ok | 0.1 s | compile → generate → finalize via run_handoff_pipeline |
+| `freebindcraft-binder` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `freebindcraft-binder` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `freebindcraft-binder` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
+| `symmetric-oligomer-ring` | `preflight_smoke` | local | ok | 0.0 s | 60 aa C3 monomer smoke; build-only L0 |
+| `symmetric-oligomer-ring` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `symmetric-oligomer-ring` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `symmetric-oligomer-ring` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `symmetric-oligomer-ring` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
+| `ppi-interface-specificity` | `preflight_smoke` | local | ok | 0.7 s | 65 aa binder seed; build-only L0 |
+| `ppi-interface-specificity` | `handoff_pipeline` | local | ok | 0.1 s | compile → generate → finalize via run_handoff_pipeline |
+| `ppi-interface-specificity` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ppi-interface-specificity` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ppi-interface-specificity` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
+| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 16.6 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
 | `gpcr-cxcr4-miniprotein` | `compile_local` | local | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
 | `gpcr-cxcr4-miniprotein` | `compile_modal` | modal | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
 | `gpcr-cxcr4-miniprotein` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
@@ -56,6 +74,9 @@ Per-pipeline handoff timing notes:
 | `custom-egfp-lung` | `design_001.py` (720 bp full pool) | `design_002.py` smoke |
 | `esm2-protein-maturation` | `design_001.py` (129 aa lysozyme, 200 steps) | `design_002.py` smoke |
 | `antibody-cdr-maturation` | `design_001.py` (121 aa, 3 CDR passes) | `design_002.py` smoke |
+| `freebindcraft-binder` | `design_001.py` (70 aa, 50 samples) | `design_002.py` smoke |
+| `symmetric-oligomer-ring` | `design_001.py` (C6, pool=1000) | `design_002.py` smoke |
+| `ppi-interface-specificity` | `design_001.py` (100 steps, MPNN) | `design_002.py` smoke |
 | `gpcr-cxcr4-miniprotein` | `design_001.py` (70 aa, 10 samples) | `design_002.py` unless debugging |
 
 ## Modal vs local

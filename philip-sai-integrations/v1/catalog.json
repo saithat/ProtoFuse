@@ -41,6 +41,30 @@
       "scenario_version": 1,
       "status": "active",
       "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "freebindcraft-binder",
+      "source_lane": "mixed",
+      "path": "mixed/freebindcraft-binder",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "symmetric-oligomer-ring",
+      "source_lane": "mixed",
+      "path": "mixed/symmetric-oligomer-ring",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
+    },
+    {
+      "scenario_id": "ppi-interface-specificity",
+      "source_lane": "mixed",
+      "path": "mixed/ppi-interface-specificity",
+      "scenario_version": 1,
+      "status": "active",
+      "contributor_ids": ["phillip"]
     }
   ]
 }

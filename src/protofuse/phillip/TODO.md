@@ -46,8 +46,7 @@ After Sai starts analysis, treat the collection as read-only. Any change → new
 
 `dnachisel-num1` and `custom-egfp-lung` handoffs are complete on `main`. Wave 1 protein
 workflows are implemented (`esm2-protein-maturation`, `antibody-cdr-maturation`) — see
-[`docs/PROTEIN_WORKFLOW_SCAFFOLD.md`](../../../docs/PROTEIN_WORKFLOW_SCAFFOLD.md). Next wave:
-FreeBindCraft binder, symmetric oligomer, PPI interface specificity. Full backlog in
+[`docs/PROTEIN_WORKFLOW_SCAFFOLD.md`](../../../docs/PROTEIN_WORKFLOW_SCAFFOLD.md). Next wave: RFdiffusion3 + Boltz-2 cycling, LigandMPNN enzyme redesign, BioEmu ensemble filter. Full backlog in
 [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md).
 
 ## Out of scope (Sai)

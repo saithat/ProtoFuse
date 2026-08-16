@@ -110,7 +110,7 @@ uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU + handoff
 | Wave | Workflows | Parallelism |
 | --- | --- | --- |
 | 1 | `esm2-protein-maturation`, `antibody-cdr-maturation` | Done |
-| 2 | `freebindcraft-binder`, `symmetric-oligomer-ring`, `ppi-interface-specificity` | 3 agents |
+| 2 | `freebindcraft-binder`, `symmetric-oligomer-ring`, `ppi-interface-specificity` | Done |
 | 3 | `rfdiffusion3-boltz2-binder`, `ligandmpnn-enzyme-redesign`, `bioemu-ensemble-filter` | 3 agents |
 
 `gpcr-cxcr4-miniprotein` overlaps Wave 2/3 binder work — use it as the RFdiffusion3+Boltz-2
