@@ -9,6 +9,7 @@ The hook is counted and each prediction fails unless it ran once per trunk pass.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -17,6 +18,69 @@ _base: ModuleType | None = None
 _model: Any = None
 _loader_installed = False
 _active_audit: dict[str, Any] | None = None
+
+
+def _prepare_output_values(value: Any) -> Any:
+    """Match the official worker's JSON conversion for indexed model outputs."""
+
+    if isinstance(value, dict):
+        return [_prepare_output_values(value[str(key)]) for key in range(len(value))]
+    return value
+
+
+def _extract_diffusion_samples(
+    output_dir: str,
+    input_path: str,
+    *,
+    diffusion_samples: int,
+    include_pae_matrix: bool,
+) -> list[dict[str, Any]]:
+    """Return every Boltz diffusion sample instead of silently keeping model zero."""
+
+    import numpy as np
+
+    input_name = Path(input_path).stem
+    prediction_dir = (
+        Path(output_dir) / f"boltz_results_{input_name}" / "predictions" / input_name
+    )
+    if not prediction_dir.is_dir():
+        raise FileNotFoundError(
+            f"Boltz prediction directory not found: {prediction_dir}"
+        )
+
+    outputs: list[dict[str, Any]] = []
+    for sample_index in range(diffusion_samples):
+        confidence_path = prediction_dir / (
+            f"confidence_{input_name}_model_{sample_index}.json"
+        )
+        cif_path = prediction_dir / f"{input_name}_model_{sample_index}.cif"
+        pae_path = prediction_dir / f"pae_{input_name}_model_{sample_index}.npz"
+        for required_path in (confidence_path, cif_path, pae_path):
+            if not required_path.is_file():
+                raise FileNotFoundError(
+                    "Boltz did not emit every requested diffusion sample: "
+                    f"missing {required_path}"
+                )
+
+        confidence_data = json.loads(confidence_path.read_text())
+        metrics = {
+            key: _prepare_output_values(value)
+            for key, value in confidence_data.items()
+        }
+        with np.load(pae_path) as npz:
+            pae_array = npz["pae"]
+        metrics["avg_pae"] = float(pae_array.mean())
+        metrics["pae"] = (
+            pae_array.astype(float).tolist() if include_pae_matrix else None
+        )
+        outputs.append(
+            {
+                "sample_index": sample_index,
+                "structure_cif_output": cif_path.read_text(),
+                "metrics": metrics,
+            }
+        )
+    return outputs
 
 
 def _load_base(path: str) -> ModuleType:
@@ -142,16 +206,16 @@ def _predict(input_dict: dict[str, Any]) -> dict[str, Any]:
             "Boltz pair scaling did not run at every Pairformer recycle input: "
             f"observed {audit['invocations']}, expected {audit['expected_invocations']}"
         )
-    result = cast(
-        dict[str, Any],
-        _model._extract_boltz_output(  # noqa: SLF001 - official output parser
-            input_dict["output_dir"],
-            input_dict["input_yaml_path"],
-            bool(input_dict["include_pae_matrix"]),
-        ),
+    predictions = _extract_diffusion_samples(
+        input_dict["output_dir"],
+        input_dict["input_yaml_path"],
+        diffusion_samples=int(input_dict["diffusion_samples"]),
+        include_pae_matrix=bool(input_dict["include_pae_matrix"]),
     )
-    result["pair_scaling_audit"] = audit
-    return result
+    return {
+        "predictions": predictions,
+        "pair_scaling_audit": audit,
+    }
 
 
 def dispatch(input_dict: dict[str, Any]) -> dict[str, Any]:

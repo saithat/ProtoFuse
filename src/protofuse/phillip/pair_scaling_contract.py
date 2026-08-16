@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
-from typing import Literal
+from typing import Literal, cast
 
 from proto_language.constraint.constraint_registry import constraint
 from proto_language.core import ConstraintOutput, Sequence
 from proto_language.utils.base import BaseConfig, ConfigField
 from proto_tools import Structure, USalignConfig, USalignInput, run_usalign
+
+from protofuse.execution_context import active_program_execution_cache
 
 PairScalingModel = Literal["alphafold3", "boltz2"]
 
@@ -21,11 +23,12 @@ class PairScalingBackendRequest:
 
     model: PairScalingModel
     beta: float
-    seed: int
+    model_seed: int
     recycling_steps: int
     sampling_steps: int
     diffusion_samples: int
     step_scale: float
+    use_msa: bool
     max_msa_seqs: int
     subsample_msa: bool
 
@@ -38,6 +41,7 @@ PairScalingBackend = Callable[
 _BACKENDS: dict[PairScalingModel, PairScalingBackend] = {}
 _PREDICTION_CACHE: dict[tuple[object, ...], list[Structure]] = {}
 _BACKEND_LOCK = Lock()
+_EXECUTION_CACHE_NAMESPACE = "protofuse.phillip.pair_scaling.predictions"
 
 
 def register_reviewed_pair_scaling_backend(
@@ -60,10 +64,16 @@ def clear_reviewed_pair_scaling_backends() -> None:
 
 
 def install_default_reviewed_pair_scaling_backends() -> None:
-    """Install ProtoFuse's audited backends; AlphaFold3 remains opt-in and licensed."""
+    """Install ProtoFuse's audited, fail-closed model backends."""
 
+    from protofuse.phillip.pair_scaling_alphafold3 import (
+        alphafold3_pair_scaling_backend,
+    )
     from protofuse.phillip.pair_scaling_boltz2 import boltz2_pair_scaling_backend
 
+    register_reviewed_pair_scaling_backend(
+        "alphafold3", alphafold3_pair_scaling_backend
+    )
     register_reviewed_pair_scaling_backend("boltz2", boltz2_pair_scaling_backend)
 
 
@@ -80,9 +90,12 @@ class PairScaledStateTMScoreConfig(BaseConfig):
         ge=-0.75,
         le=0.75,
     )
-    seed: int = ConfigField(
+    model_seed: int = ConfigField(
         title="Sampling seed",
-        description="Implementation seed paired across full and fused evaluation arms.",
+        description=(
+            "Model seed paired across full and fused arms; deliberately not named "
+            "'seed' so Proto's per-constraint optimizer seeding cannot overwrite it."
+        ),
         ge=0,
     )
     recycling_steps: int = ConfigField(
@@ -104,6 +117,10 @@ class PairScaledStateTMScoreConfig(BaseConfig):
         title="Diffusion step scale",
         description="Boltz diffusion step scale used by the paper protocol.",
         gt=0.0,
+    )
+    use_msa: bool = ConfigField(
+        title="Use MSA",
+        description="Whether to generate and consume an MSA for this protocol tier.",
     )
     max_msa_seqs: int = ConfigField(
         title="Maximum MSA depth",
@@ -131,11 +148,12 @@ def _predict(
     request = PairScalingBackendRequest(
         model=config.model,
         beta=config.beta,
-        seed=config.seed,
+        model_seed=config.model_seed,
         recycling_steps=config.recycling_steps,
         sampling_steps=config.sampling_steps,
         diffusion_samples=config.diffusion_samples,
         step_scale=config.step_scale,
+        use_msa=config.use_msa,
         max_msa_seqs=config.max_msa_seqs,
         subsample_msa=config.subsample_msa,
     )
@@ -143,8 +161,14 @@ def _predict(
         request,
         tuple(sequences),
     )
+    execution_cache = active_program_execution_cache()
+    execution_key: tuple[object, ...] = (_EXECUTION_CACHE_NAMESPACE, *key)
     with _BACKEND_LOCK:
-        cached = _PREDICTION_CACHE.get(key)
+        cached = (
+            _PREDICTION_CACHE.get(key)
+            if execution_cache is None
+            else cast(list[Structure] | None, execution_cache.get(execution_key))
+        )
         backend = _BACKENDS.get(config.model)
     if cached is not None:
         return cached
@@ -160,7 +184,10 @@ def _predict(
             f"for {len(sequences)} requests"
         )
     with _BACKEND_LOCK:
-        _PREDICTION_CACHE[key] = predictions
+        if execution_cache is None:
+            _PREDICTION_CACHE[key] = predictions
+        else:
+            execution_cache[execution_key] = predictions
     return predictions
 
 
@@ -205,7 +232,7 @@ def pair_scaled_state_tmscore_constraint(
                 metadata={
                     "pair_scaling_model": config.model,
                     "pair_scaling_beta": config.beta,
-                    "pair_scaling_seed": config.seed,
+                    "pair_scaling_seed": config.model_seed,
                     "reference_state": config.reference_state,
                     "tm_score": tm_score,
                 },

@@ -1,4 +1,4 @@
-"""Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, 20 steps, 2 BioEmu samples)."""
+"""Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, 5 steps, 1 BioEmu sample)."""
 
 from __future__ import annotations
 

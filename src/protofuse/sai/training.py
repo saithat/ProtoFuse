@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -19,8 +20,13 @@ from protofuse.sai.artifacts import (
     file_sha256,
     write_unreviewed_fusion_artifact,
 )
-from protofuse.sai.model import LinearEnsembleModel, SequenceFeatureSchema, featurize_inputs
-from protofuse.sai.signatures import step_group_signature
+from protofuse.sai.model import (
+    LinearEnsembleModel,
+    OutputNormalization,
+    SequenceFeatureSchema,
+    featurize_inputs,
+)
+from protofuse.sai.signatures import program_signature, step_group_signature
 from protofuse.sai.tracing import TraceRow
 
 
@@ -29,6 +35,7 @@ class TeacherSample:
     sequences: tuple[str, ...]
     outputs: tuple[float, ...]
     group_id: str
+    output_target_bins: tuple[int | None, ...] = ()
 
 
 class SplitManifest(BaseModel):
@@ -57,8 +64,11 @@ class PreparedTrainingData:
     """One feature matrix and one leakage-resistant split shared by every model family."""
 
     schemas: tuple[SequenceFeatureSchema, ...]
+    output_normalizations: tuple[OutputNormalization, ...]
     x: np.ndarray
     y: np.ndarray
+    normalized_y: np.ndarray
+    output_scales: np.ndarray
     group_values: np.ndarray
     train_mask: np.ndarray
     calibration_mask: np.ndarray
@@ -78,6 +88,70 @@ def _read_trace(path: Path) -> list[TraceRow]:
     return rows
 
 
+def validate_teacher_trace_contract(
+    trace_paths: tuple[Path, ...],
+    *,
+    program: Any,
+    optimizer_index: int,
+    constraint_labels: tuple[str, ...],
+) -> None:
+    """Fail closed when teacher rows do not match the frozen program group."""
+
+    signature = step_group_signature(
+        program,
+        optimizer_index=optimizer_index,
+        constraint_labels=constraint_labels,
+    )
+    expected_program_sha256 = program_signature(program).sha256
+    expected_by_label = {constraint.label: constraint for constraint in signature.constraints}
+    seen_labels: set[str] = set()
+    trace_schemas: set[str] = set()
+    for path in trace_paths:
+        for row in _read_trace(path):
+            if (
+                row.optimizer_index != optimizer_index
+                or row.constraint_label not in expected_by_label
+            ):
+                continue
+            trace_schemas.add(row.schema_version)
+            expected = expected_by_label[row.constraint_label]
+            expected_identity = (
+                expected.function.identity if expected.function is not None else None
+            )
+            if (
+                row.constraint_identity != expected_identity
+                or row.constraint_config != expected.function_config
+                or row.constraint_threshold != expected.threshold
+                or row.constraint_weight != expected.weight
+            ):
+                raise ValueError(
+                    f"teacher trace contract differs for constraint {row.constraint_label!r}"
+                )
+            if (
+                row.schema_version == "1.1"
+                and row.program_sha256 != expected_program_sha256
+            ):
+                raise ValueError("teacher trace full-program contract differs")
+            seen_labels.add(row.constraint_label)
+    if len(trace_schemas) > 1:
+        raise ValueError("teacher traces mix legacy and full-contract trace schemas")
+    missing = sorted(set(constraint_labels) - seen_labels)
+    if missing:
+        raise ValueError(f"teacher traces contain no rows for constraints: {missing}")
+
+
+def _target_bins(row: TraceRow) -> int | None:
+    metadata = row.metadata
+    if not isinstance(metadata, Mapping) or "paper_target_bins" not in metadata:
+        return None
+    value = metadata["paper_target_bins"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f"constraint {row.constraint_label!r} has invalid paper_target_bins metadata"
+        )
+    return int(value)
+
+
 def load_teacher_samples(
     trace_paths: tuple[Path, ...],
     *,
@@ -86,6 +160,8 @@ def load_teacher_samples(
 ) -> tuple[TeacherSample, ...]:
     """Align separate objective rows into one vector target for each proposal occurrence."""
 
+    if not constraint_labels or len(set(constraint_labels)) != len(constraint_labels):
+        raise ValueError("constraint_labels must be non-empty and unique")
     buckets: dict[
         tuple[str, str, int, tuple[str, ...]],
         dict[str, list[TraceRow]],
@@ -96,7 +172,10 @@ def load_teacher_samples(
             if row.optimizer_index != optimizer_index or row.constraint_label not in requested:
                 continue
             if row.error is not None or row.score is None or row.input_sequences is None:
-                continue
+                raise ValueError(
+                    f"teacher trace contains failed or incomplete row for "
+                    f"{row.constraint_label!r}"
+                )
             if row.has_structures or row.has_logits:
                 raise ValueError(
                     "score-only training cannot replace structure/logit-producing outputs"
@@ -107,19 +186,51 @@ def load_teacher_samples(
     samples: list[TeacherSample] = []
     for key in sorted(buckets):
         per_label = buckets[key]
-        if any(label not in per_label for label in constraint_labels):
-            continue
-        occurrences = min(len(per_label[label]) for label in constraint_labels)
+        missing = [label for label in constraint_labels if label not in per_label]
+        if missing:
+            raise ValueError(
+                f"teacher objective group is incomplete or unequal; missing {missing}"
+            )
+        occurrence_counts = {len(per_label[label]) for label in constraint_labels}
+        if len(occurrence_counts) != 1:
+            raise ValueError("teacher objective group is incomplete or unequal")
+        [occurrences] = occurrence_counts
         for occurrence in range(occurrences):
             rows = [per_label[label][occurrence] for label in constraint_labels]
             sequences = rows[0].input_sequences
             if sequences is None or any(row.input_sequences != sequences for row in rows):
                 raise ValueError("joined teacher objectives disagree on input sequences")
+            provenance = (
+                rows[0].program_sha256,
+                rows[0].program_seed,
+                rows[0].collection_id,
+                rows[0].program_id,
+                rows[0].methodology_id,
+                rows[0].tier,
+                rows[0].input_structure_sha256,
+                rows[0].proposal_index,
+            )
+            if any(
+                (
+                    row.program_sha256,
+                    row.program_seed,
+                    row.collection_id,
+                    row.program_id,
+                    row.methodology_id,
+                    row.tier,
+                    row.input_structure_sha256,
+                    row.proposal_index,
+                )
+                != provenance
+                for row in rows[1:]
+            ):
+                raise ValueError("joined teacher objectives disagree on trace provenance")
             samples.append(
                 TeacherSample(
                     sequences=sequences,
                     outputs=tuple(float(row.score) for row in rows if row.score is not None),
                     group_id=key[1],
+                    output_target_bins=tuple(_target_bins(row) for row in rows),
                 )
             )
     if not samples:
@@ -154,8 +265,15 @@ def infer_feature_schemas(samples: tuple[TeacherSample, ...]) -> tuple[SequenceF
                 alphabet=alphabet,
                 kmer_size=kmer_size,
                 stride=stride,
-                include_composition=True,
+                # Protein 1-mer frequencies already are composition; emitting both
+                # made the old 40-column representation only 20 unique signals.
+                include_composition=sequence_type != "protein",
                 expected_length=next(iter(lengths)) if len(lengths) == 1 else None,
+                position_encoding=(
+                    "one_hot"
+                    if sequence_type == "protein" and len(lengths) == 1
+                    else "none"
+                ),
             )
         )
     return tuple(schemas)
@@ -184,6 +302,7 @@ def prepare_training_data(
     output_labels: tuple[str, ...],
     trace_paths: tuple[Path, ...],
     schemas: tuple[SequenceFeatureSchema, ...] | None = None,
+    output_normalizations: tuple[OutputNormalization, ...] = (),
     seed: int = 0,
 ) -> PreparedTrainingData:
     """Featurize once and freeze the exact grouped split used by model comparisons."""
@@ -192,6 +311,25 @@ def prepare_training_data(
         raise ValueError("training requires samples and at least one output label")
     if any(len(sample.outputs) != len(output_labels) for sample in samples):
         raise ValueError("teacher output dimensions do not match output labels")
+    resolved_normalizations = output_normalizations or tuple(
+        OutputNormalization() for _ in output_labels
+    )
+    if len(resolved_normalizations) != len(output_labels):
+        raise ValueError("output normalization dimension does not match output labels")
+    for sample in samples:
+        for output_index, normalization in enumerate(resolved_normalizations):
+            computed_bins = normalization.sequence_bin_count(sample.sequences)
+            if computed_bins is None:
+                continue
+            if len(sample.output_target_bins) != len(output_labels):
+                raise ValueError(
+                    "sequence-bin normalization requires paper_target_bins trace metadata"
+                )
+            recorded_bins = sample.output_target_bins[output_index]
+            if recorded_bins != computed_bins:
+                raise ValueError(
+                    "paper_target_bins metadata does not match the frozen sequence-bin rule"
+                )
     resolved_schemas = schemas or infer_feature_schemas(samples)
     x = np.asarray(
         [featurize_inputs(sample.sequences, resolved_schemas) for sample in samples],
@@ -200,8 +338,20 @@ def prepare_training_data(
     y = np.asarray([sample.outputs for sample in samples], dtype=np.float64)
     if not np.all(np.isfinite(y)):
         raise ValueError("teacher outputs must be finite")
-    if np.any((y < 0.0) | (y > 1.0)):
-        raise ValueError("portable score-only training requires teacher outputs in [0, 1]")
+    output_scales = np.asarray(
+        [
+            [normalization.scale(sample.sequences) for normalization in resolved_normalizations]
+            for sample in samples
+        ],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(output_scales)) or np.any(output_scales <= 0.0):
+        raise ValueError("teacher output normalization scales must be positive and finite")
+    normalized_y = y / output_scales
+    if not np.all(np.isfinite(normalized_y)) or np.any(
+        (normalized_y < 0.0) | (normalized_y > 1.0)
+    ):
+        raise ValueError("normalized teacher outputs must be finite and in [0, 1]")
 
     train_groups, calibration_groups, audit_groups = _split_groups(
         {sample.group_id for sample in samples},
@@ -225,8 +375,11 @@ def prepare_training_data(
     )
     return PreparedTrainingData(
         schemas=resolved_schemas,
+        output_normalizations=resolved_normalizations,
         x=x,
         y=y,
+        normalized_y=normalized_y,
+        output_scales=output_scales,
         group_values=group_values,
         train_mask=train_mask,
         calibration_mask=calibration_mask,
@@ -301,6 +454,7 @@ def train_linear_ensemble(
     output_labels: tuple[str, ...],
     trace_paths: tuple[Path, ...],
     schemas: tuple[SequenceFeatureSchema, ...] | None = None,
+    output_normalizations: tuple[OutputNormalization, ...] = (),
     seed: int = 0,
     ensemble_size: int = 8,
 ) -> TrainingResult:
@@ -311,11 +465,14 @@ def train_linear_ensemble(
         output_labels=output_labels,
         trace_paths=trace_paths,
         schemas=schemas,
+        output_normalizations=output_normalizations,
         seed=seed,
     )
     resolved_schemas = prepared.schemas
     x = prepared.x
     y = prepared.y
+    normalized_y = prepared.normalized_y
+    output_scales = prepared.output_scales
     group_values = prepared.group_values
     train_mask = prepared.train_mask
     calibration_mask = prepared.calibration_mask
@@ -336,16 +493,19 @@ def train_linear_ensemble(
         )
         # The vector solve is a compact multi-output implementation, but ordinary least squares
         # remains column-separable: it does not learn cross-objective covariance.
-        coefficients.append(np.linalg.lstsq(design[indices], y[indices], rcond=None)[0])
-    stacked = np.stack([design @ coefficient for coefficient in coefficients])
-    prediction = stacked.mean(axis=0)
-    uncertainty = stacked.std(axis=0)
+        coefficients.append(
+            np.linalg.lstsq(design[indices], normalized_y[indices], rcond=None)[0]
+        )
+    normalized_stacked = np.stack([design @ coefficient for coefficient in coefficients])
+    normalized_prediction = normalized_stacked.mean(axis=0)
+    normalized_uncertainty = normalized_stacked.std(axis=0)
+    prediction = normalized_prediction * output_scales
     center = x[train_mask].mean(axis=0)
     scale = np.maximum(x[train_mask].std(axis=0), 1e-6)
     support = np.sqrt(np.mean(np.square((x - center) / scale), axis=1))
     support_threshold = _quantile(support[calibration_mask], 0.99)
     uncertainty_threshold = _quantile(
-        uncertainty[calibration_mask].max(axis=1),
+        normalized_uncertainty[calibration_mask].max(axis=1),
         0.99,
     )
     calibration_error = np.abs(y[calibration_mask] - prediction[calibration_mask])
@@ -356,6 +516,7 @@ def train_linear_ensemble(
     model = LinearEnsembleModel(
         input_schemas=resolved_schemas,
         output_labels=output_labels,
+        output_normalizations=prepared.output_normalizations,
         coefficients=tuple(
             tuple(tuple(float(value) for value in row) for row in coefficient)
             for coefficient in coefficients
@@ -368,18 +529,18 @@ def train_linear_ensemble(
     )
     audit_error = np.abs(y[audit_mask] - prediction[audit_mask])
     audit_prediction = prediction[audit_mask]
-    audit_uncertainty = uncertainty[audit_mask].max(axis=1)
+    audit_normalized_uncertainty = normalized_uncertainty[audit_mask].max(axis=1)
     audit_support = support[audit_mask]
     audit_in_range = np.all(
-        np.isfinite(audit_prediction)
-        & (audit_prediction >= 0.0)
-        & (audit_prediction <= 1.0),
+        np.isfinite(normalized_prediction[audit_mask])
+        & (normalized_prediction[audit_mask] >= 0.0)
+        & (normalized_prediction[audit_mask] <= 1.0),
         axis=1,
     )
     audit_accepted = (
         audit_in_range
         & (audit_support <= support_threshold)
-        & (audit_uncertainty <= uncertainty_threshold)
+        & (audit_normalized_uncertainty <= uncertainty_threshold)
     )
     accepted_error = audit_error[audit_accepted]
     audit_actual = y[audit_mask]
@@ -402,7 +563,9 @@ def train_linear_ensemble(
         "audit_score_q95": np.quantile(audit_actual, 0.95, axis=0).tolist(),
         "audit_score_q95_q05_range": audit_ranges.tolist(),
         "audit_support_coverage": float(np.mean(audit_support <= support_threshold)),
-        "audit_uncertainty_coverage": float(np.mean(audit_uncertainty <= uncertainty_threshold)),
+        "audit_uncertainty_coverage": float(
+            np.mean(audit_normalized_uncertainty <= uncertainty_threshold)
+        ),
         "audit_selective_coverage": float(np.mean(audit_accepted)),
         "audit_accepted_mae": (
             accepted_error.mean(axis=0).tolist() if len(accepted_error) else None

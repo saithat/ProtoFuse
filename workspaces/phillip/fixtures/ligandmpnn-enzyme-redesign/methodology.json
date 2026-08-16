@@ -1,23 +1,25 @@
 {
   "schema_version": "1.0",
   "paper": {
-    "title": "Ligand-aware enzyme active-site redesign",
-    "identifier": "ligandmpnn-enzyme-redesign-v1",
-    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+    "title": "LigandMPNN + ESMFold joint-surrogate experiment",
+    "identifier": "protofuse-ligandmpnn-esmfold-joint-v2",
+    "source_path": "docs/LIGANDMPNN_ESMFOLD_EXPERIMENT.md"
   },
   "generators": [
     {
-      "name": "LigandMPNN active-site mutation",
-      "description": "Propose LigandMPNN-guided mutations within the enzyme active site on a fixed holo structure.",
+      "name": "seeded active-site mutation",
+      "description": "Guarantee one non-identity substitution within the registered enzyme active site.",
       "parameters": {
         "enzyme_pdb": "3HTB",
         "enzyme_chain": "A",
-        "active_site_positions": [62, 64, 91, 92, 94, 96, 119, 121]
+        "active_site_positions": [62, 64, 91, 92, 94, 96, 119, 121],
+        "num_mutations": 1,
+        "exclude_current": true
       },
       "evidence": [
         {
-          "quote": "Redesign residues around a bound ligand on a fixed backbone.",
-          "section": "CANDIDATE_WORKFLOWS",
+          "quote": "Every proposal changes exactly one registered active-site residue.",
+          "section": "Question",
           "page": null
         }
       ],
@@ -27,18 +29,30 @@
   "constraints": [
     {
       "name": "MPNN sequence probability",
-      "description": "Favor LigandMPNN-high-probability active-site substitutions.",
-      "parameters": {"model": "ligandmpnn"},
-      "evidence": [],
+      "description": "Minimize LigandMPNN probability loss for active-site substitutions.",
+      "parameters": {"model": "ligandmpnn", "score_mode": "probability_loss"},
+      "evidence": [
+        {
+          "quote": "The LigandMPNN objective is its existing probability loss, `1 - pMPNN`, in `[0, 1]`.",
+          "section": "Parent objectives",
+          "page": null
+        }
+      ],
       "metric": "mpnn_probability",
       "direction": "maximize",
       "weight": 1.0
     },
     {
-      "name": "structure pLDDT filter",
-      "description": "Require ESMFold confidence after active-site mutations.",
-      "parameters": {"structure_tool": "esmfold", "min_plddt": 70.0},
-      "evidence": [],
+      "name": "ESMFold confidence objective",
+      "description": "Minimize exact ESMFold confidence energy without retaining an unused structure side output.",
+      "parameters": {"structure_tool": "esmfold", "reporting_target_plddt": 70.0},
+      "evidence": [
+        {
+          "quote": "The ESMFold adapter is score-only: it runs the ordinary ESMFold parent, preserves the exact scalar pLDDT energy, and discards only the predicted structure and PDB text because no downstream step consumes them.",
+          "section": "Parent objectives",
+          "page": null
+        }
+      ],
       "metric": "mean_plddt",
       "direction": "maximize",
       "weight": 0.75
@@ -47,7 +61,13 @@
       "name": "protein length range",
       "description": "Keep enzyme length fixed to the holo structure.",
       "parameters": {},
-      "evidence": [],
+      "evidence": [
+        {
+          "quote": "The enzyme sequence remains fixed at the chain-A length registered from holo structure 3HTB, and only the registered active-site positions may mutate.",
+          "section": "Question",
+          "page": null
+        }
+      ],
       "metric": "protein_length",
       "direction": "range",
       "weight": 1.0
@@ -60,8 +80,8 @@
       "parameters": {"num_steps": 100, "num_results": 1},
       "evidence": [
         {
-          "quote": "Topology: cycling or region-local MCMC on active-site segment.",
-          "section": "CANDIDATE_WORKFLOWS",
+          "quote": "Development smoke: five MCMC steps with one guaranteed active-site substitution per step.",
+          "section": "Protocol",
           "page": null
         }
       ],
@@ -93,41 +113,52 @@
     "num_steps": 100,
     "num_results": 1,
     "proposals_per_result": 1,
-    "mutations_per_step": 3,
+    "mutations_per_step": 1,
     "max_temperature": 1.0,
     "min_plddt": 70.0,
+    "plddt_weight": 0.75,
     "mpnn_temperature": 0.1
   },
   "workflow": {
     "steps": [
       {
-        "id": "score_active_site",
-        "operation": "LigandMPNN score current sequence on holo structure",
-        "inputs": ["holo_structure", "enzyme_sequence"],
-        "outputs": ["mutation_probs"],
-        "parameters": {},
-        "evidence": []
-      },
-      {
         "id": "propose_mutations",
-        "operation": "Sample active-site substitutions",
-        "inputs": ["mutation_probs"],
+        "operation": "Seeded non-identity active-site substitution",
+        "inputs": ["enzyme_sequence", "active_site_positions"],
         "outputs": ["candidate_sequence"],
         "parameters": {},
         "evidence": []
       },
       {
-        "id": "validate_fold",
-        "operation": "ESMFold developability gate",
+        "id": "score_compatibility",
+        "operation": "LigandMPNN probability-loss objective",
         "inputs": ["candidate_sequence"],
-        "outputs": ["accepted_sequence"],
+        "outputs": ["mpnn_probability_energy"],
+        "parameters": {"model": "ligandmpnn"},
+        "evidence": []
+      },
+      {
+        "id": "score_confidence",
+        "operation": "score-only ESMFold pLDDT objective",
+        "inputs": ["candidate_sequence"],
+        "outputs": ["structure_plddt_energy"],
         "parameters": {"structure_tool": "esmfold"},
+        "evidence": []
+      },
+      {
+        "id": "joint_mcmc",
+        "operation": "weighted joint MCMC accept or reject",
+        "inputs": ["mpnn_probability_energy", "structure_plddt_energy"],
+        "outputs": ["accepted_sequence"],
+        "parameters": {},
         "evidence": []
       }
     ],
     "edges": [
-      {"source": "score_active_site", "target": "propose_mutations", "artifact": "mutation_probs"},
-      {"source": "propose_mutations", "target": "validate_fold", "artifact": "candidate_sequence"}
+      {"source": "propose_mutations", "target": "score_compatibility", "artifact": "candidate_sequence"},
+      {"source": "propose_mutations", "target": "score_confidence", "artifact": "candidate_sequence"},
+      {"source": "score_compatibility", "target": "joint_mcmc", "artifact": "mpnn_probability_energy"},
+      {"source": "score_confidence", "target": "joint_mcmc", "artifact": "structure_plddt_energy"}
     ]
   },
   "selection_thresholds": [],
@@ -135,10 +166,13 @@
   "assumptions": [
     "Carbonic anhydrase II holo structure PDB 3HTB chain A is a compact ligand-aware benchmark.",
     "Active-site positions are 1-indexed ordinals on chain A suitable for LigandMPNN ResidueSelection.",
-    "Metal3d scoring is omitted when the benchmark structure lacks a modeled metal cofactor."
+    "Metal3d scoring is omitted when the benchmark structure lacks a modeled metal cofactor.",
+    "pLDDT 70 is a reporting target, not a hard optimizer threshold.",
+    "The score-only ESMFold adapter is valid here because no downstream step consumes its structure."
   ],
   "unknowns": [
     "Catalytic turnover and ligand affinity are not modeled.",
-    "Boltz-2 affinity scoring is deferred to keep smoke tier latency manageable."
+    "Boltz-2 affinity scoring is deferred to keep smoke tier latency manageable.",
+    "The first portable surrogate uses amino-acid composition features and may defer position-specific mutations."
   ]
 }

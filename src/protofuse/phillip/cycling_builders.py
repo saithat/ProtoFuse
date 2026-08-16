@@ -113,6 +113,7 @@ def bioemu_constraint_config(
     target_chain_id: str,
     num_samples: int,
     max_ensemble_rmsd: float,
+    model_seed: int,
 ) -> dict[str, Any]:
     """Build function_config for structure_ensemble_rmsd_constraint."""
 
@@ -122,6 +123,7 @@ def bioemu_constraint_config(
         "bioemu_config": {
             "num_samples": num_samples,
             "batch_size": min(num_samples, 4),
+            "seed": model_seed,
         },
         "inflection_point_angstroms": max_ensemble_rmsd,
         "verbose": False,

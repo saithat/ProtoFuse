@@ -11,11 +11,11 @@ from hashlib import sha256
 from itertools import count
 from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from proto_language.core import ConstraintOutput, Program
 from proto_language.core import Sequence as ProtoSequence
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from protofuse.sai.signatures import callable_signature, stable_data
 
@@ -25,7 +25,8 @@ class TraceRow(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
+    constraint_config_scope: Literal["pre_run_contract"] | None = None
     recorded_at: str
     run_id: str
     group_id: str
@@ -52,6 +53,14 @@ class TraceRow(BaseModel):
     has_logits: bool
     call_latency_seconds: float
     error: str | None = None
+
+    @model_validator(mode="after")
+    def config_scope_matches_schema(self) -> TraceRow:
+        if self.schema_version == "1.1" and self.constraint_config_scope != "pre_run_contract":
+            raise ValueError("trace schema 1.1 requires pre_run_contract config scope")
+        if self.schema_version == "1.0" and self.constraint_config_scope is not None:
+            raise ValueError("trace schema 1.0 cannot declare a config scope")
+        return self
 
 
 def _utc_now() -> str:
@@ -88,6 +97,7 @@ def trace_program_constraints(
     *,
     run_id: str,
     group_id: str,
+    group_by_input_batch: bool = False,
     include_inputs: bool = True,
     collection_id: str | None = None,
     program_id: str | None = None,
@@ -109,6 +119,12 @@ def trace_program_constraints(
                 continue
             identity = callable_signature(original)
             identity_text = identity.identity if identity else "unknown"
+            # Optimizers inject derived runtime seeds into constraint configs at the
+            # start of ``run()``. Keep the trace contract equal to the pre-run
+            # program signature; ``program_seed`` records execution randomness.
+            contract_config = stable_data(constraint.function_config)
+            contract_threshold = constraint.threshold
+            contract_weight = float(constraint.weight)
 
             @functools.wraps(original)
             def traced(
@@ -119,8 +135,16 @@ def trace_program_constraints(
                 _optimizer_index: int = optimizer_index,
                 _constraint: Any = constraint,
                 _identity: str = identity_text,
+                _contract_config: Any = contract_config,
+                _contract_threshold: float | None = contract_threshold,
+                _contract_weight: float = contract_weight,
             ) -> list[ConstraintOutput]:
                 call_index = next(call_counter)
+                resolved_group_id = (
+                    _input_batch_group_id(group_id, input_sequences)
+                    if group_by_input_batch
+                    else group_id
+                )
                 started = perf_counter()
                 try:
                     outputs = list(_original(input_sequences, config=config))
@@ -132,7 +156,7 @@ def trace_program_constraints(
                             output=None,
                             recorded_at=_utc_now(),
                             run_id=run_id,
-                            group_id=group_id,
+                            group_id=resolved_group_id,
                             collection_id=collection_id,
                             program_id=program_id,
                             methodology_id=methodology_id,
@@ -142,9 +166,9 @@ def trace_program_constraints(
                             optimizer_index=_optimizer_index,
                             constraint_label=str(_constraint.label),
                             constraint_identity=_identity,
-                            constraint_config=stable_data(_constraint.function_config),
-                            constraint_threshold=_constraint.threshold,
-                            constraint_weight=float(_constraint.weight),
+                            constraint_config=_contract_config,
+                            constraint_threshold=_contract_threshold,
+                            constraint_weight=_contract_weight,
                             call_index=call_index,
                             proposal_index=proposal_index,
                             include_inputs=include_inputs,
@@ -168,7 +192,7 @@ def trace_program_constraints(
                             output=output,
                             recorded_at=_utc_now(),
                             run_id=run_id,
-                            group_id=group_id,
+                            group_id=resolved_group_id,
                             collection_id=collection_id,
                             program_id=program_id,
                             methodology_id=methodology_id,
@@ -178,9 +202,9 @@ def trace_program_constraints(
                             optimizer_index=_optimizer_index,
                             constraint_label=str(_constraint.label),
                             constraint_identity=_identity,
-                            constraint_config=stable_data(_constraint.function_config),
-                            constraint_threshold=_constraint.threshold,
-                            constraint_weight=float(_constraint.weight),
+                            constraint_config=_contract_config,
+                            constraint_threshold=_contract_threshold,
+                            constraint_weight=_contract_weight,
                             call_index=call_index,
                             proposal_index=proposal_index,
                             include_inputs=include_inputs,
@@ -204,6 +228,22 @@ def trace_program_constraints(
     finally:
         for constraint, original in originals:
             constraint._function = original
+
+
+def _input_batch_group_id(
+    base_group_id: str,
+    input_sequences: list[tuple[ProtoSequence, ...]],
+) -> str:
+    """Group sibling proposals together without recording their raw sequence in the ID."""
+
+    digest = sha256()
+    for inputs in input_sequences:
+        digest.update(len(inputs).to_bytes(4, "big"))
+        for sequence in inputs:
+            encoded = str(sequence.sequence).encode()
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+    return f"{base_group_id}:batch-{digest.hexdigest()}"
 
 
 def _trace_row(
@@ -233,6 +273,8 @@ def _trace_row(
 ) -> TraceRow:
     sequences = tuple(str(item.sequence) for item in inputs)
     return TraceRow(
+        schema_version="1.1",
+        constraint_config_scope="pre_run_contract",
         recorded_at=recorded_at,
         run_id=run_id,
         group_id=group_id,

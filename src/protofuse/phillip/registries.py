@@ -132,9 +132,11 @@ RFDIFFUSION3_BOLTZ2_REGISTRY: dict[str, str] = {
 
 LIGANDMPNN_ENZYME_REGISTRY: dict[str, str] = {
     **PROTEIN_SHARED_REGISTRY,
-    "LigandMPNN active-site mutation": "proto_language.generator.MPNNMutationGenerator",
+    "seeded active-site mutation": "proto_language.generator.SemigreedyMutationGenerator",
     "MPNN sequence probability": "proto_language.constraint.mpnn_sequence_probability_constraint",
-    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "ESMFold confidence objective": (
+        "protofuse.phillip.score_only_structure.score_only_esmfold_plddt_constraint"
+    ),
     "protein length range": "proto_language.constraint.protein_length_constraint",
 }
 
@@ -142,7 +144,9 @@ BIOEMU_ENSEMBLE_REGISTRY: dict[str, str] = {
     **PROTEIN_SHARED_REGISTRY,
     "ESM-2 masked mutation": "proto_language.generator.ESM2Generator",
     "structure ensemble RMSD": "proto_language.constraint.structure_ensemble_rmsd_constraint",
-    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "ESMFold confidence objective": (
+        "protofuse.phillip.score_only_structure.score_only_esmfold_plddt_constraint"
+    ),
     "protein length range": "proto_language.constraint.protein_length_constraint",
 }
 
@@ -204,7 +208,9 @@ EVO2_REGULATORY_REGISTRY: dict[str, str] = {
     "Borzoi chromatin pattern loss": (
         "protofuse.phillip.evo2_paper_constraints.evo2_paper_borzoi_l1_constraint"
     ),
-    "chunked beam search": "proto_language.optimizer.BeamSearchOptimizer",
+    "chunked beam search": (
+        "protofuse.phillip.evo2_beam_cache.Evo2PrefixReplayBeamSearchOptimizer"
+    ),
 }
 
 FREEBINDCRAFT_REGISTRY: dict[str, str] = {
@@ -545,15 +551,15 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 tier="full",
                 docstring=(
                     "Full-tier LigandMPNN enzyme active-site MCMC (3HTB, 100 steps).\n\n"
-                    "Mutates ligand-aware active-site ordinals on a fixed holo backbone with\n"
-                    "LigandMPNN probability and ESMFold pLDDT gates."
+                    "Mutates active-site ordinals on a fixed holo backbone with\n"
+                    "joint LigandMPNN probability and ESMFold pLDDT objectives."
                 ),
                 builder_call="build_ligandmpnn_enzyme_redesign_program(params)",
             ),
             ProgramVariant(
                 filename="design_002.py",
                 tier="smoke",
-                docstring="Smoke-tier LigandMPNN enzyme redesign (20 MCMC steps).",
+                docstring="Smoke-tier LigandMPNN + ESMFold joint optimization (5 MCMC steps).",
                 builder_call="build_ligandmpnn_enzyme_redesign_program(params)",
             ),
         ),
@@ -580,7 +586,7 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 tier="smoke",
                 docstring=(
                     "Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, "
-                    "20 steps, 2 BioEmu samples)."
+                    "5 steps, 1 BioEmu sample)."
                 ),
                 builder_call="build_bioemu_ensemble_filter_program(params)",
             ),
@@ -679,11 +685,11 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename=f"design_{beta_index * 5 + seed + 1:03d}.py",
                 tier="full",
                 docstring=(
-                    "Full-tier pair-representation-scaling protocol slice.\n\n"
-                    f"Use beta={beta} and implementation seed {seed} for five AlphaFold3 and "
-                    "five Boltz-2 draws, with separate TM-scores to both reference states. "
-                    "Execution requires explicitly registered reviewed backends and has no "
-                    "unscaled fallback."
+                    "Full-tier query-only Boltz-2 pair-representation-scaling slice.\n\n"
+                    f"Use beta={beta} and implementation seed {seed} for five Boltz-2 draws, "
+                    "with separate TM-scores to both reference states. Proto and ProtoFuse "
+                    "must use this same backend, input, and seed. AlphaFold 3 and paper-matched "
+                    "MSAs are optional validation recipes, not execution gates."
                 ),
                 builder_call=(
                     "build_af3_boltz2_state_sweep_program("
@@ -700,13 +706,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_051.py",
                 tier="smoke",
                 docstring=(
-                    "Smoke-tier audited Boltz-2 pair-scaling binding check on adenylate kinase "
-                    "at beta=-0.15. AlphaFold3 stays fail-closed until licensed weights and its "
-                    "independently reviewed backend are available."
+                    "Smoke-tier audited query-only Boltz-2 pair-scaling binding check on "
+                    "adenylate kinase at beta=-0.15; AlphaFold 3 is an optional cross-check."
                 ),
                 builder_call=(
                     "build_af3_boltz2_state_sweep_program("
-                    "params, seed=0, beta=-0.15, models=(\"boltz2\",))"
+                    "params, seed=0, beta=-0.15)"
                 ),
             ),
         ),
@@ -772,6 +777,38 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 ),
                 builder_call=(
                     'build_evo2_regulatory_design_program(params, morse_pattern=".", dot_bp=128)'
+                ),
+            ),
+            ProgramVariant(
+                filename="design_005.py",
+                tier="full",
+                docstring=(
+                    "Full-length ARC regulatory design at the paper's 6-token-per-designed-bp "
+                    "inference-scaling point. It retains one prompt and samples six 128-bp "
+                    "chunks per iteration while preserving the full genomic context and both "
+                    "paper scoring models."
+                ),
+                builder_call=(
+                    "build_evo2_regulatory_design_program("
+                    '{**params, "num_results": 1}, morse_pattern=".- .-. -.-.", '
+                    "dot_bp=384, proposals_per_result=6)"
+                ),
+            ),
+            ProgramVariant(
+                filename="design_006.py",
+                tier="full",
+                docstring=(
+                    "Complete budgeted Evo 2/Enformer/Borzoi ARC reproduction for a "
+                    "three-hour campaign. It uses a 4,096-base prompt, designs all 4,096 "
+                    "bases in 32 128-base iterations, retains one prompt, and samples six "
+                    "proposals per iteration. The full ARC target is compressed to the "
+                    "smallest Enformer-resolvable dot width; this is not paper-length."
+                ),
+                builder_call=(
+                    "build_evo2_regulatory_design_program("
+                    '{**params, "segment_length_bp": 4096, '
+                    '"evo2_generator_prompt_bp": 4096, "num_results": 1}, '
+                    'morse_pattern=".- .-. -.-.", dot_bp=128, proposals_per_result=6)'
                 ),
             ),
         ),

@@ -85,14 +85,17 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
     ),
     "ligandmpnn-enzyme-redesign": HandoffConfig(
         fixture_id="ligandmpnn-enzyme-redesign",
-        methodology_id="ligandmpnn-enzyme-redesign-v1",
+        methodology_id="ligandmpnn-esmfold-joint-v2",
         seed_policy="enzyme sequence from holo PDB 3HTB; active-site masking via ResidueSelection",
         compile_device="modal",
     ),
     "bioemu-ensemble-filter": HandoffConfig(
         fixture_id="bioemu-ensemble-filter",
-        methodology_id="bioemu-ensemble-filter-v1",
-        seed_policy="lysozyme seed sequence; smoke truncates to 80 aa",
+        methodology_id="bioemu-esmfold-joint-v2",
+        seed_policy=(
+            "program seed drives ESM-2 proposals; BioEmu parent labels use fixed model seed 0; "
+            "smoke truncates lysozyme to 80 aa"
+        ),
         compile_device="modal",
     ),
     "boltz2-state-sweep": HandoffConfig(
@@ -114,11 +117,12 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
     ),
     "af3-boltz2-state-sweep": HandoffConfig(
         fixture_id="af3-boltz2-state-sweep",
-        methodology_id="af3-boltz2-state-sweep-v3",
+        methodology_id="af3-boltz2-state-sweep-v4",
         seed_policy=(
             "paper reports five seeds without values; the target-level protocol slice uses "
             "implementation seeds 0 through 4 across ten beta settings and five draws per "
-            "setting, paired identically across full/fused arms"
+            "setting; query-only Boltz-2 inputs, model seeds, and proposal order are paired "
+            "identically across full/fused arms"
         ),
         compile_device="modal",
     ),

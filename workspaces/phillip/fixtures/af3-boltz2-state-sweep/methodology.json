@@ -8,12 +8,15 @@
   "generators": [
     {
       "name": "fixed-sequence pair-scaling sweep",
-      "description": "Keep the adenylate-kinase sequence fixed and enumerate the paper's ten beta settings, five implementation seeds, and five model draws per seed/setting for each predictor.",
+      "description": "Keep the adenylate-kinase sequence fixed and enumerate the paper's ten beta settings, five implementation seeds, and five Boltz-2 draws per seed/setting. The generated benchmark requires only query-only Boltz-2; AlphaFold 3 is an explicit optional cross-check.",
       "parameters": {
         "implementation_seeds": [0, 1, 2, 3, 4],
         "pair_scaling_betas": [-0.75, -0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6, 0.75],
         "models_per_seed_setting": 5,
         "models_per_method_for_target_slice": 250,
+        "required_backend": "boltz2",
+        "optional_cross_check_backend": "alphafold3",
+        "required_input_mode": "query_only",
         "backend_policy": "explicit reviewed registration; fail closed if unavailable"
       },
       "evidence": [
@@ -26,34 +29,6 @@
     }
   ],
   "constraints": [
-    {
-      "name": "AlphaFold3 dominant-state TM-score",
-      "description": "Minimize 1 minus US-align TM-score from the pair-scaled AlphaFold3 prediction to the dominant reference state.",
-      "parameters": {"structure_tool": "reviewed_pair_scaled_alphafold3", "reference_state": "dominant"},
-      "evidence": [
-        {
-          "quote": "Every generated model was compared against both reference states by TM-score and Cα RMSD, and each ensemble was summarized with the metrics below.",
-          "section": "Evaluation metrics"
-        }
-      ],
-      "metric": "one_minus_tm_score",
-      "direction": "minimize",
-      "weight": 1.0
-    },
-    {
-      "name": "AlphaFold3 alternative-state TM-score",
-      "description": "Minimize 1 minus US-align TM-score from the same pair-scaled AlphaFold3 prediction to the alternative reference state.",
-      "parameters": {"structure_tool": "reviewed_pair_scaled_alphafold3", "reference_state": "alternative"},
-      "evidence": [
-        {
-          "quote": "Every generated model was compared against both reference states by TM-score and Cα RMSD, and each ensemble was summarized with the metrics below.",
-          "section": "Evaluation metrics"
-        }
-      ],
-      "metric": "one_minus_tm_score",
-      "direction": "minimize",
-      "weight": 1.0
-    },
     {
       "name": "Boltz-2 dominant-state TM-score",
       "description": "Minimize 1 minus US-align TM-score from the pair-scaled Boltz-2 prediction to the dominant reference state.",
@@ -100,7 +75,7 @@
   "optimizers": [
     {
       "name": "pair-scaling seed-setting slice",
-      "description": "Collect five fixed-sequence predictions for one beta/seed setting; the 50 full variants together yield the paper's 250 models per method for this target slice.",
+      "description": "Collect five fixed-sequence query-only Boltz-2 predictions for one beta/seed setting; the 50 full variants together yield 250 Boltz-2 models for this target slice.",
       "parameters": {
         "models_per_seed_setting": 5,
         "seed_count": 5,
@@ -132,9 +107,9 @@
     },
     {
       "name": "AlphaFold3",
-      "version_or_checkpoint": "3.0.1 in paper; local tool configuration unpinned",
+      "version_or_checkpoint": "3.0.1; official source commit 231efc9bb9c13b45cc59e43f7107869084ee9624",
       "provider": "Google DeepMind",
-      "purpose": "Pair-scaled paper sampler behind the explicit reviewed-backend contract",
+      "purpose": "Optional closer-to-paper cross-check using a digest-pinned minimal patch and privately mounted official parameters; not required by generated programs, smoke, or handoff",
       "evidence": [
         {
           "quote": "Pair representation scaling rescales this tensor at the input to the Pairformer at each recycling iteration.",
@@ -164,9 +139,10 @@
     "protein_sequence": "",
     "num_samples": 5,
     "num_results": 5,
+    "use_msa": false,
     "subsample_msa": false,
     "max_msa_seqs": 1024,
-    "diffusion_samples": 1,
+    "diffusion_samples": 5,
     "sampling_steps": 200,
     "step_scale": 1.5,
     "recycling_steps": 3,
@@ -187,14 +163,6 @@
         "evidence": []
       },
       {
-        "id": "predict_af3_scaled",
-        "operation": "AlphaFold3 prediction with z multiplied by 1 + beta before Pairformer at every recycle",
-        "inputs": ["scaled_seeded_draws"],
-        "outputs": ["af3_structures"],
-        "parameters": {"backend_policy": "reviewed registration required; no unscaled fallback"},
-        "evidence": []
-      },
-      {
         "id": "predict_boltz2_scaled",
         "operation": "Boltz-2 prediction with z multiplied by 1 + beta before Pairformer at every recycle",
         "inputs": ["scaled_seeded_draws"],
@@ -204,27 +172,25 @@
       },
       {
         "id": "score_both_states",
-        "operation": "Score each model output against both adenylate-kinase reference states",
-        "inputs": ["af3_structures", "boltz2_structures", "dominant_reference", "alternative_reference"],
-        "outputs": ["four_component_objective_vectors"],
+        "operation": "Score each Boltz-2 output against both adenylate-kinase reference states",
+        "inputs": ["boltz2_structures", "dominant_reference", "alternative_reference"],
+        "outputs": ["two_component_objective_vectors"],
         "parameters": {},
         "evidence": []
       },
       {
         "id": "evaluate_ensemble_offline",
         "operation": "Compute the paper's per-state success, worst-case RMSD, best-minimum TM-score, and fill ratio offline",
-        "inputs": ["four_component_objective_vectors"],
+        "inputs": ["two_component_objective_vectors"],
         "outputs": ["paper_metrics"],
         "parameters": {"per_state_success_rmsd_angstrom": 2.0, "fill_ratio_bins": 100},
         "evidence": []
       }
     ],
     "edges": [
-      {"source": "enumerate_pair_scaling_draws", "target": "predict_af3_scaled", "artifact": "scaled_seeded_draws"},
       {"source": "enumerate_pair_scaling_draws", "target": "predict_boltz2_scaled", "artifact": "scaled_seeded_draws"},
-      {"source": "predict_af3_scaled", "target": "score_both_states", "artifact": "af3_structures"},
       {"source": "predict_boltz2_scaled", "target": "score_both_states", "artifact": "boltz2_structures"},
-      {"source": "score_both_states", "target": "evaluate_ensemble_offline", "artifact": "four_component_objective_vectors"}
+      {"source": "score_both_states", "target": "evaluate_ensemble_offline", "artifact": "two_component_objective_vectors"}
     ]
   },
   "selection_thresholds": [
@@ -288,14 +254,19 @@
   "assumptions": [
     "The Program emits 1-TM-score constraints; raw TM-score is recovered as 1 minus the stored score.",
     "Adenylate kinase is a representative example in the paper, but this collection is one target-level protocol slice rather than the full 86-protein benchmark.",
-    "The 50 full variants encode the Table 1 allocation exactly for one target: ten beta settings times five seeds times five draws equals 250 models per method.",
-    "The paper reports five seeds but not their values; implementation seeds 0 through 4 are paired identically across full and fused arms.",
+    "The 50 full variants preserve the paper's draw allocation for the required Boltz-2 target slice: ten beta settings times five seeds times five diffusion samples equals 250 models. The generated query-only inputs diverge from the paper's matched-depth MSA protocol.",
+    "The paper reports five seeds but not their values; implementation seeds 0 through 4, query-only backend inputs, beta values, and proposal order are paired identically across full and fused arms.",
     "Only backends explicitly registered through register_reviewed_pair_scaling_backend may execute; absence raises an error instead of silently running beta zero.",
-    "The reduced smoke variant exercises the audited Boltz-2 path only; full variants retain both paper predictors."
+    "Both smoke and full generated variants require only query-only Boltz-2. This removes private AlphaFold 3 parameters and a user-held AlphaFold Server MSA from the execution gate, at the cost of unknown and potentially material accuracy loss relative to the paper.",
+    "Each full variant scores all five fixed-sequence proposals in one optimizer batch; the backend folds the sequence once with five diffusion samples and returns every sample instead of retaining only model zero. The smoke variant remains one proposal and one diffusion sample."
   ],
   "unknowns": [
-    "The Boltz-2 2.2.1 backend is independently implemented as an audited Pairformer pre-hook that rejects a run unless it fires once per trunk pass. The AlphaFold3 backend remains unavailable and fails closed because licensed weights are not present.",
+    "The required Boltz-2 2.2.1 backend uses an audited Pairformer pre-hook and rejects a run unless scaling fires once per trunk pass; it never substitutes an unscaled model. The optional AlphaFold 3 backend applies the same fail-closed policy.",
+    "A closer paper-fidelity recipe is available only by explicitly setting use_msa=true with max_msa_seqs=1024 and supplying the exact user-held AlphaFold Server alignment through PROTOFUSE_AF3_SERVER_MSA_A3M. Adding AlphaFold 3 also requires explicitly requesting models=(\"alphafold3\", \"boltz2\"). Neither recipe is part of generated-program review or smoke.",
+    "Official AlphaFold 3 parameters are licensed, privately mounted runtime data and are never committed or redistributed. They are optional for this collection's runnable benchmark.",
     "The collection encodes one adenylate-kinase protocol slice, not the complete 86-target benchmark.",
-    "Per-state Cα RMSD success, worst-case RMSD, best-minimum TM-score, and fill ratio remain ensemble-level collection analysis beyond the per-model TM-score constraints."
+    "Per-state Cα RMSD success, worst-case RMSD, best-minimum TM-score, and fill ratio remain ensemble-level collection analysis beyond the per-model TM-score constraints.",
+    "Every per-model and per-state TM-score remains in constraint metadata, but a Proto Program candidate has one structure slot, so later structure-producing constraints overwrite earlier coordinates and the retained candidate carries only the final Boltz-2 structure. Paper-level coordinate and Cα RMSD ensemble analysis therefore requires separately archived backend outputs and cannot be reconstructed from the candidate structure field alone.",
+    "Because every proposal in this collection has the same protein sequence, the sweep validates the pair-scaling hook, batching/cache behavior, fail-closed execution, and paired throughput. It is not sufficient by itself to measure learned-surrogate ProtoFuse accuracy. A meaningful learned-fusion evaluation requires varied proposals or independent trajectories with held-out full-model labels."
   ]
 }

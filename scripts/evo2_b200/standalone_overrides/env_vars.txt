@@ -1,0 +1,2 @@
+[set]
+PYTHONPATH=/usr/local/lib/python3.12/dist-packages

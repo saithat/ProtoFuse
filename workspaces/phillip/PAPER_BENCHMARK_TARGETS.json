@@ -88,7 +88,7 @@
     },
     {
       "workflow_id": "evo2-enformer-borzoi",
-      "status": "paper_native_joint_objective_with_explicit_context_placeholders",
+      "status": "paper_native_joint_objective_ready_for_full_runtime_validation",
       "paper": {
         "title": "Genome modelling and design across all domains of life with Evo 2",
         "doi": "10.1038/s41586-026-10176-5",
@@ -99,19 +99,19 @@
           "key": "f_enformer",
           "model": "Enformer",
           "paper_formula": "L1(target_pattern, normalized_enformer_prediction)",
-          "proto_formula": "mean_absolute_error(target_pattern, normalized_enformer_prediction)",
+          "proto_formula": "L1(target_pattern, normalized_enformer_prediction)",
           "direction": "minimize",
           "weight_in_paper_scalar": 0.5,
-          "proto_label": "enformer_pattern_mae_proxy"
+          "proto_label": "enformer_pattern_l1_sum"
         },
         {
           "key": "f_borzoi",
           "model": "four-model Borzoi ensemble",
           "paper_formula": "L1(target_pattern, normalized(mean_prediction - std_prediction))",
-          "proto_formula": "mean_absolute_error(target_pattern, normalized(mean_prediction - std_prediction))",
+          "proto_formula": "L1(target_pattern, normalized(mean_prediction - std_prediction))",
           "direction": "minimize",
           "weight_in_paper_scalar": 0.5,
-          "proto_label": "borzoi_pattern_mae_proxy"
+          "proto_label": "borzoi_pattern_l1_sum"
         }
       ],
       "paper_scalarization": "0.5 * (f_enformer + f_borzoi)",
@@ -153,8 +153,9 @@
         {"metric": "best_computational_target_pattern_auroc", "operator": ">", "value": 0.95},
         {"metric": "experimental_morse_pattern_auroc", "value_range": [0.92, 0.95]},
         {"metric": "experimental_simpler_pattern_auroc", "operator": ">", "value": 0.89},
-        {"metric": "approximately_0.9_auroc_generation_budget", "value": 30, "unit": "or_more_generated_tokens_per_output_bp"}
+        {"metric": "computational_auroc_above_0.9_generation_budget", "operator": ">", "value": 0.9, "conditions": {"generated_tokens_per_output_bp": ">=30"}}
       ],
+      "paper_result_metric": "0.5 * (complete-output Enformer AUROC + complete-output Borzoi AUROC)",
       "scaling_grid_generated_tokens_per_output_bp": [1, 2, 3, 6, 9, 12, 15, 30, 60],
       "seed_policy": {
         "paper_generation_seed": null,
@@ -163,26 +164,24 @@
         "comparable": false
       },
       "comparability_blockers": [
-        "recover exact mm39 left and right context sequences",
-        "recover exact 129 ES-E14 output track identifiers",
-        "convert Proto mean absolute error to paper L1 sum for magnitude comparisons",
-        "confirm model checkpoint hashes and generation seed"
+        "the paper does not disclose its generation seed",
+        "confirm the exact published checkpoint artifact hash beyond the reviewed checkpoint name"
       ]
     },
     {
       "workflow_id": "af3-boltz2-state-sweep",
-      "status": "reduced_unscaled_diagnostic_not_paper_comparable",
+      "status": "pair_scaled_query_only_boltz_hook_and_throughput_validation",
       "paper": {
         "title": "Biasing Conformational Sampling in AlphaFold 3 and Boltz-2 via Pair Representation Scaling",
         "doi": "10.64898/2026.01.23.701250",
         "paperclip_uri": "paperclip://papers/bio_9d4cb9096c31"
       },
       "joint_surrogate_objectives": [
-        {"key": "af3_one_minus_tm_dominant", "model": "AlphaFold3", "reference": "dominant", "direction": "minimize"},
-        {"key": "af3_one_minus_tm_alternative", "model": "AlphaFold3", "reference": "alternative", "direction": "minimize"},
         {"key": "boltz2_one_minus_tm_dominant", "model": "Boltz-2", "reference": "dominant", "direction": "minimize"},
         {"key": "boltz2_one_minus_tm_alternative", "model": "Boltz-2", "reference": "alternative", "direction": "minimize"}
       ],
+      "required_runtime": {"model": "Boltz-2 2.2.1", "pair_scaled": true, "input_mode": "query_only"},
+      "optional_fidelity_recipe": {"models": ["Boltz-2 2.2.1", "AlphaFold3 3.0.1"], "input_mode": "user-held AlphaFold Server MSA", "msa_depth": 1024},
       "paper_ensemble_metrics": {
         "best_minimum_tm_score": "min(max_i TM(pred_i, ref_1), max_i TM(pred_i, ref_2))",
         "per_state_success_rate": "fraction of reference states with a model within 2 angstrom C-alpha RMSD",
@@ -199,14 +198,16 @@
       "seed_policy": {
         "paper_allocation": "method-specific Table 1 split across seeds, settings, and samples",
         "proto_implementation_seeds": [0, 1, 2, 3, 4],
-        "proto_draws_per_seed": 10,
-        "comparable": false
+        "proto_draws_per_seed": 50,
+        "proto_vs_protofuse_comparable": true,
+        "paper_comparable": false,
+        "fairness_invariant": "both arms use identical query-only Boltz-2 backend inputs, beta, model seed, diffusion count, and proposal order"
       },
-      "extension_boundary": "The current paper applies pair representation scaling to both AlphaFold 3 and Boltz-2. ProtoFuse currently scores both models without that intervention, so it is only an unscaled wiring diagnostic.",
+      "extension_boundary": "The required collection implements pair scaling in Boltz-2 but omits the paper-matched MSA and AlphaFold 3. It validates the scaling hook, batching/cache behavior, fail-closed execution, and paired throughput. Fixed-sequence draws alone cannot validate learned-surrogate ProtoFuse accuracy; that requires varied proposals or independent trajectories with held-out full-model labels.",
       "comparability_blockers": [
-        "expose pair-representation scaling beta for both AlphaFold 3 and Boltz-2 in proto-tools",
+        "supply the exact paper-matched MSA instead of query-only inputs",
+        "include the optional pinned AlphaFold 3 pair-scaled cross-check",
         "encode the full 86-protein benchmark rather than one adenylate-kinase diagnostic",
-        "match the paper's 250-model Table 1 allocation",
         "aggregate all draws into per-state success, worst-case minimum RMSD, best-minimum TM-score, and fill ratio"
       ]
     }

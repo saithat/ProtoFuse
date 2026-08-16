@@ -52,9 +52,10 @@ from proto_language.generator import (
     RandomProteinGeneratorConfig,
     RFdiffusionMPNNBinderGenerator,
     RFdiffusionMPNNBinderGeneratorConfig,
+    SemigreedyMutationGenerator,
+    SemigreedyMutationGeneratorConfig,
 )
 from proto_language.optimizer import (
-    BeamSearchOptimizer,
     BeamSearchOptimizerConfig,
     CyclingOptimizer,
     CyclingOptimizerConfig,
@@ -106,6 +107,7 @@ from protofuse.phillip.dnachisel_constraints import (
     reference_homology_constraint,
     sliding_window_gc_constraint,
 )
+from protofuse.phillip.evo2_beam_cache import Evo2PrefixReplayBeamSearchOptimizer
 from protofuse.phillip.evo2_paper_constraints import (
     evo2_paper_borzoi_l1_constraint,
     evo2_paper_enformer_l1_constraint,
@@ -129,6 +131,9 @@ from protofuse.phillip.rfd3_paper import (
     paper_binder_origin,
     rfd3_af3_paper_success_constraint,
     target_sequence_from_cropped_structure,
+)
+from protofuse.phillip.score_only_structure import (
+    score_only_esmfold_plddt_constraint,
 )
 from protofuse.phillip.sequence_init import generate_filter_safe_sequence
 from protofuse.phillip.state_sweep_generators import (
@@ -193,15 +198,15 @@ RFDIFFUSION3_BOLTZ2_SMOKE_DEFAULTS: dict[str, int | float] = {
 }
 
 LIGANDMPNN_ENZYME_SMOKE_DEFAULTS: dict[str, int | str] = {
-    "num_steps": 20,
-    "mutations_per_step": 2,
+    "num_steps": 5,
+    "mutations_per_step": 1,
     "esm2_checkpoint": "esm2_t6_8M_UR50D",
 }
 
 BIOEMU_ENSEMBLE_SMOKE_DEFAULTS: dict[str, int] = {
     "segment_length_aa": 80,
-    "num_steps": 20,
-    "bioemu_num_samples": 2,
+    "num_steps": 5,
+    "bioemu_num_samples": 1,
 }
 
 BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
@@ -221,9 +226,11 @@ RFDIFFUSION3_AF3_PPI_SMOKE_DEFAULTS: dict[str, int] = {
 AF3_BOLTZ2_STATE_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
     "dominant_state_pdb": "4AKE",
     "alternative_state_pdb": "1AKE",
-    "num_samples": 2,
-    "num_results": 2,
+    "num_samples": 1,
+    "num_results": 1,
+    "use_msa": False,
     "max_msa_seqs": 128,
+    "diffusion_samples": 1,
 }
 
 EVO2_REGULATORY_SMOKE_DEFAULTS: dict[str, int] = {
@@ -364,6 +371,11 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         "mpnn_temperature": float(spec.global_parameters.get("mpnn_temperature", 0.1)),
         "bioemu_num_samples": int(spec.global_parameters.get("bioemu_num_samples", 8)),
         "max_ensemble_rmsd": float(spec.global_parameters.get("max_ensemble_rmsd", 4.0)),
+        "bioemu_model_seed": int(spec.global_parameters.get("bioemu_model_seed", 0)),
+        "ensemble_rmsd_weight": float(
+            spec.global_parameters.get("ensemble_rmsd_weight", 1.0)
+        ),
+        "plddt_weight": float(spec.global_parameters.get("plddt_weight", 0.5)),
         "target_name": spec.global_parameters.get("target_name", "XylE"),
         "target_uniprot": spec.global_parameters.get("target_uniprot", "P0AEJ8"),
         "target_chain_id": spec.global_parameters.get("target_chain_id", "A"),
@@ -374,6 +386,7 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
             spec.global_parameters.get("per_state_success_angstroms", 2.0)
         ),
         "subsample_msa": bool(spec.global_parameters.get("subsample_msa", True)),
+        "use_msa": bool(spec.global_parameters.get("use_msa", True)),
         "max_msa_seqs": int(spec.global_parameters.get("max_msa_seqs", 512)),
         "sampling_steps": int(spec.global_parameters.get("sampling_steps", 200)),
         "diffusion_samples": int(spec.global_parameters.get("diffusion_samples", 1)),
@@ -1716,7 +1729,7 @@ def run_rfdiffusion3_boltz2_binder(*, tier: WorkloadTier = "full") -> tuple[Prog
 
 
 def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
-    """LigandMPNN MCMC on an enzyme active site with ESMFold developability gating."""
+    """Joint LigandMPNN compatibility and ESMFold confidence optimization."""
 
     enzyme_pdb = str(params["enzyme_pdb"])
     enzyme_chain = str(params["enzyme_chain"])
@@ -1745,16 +1758,16 @@ def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
             }
         ),
     )
-    generator = MPNNMutationGenerator(
-        MPNNMutationGeneratorConfig(
-            model="ligandmpnn",
-            structure_inputs=[structure_input],
-            output_chain_id=enzyme_chain,
-            num_mutations=int(params["mutations_per_step"]),
-            mutable_positions=ResidueSelection(
-                chains={enzyme_chain: active_site_positions},
-            ),
-            replacement_temperature=float(params["mpnn_temperature"]),
+    active_site_indices = {position - 1 for position in active_site_positions}
+    generator = SemigreedyMutationGenerator(
+        SemigreedyMutationGeneratorConfig(
+            position_weighting="uniform",
+            temperature=float(params["mpnn_temperature"]),
+            exclude_current=True,
+            clear_logits=True,
+            frozen_positions=[
+                index for index in range(chain_length) if index not in active_site_indices
+            ],
         )
     )
     generator.assign(enzyme)
@@ -1774,9 +1787,11 @@ def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
         ),
         Constraint(
             inputs=[enzyme],
-            function=structure_plddt_constraint,
-            function_config={"structure_tool": "esmfold"},
-            threshold=float(params["min_plddt"]),
+            function=score_only_esmfold_plddt_constraint,
+            function_config={
+                "minimum_plddt_reporting_target": float(params["min_plddt"]),
+            },
+            weight=float(params["plddt_weight"]),
             label="structure_plddt",
         ),
         Constraint(
@@ -1811,7 +1826,7 @@ def run_ligandmpnn_enzyme_redesign(*, tier: WorkloadTier = "full") -> tuple[Prog
 
 
 def build_bioemu_ensemble_filter_program(params: dict[str, Any]) -> Program:
-    """ESM-2 MCMC with BioEmu ensemble RMSD filtering against an experimental structure."""
+    """Joint BioEmu ensemble-similarity and ESMFold-confidence optimization."""
 
     length = int(params["segment_length_aa"])
     seed_sequence = str(params["seed_sequence"])[:length]
@@ -1838,15 +1853,18 @@ def build_bioemu_ensemble_filter_program(params: dict[str, Any]) -> Program:
                 target_chain_id=target_chain_id,
                 num_samples=int(params["bioemu_num_samples"]),
                 max_ensemble_rmsd=float(params["max_ensemble_rmsd"]),
+                model_seed=int(params["bioemu_model_seed"]),
             ),
-            threshold=float(params["max_ensemble_rmsd"]),
+            weight=float(params["ensemble_rmsd_weight"]),
             label="ensemble_rmsd",
         ),
         Constraint(
             inputs=[segment],
-            function=structure_plddt_constraint,
-            function_config={"structure_tool": "esmfold"},
-            threshold=float(params["min_plddt"]),
+            function=score_only_esmfold_plddt_constraint,
+            function_config={
+                "minimum_plddt_reporting_target": float(params["min_plddt"]),
+            },
+            weight=float(params["plddt_weight"]),
             label="structure_plddt",
         ),
         Constraint(
@@ -2093,9 +2111,13 @@ def build_af3_boltz2_state_sweep_program(
     *,
     seed: int = 0,
     beta: float = -0.75,
-    models: tuple[Literal["alphafold3", "boltz2"], ...] = ("alphafold3", "boltz2"),
+    models: tuple[Literal["alphafold3", "boltz2"], ...] = ("boltz2",),
 ) -> Program:
-    """One fail-closed seed/beta slice of the paper's cross-model scaling sweep."""
+    """One fail-closed seed/beta slice, with Boltz-2 as the runnable default.
+
+    AlphaFold 3 remains available as an explicit ``models`` opt-in for a closer
+    paper cross-check, but it is not part of the required Proto/ProtoFuse benchmark.
+    """
 
     registered_betas = [float(value) for value in params["pair_scaling_betas"]]
     if beta not in registered_betas:
@@ -2125,11 +2147,12 @@ def build_af3_boltz2_state_sweep_program(
                     function_config=PairScaledStateTMScoreConfig(
                         model=cast(Any, model_name),
                         beta=beta,
-                        seed=seed,
+                        model_seed=seed,
                         recycling_steps=int(params["recycling_steps"]),
                         sampling_steps=int(params["sampling_steps"]),
                         diffusion_samples=int(params["diffusion_samples"]),
                         step_scale=float(params["step_scale"]),
+                        use_msa=bool(params["use_msa"]),
                         max_msa_seqs=int(params["max_msa_seqs"]),
                         subsample_msa=bool(params["subsample_msa"]),
                         target_structure=dominant,
@@ -2144,11 +2167,12 @@ def build_af3_boltz2_state_sweep_program(
                     function_config=PairScaledStateTMScoreConfig(
                         model=cast(Any, model_name),
                         beta=beta,
-                        seed=seed,
+                        model_seed=seed,
                         recycling_steps=int(params["recycling_steps"]),
                         sampling_steps=int(params["sampling_steps"]),
                         diffusion_samples=int(params["diffusion_samples"]),
                         step_scale=float(params["step_scale"]),
+                        use_msa=bool(params["use_msa"]),
                         max_msa_seqs=int(params["max_msa_seqs"]),
                         subsample_msa=bool(params["subsample_msa"]),
                         target_structure=alternative,
@@ -2175,6 +2199,10 @@ def build_af3_boltz2_state_sweep_program(
         config=RejectionSamplingOptimizerConfig(
             num_results=int(params["num_results"]),
             num_samples=int(params["num_samples"]),
+            # Every proposal has the same fixed sequence, so scoring them in
+            # separate batches would hit the pair-scaling prediction cache and
+            # collapse the intended stochastic draws to one structure.
+            proposal_batch_size=int(params["num_samples"]),
             seed=seed,
         ),
     )
@@ -2219,7 +2247,11 @@ def build_evo2_regulatory_design_program(
             temperature=float(params["evo2_temperature"]),
             top_k=int(params["evo2_top_k"]),
             cached_generation=True,
-            store_kv_cache=True,
+            # Vortex 1.1's public generation helper uses 3,000 bases to
+            # bound peak memory during the one long-prefix bootstrap.
+            force_prompt_threshold=3000,
+            store_kv_cache=False,
+            stop_at_eos=False,
             prepend_prompt=False,
         )
     )
@@ -2256,7 +2288,7 @@ def build_evo2_regulatory_design_program(
             label="borzoi_pattern_l1_sum",
         ),
     ]
-    optimizer = BeamSearchOptimizer(
+    optimizer = Evo2PrefixReplayBeamSearchOptimizer(
         target_segment=target,
         constructs=[construct],
         generators=[generator],
@@ -2272,6 +2304,8 @@ def build_evo2_regulatory_design_program(
             ),
             score_by="last",
             prepend_prompt=False,
+            # Reuse only retained prefixes. Proposal branch caches are ephemeral;
+            # the selected two are replayed with their exact seeds and retained.
             use_kv_caching=True,
             seed=int(params["generation_seed"]),
         ),
@@ -2291,7 +2325,7 @@ def run_rfdiffusion3_af3_ppi(*, tier: WorkloadTier = "full") -> tuple[Program, f
 
 
 def run_af3_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
-    """Run the reviewed seed-zero cross-model state-recovery diagnostic."""
+    """Run the required seed-zero Boltz-2 state-recovery diagnostic."""
 
     spec = load_fixture_spec("af3-boltz2-state-sweep")
     params = resolve_workload_params(spec, tier=tier)
@@ -2299,7 +2333,7 @@ def run_af3_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program,
         params,
         seed=0,
         beta=-0.15 if tier == "smoke" else -0.75,
-        models=("boltz2",) if tier == "smoke" else ("alphafold3", "boltz2"),
+        models=("boltz2",),
     )
     start = perf_counter()
     run_compiled_program(program, fixture_id="af3-boltz2-state-sweep")

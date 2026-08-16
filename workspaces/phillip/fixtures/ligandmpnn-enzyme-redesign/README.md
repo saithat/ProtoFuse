@@ -1,13 +1,16 @@
 # ligandmpnn-enzyme-redesign fixture
 
-LigandMPNN active-site MCMC on carbonic anhydrase II holo structure PDB 3HTB.
+Joint LigandMPNN probability-loss and score-only ESMFold confidence optimization
+on carbonic anhydrase II holo structure PDB 3HTB.
 
 | Tier | Steps | Mutations/step |
 |------|-------|----------------|
-| smoke | 20 | 2 |
-| full | 100 | 3 |
+| smoke | 5 | 1 |
+| full | 100 | 1 |
 
-**Topology:** region-local MCMC on active-site ordinals with ESMFold developability gating.
+**Topology:** seeded non-identity mutation on active-site ordinals followed by MCMC,
+with both parent-model
+energies evaluated on the same candidate and pLDDT 70 retained as a reporting target.
 
 Builder: `protofuse.phillip.program_builders.run_ligandmpnn_enzyme_redesign`.
 

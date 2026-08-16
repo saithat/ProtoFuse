@@ -5,11 +5,11 @@ workflow was proposed even after it is implemented. Each entry uses components a
 already in the pinned `proto-language` / `proto-tools` packages. ProtoFuse never executes
 code, commands, URLs, or model identifiers copied from a paper.
 
-As of 2026-08-15, 12 generated collections are reviewed handoffs. This includes the
-previously recommended `boltz2-state-sweep` and the RFdiffusion3 + Boltz-2, LigandMPNN,
-and BioEmu workflows. Three additional joint-objective collections have generated sources
-but remain `reviewed=false`; source generation is not the same as a reviewed handoff or a
-completed scientific run.
+As of 2026-08-16, 14 collection manifests say `reviewed=true`, but only
+`custom-egfp-lung`, `dnachisel-num1`, `evo2-enformer-borzoi`, and
+`rfdiffusion3-af3-ppi` pass the complete mechanical handoff gate. Manifest approval, a
+`READY FOR HANDOFF` review, paper verification, and a completed scientific run are distinct
+states; experiments may start only after the applicable gates pass.
 
 **Why these matter for Sai:** Current DNA workflows are CPU-only and poor fusion targets.
 Candidates below emphasize repeated GPU calls (structure prediction, LM scoring,
@@ -34,18 +34,19 @@ regulatory models) inside MCMC, pool, or cycling loops.
 | — | `symmetric-oligomer-ring` | Protein | Medium | Medium | Reviewed collection |
 | — | `ppi-interface-specificity` | Protein | High — dual target/off-target AF3 | Medium | Reviewed collection |
 
-Reviewed rows are active collections listed in
-[`src/protofuse/sai/TODO.md`](../src/protofuse/sai/TODO.md); they stay here for topology
-reference only. `dnachisel-num1`, `custom-egfp-lung`, and `gpcr-cxcr4-miniprotein` are also
-reviewed baseline handoffs.
+Rows labelled “Reviewed collection” reflect the manifest flag and stay here for topology
+reference; they are active only when the mechanical gate also prints `READY FOR HANDOFF`.
+See [`src/protofuse/sai/TODO.md`](../src/protofuse/sai/TODO.md). `dnachisel-num1` and
+`custom-egfp-lung` are READY baseline handoffs; `gpcr-cxcr4-miniprotein` remains mechanically
+blocked despite its manifest flag.
 
-Generated sources awaiting human review:
+New joint-objective collection status:
 
 | Collection | Programs | Status boundary |
 | --- | --- | --- |
-| `rfdiffusion3-af3-ppi` | five full target variants + one smoke program | `reviewed=false`; not a Sai handoff |
-| `af3-boltz2-state-sweep` | five full target variants + one smoke program | `reviewed=false`; not a Sai handoff |
-| `evo2-enformer-borzoi` | three full regulatory patterns + one smoke program | `reviewed=false`; not a Sai handoff |
+| `evo2-enformer-borzoi` | three full regulatory patterns + one smoke program | Approved; handoff and paper gates pass. Full Evo2 exhausted H100 and H200 memory. A repo-owned service now follows Arc's NVIDIA 25.04 container route on one B200; deployment and a full-length call remain the execution gates. |
+| `rfdiffusion3-af3-ppi` | five full target variants + one smoke program | Approved; handoff and paper gates pass. Execution is blocked because the AF3 backend is not available on Modal or this host. |
+| `af3-boltz2-state-sweep` | 50 full target/scale variants + one smoke program | The required benchmark is pair-scaled, query-only Boltz-2, so neither AF3 parameters nor a user-held MSA blocks smoke or handoff. Proto and ProtoFuse must receive identical backend inputs, beta, seed, and proposal order. Pinned AF3 v3.0.1 plus the paper-matched MSA remain optional fidelity checks. Query-only results are not paper-accuracy reproductions. Still `reviewed=false`; not a Sai handoff. |
 
 Remaining nucleic-acid-only ideas such as `codonfm-egfp` are deferred unless more DNA/RNA
 coverage is needed before additional protein work.
@@ -83,7 +84,14 @@ sequence. The published protocol budgets 250 models per target, and the control 
 over 10 non-zero values, so a single target is hundreds of GPU forward passes whose only
 varying inputs are a scalar and a seed.
 
-**Why this is the strongest Sai demo:**
+The implemented fixed-sequence collection is deliberately narrower: it validates the
+pair-scaling hook, batching/cache behavior, fail-closed execution, and a paired Proto versus
+ProtoFuse throughput measurement. It is **not** a learned-surrogate accuracy benchmark and
+is not the primary fusion benchmark. That evaluation needs varied sequence proposals or
+independent trajectories, held-out full-model labels, and identical backend inputs, seeds,
+and proposal order in both arms.
+
+**Why a broader varied-target version could become a strong Sai demo:**
 
 - **Exact wins before approximation.** Every draw re-runs the trunk on identical sequence
   and MSA inputs, so caching and batching shared intermediates is a real, defensible
@@ -117,18 +125,20 @@ varying inputs are a scalar and a seed.
   sequence) and 3 of 16 (AF-cluster).
 - Metrics: per-state success at 2 Å, worst-case minimum RMSD, fill ratio between states.
 
-**Feasibility — two tiers.** The published control multiplies the latent pair
-representation at the Pairformer input, which `boltz2-prediction` does not expose.
+**Feasibility — two fidelity tiers.** The published control multiplies the latent pair
+representation at the Pairformer input. ProtoFuse now provides an audited, fail-closed
+Boltz-2 pre-hook for that intervention.
 
-- *Tier 1 (no fork, do this first):* sweep only exposed knobs — seed, diffusion samples,
-  recycles, and MSA subsampling depth. MSA subsampling is a documented alternative-state
-  lever that acts purely through inputs, and combining it with the internal control was
-  what recovered the harder Boltz-2 metrics, so it is a legitimate standalone axis.
-- *Tier 2 (stretch):* `proto-tools eject-standalone` the Boltz-2 backend and add the scalar
-  at the Pairformer input. Only attempt after Tier 1 profiles cleanly.
+- *Required runnable tier:* pair-scaled Boltz-2 with query-only inputs. Use the exact same
+  sequence batch, beta, model seed, diffusion count, and proposal order for Proto and
+  ProtoFuse. This removes AF3 weights and a user-held server MSA from the gate, but the
+  resulting accuracy may differ materially from the paper.
+- *Optional fidelity tier:* supply the exact user-held AlphaFold Server MSA at depth 1024
+  and explicitly opt into pinned AlphaFold 3 v3.0.1 alongside Boltz-2. This is useful for
+  reproduction checks but is not required for smoke, review, or paired throughput work.
 
-**Smoke tier:** 1 IOMemP transporter, 3 control values × 2 seeds.
-**Full tier:** 5 targets (mixed transporter + domain motion), 11 control values × 5 seeds.
+**Smoke tier:** adenylate kinase, one beta, one seed, one query-only Boltz-2 draw.
+**Full tier:** adenylate kinase, 10 beta values × 5 seeds × 5 query-only Boltz-2 draws.
 
 **Reference:** Suzuki & Amagasa, "Biasing Conformational Sampling in AlphaFold 3 and
 Boltz-2 via Pair Representation Scaling," [bioRxiv 2026](https://doi.org/10.64898/2026.01.23.701250)
@@ -297,14 +307,16 @@ Redesign residues around a bound ligand on a fixed backbone.
 
 | Role | Proto component |
 | --- | --- |
-| Generator | `ligandmpnn` or `mpnn-mutation` |
-| Constraints | `mpnn-sequence-probability`, `mpnn-perplexity`, `metal3d-probability` |
-| Tools | `ligandmpnn-sample`, `ligandmpnn-score`, `boltz2-affinity` |
+| Generator | seeded `semigreedy-mutation` restricted to active-site ordinals |
+| Constraints | `mpnn-sequence-probability`, score-only `structure-plddt`, fixed protein length |
+| Parent model families | `ligandmpnn-score`, `esmfold-prediction` |
 | Optimizer | `mcmc` or `cycling` |
 
 **Topology:** `cycling` or region-local MCMC on active-site segment.
 
-**Sai fusion target:** `ligandmpnn-score` + `boltz2-affinity` per proposal.
+**Sai fusion target:** one aligned two-output group containing LigandMPNN probability
+loss and ESMFold confidence on the same active-site variant. See
+[`LIGANDMPNN_ESMFOLD_EXPERIMENT.md`](LIGANDMPNN_ESMFOLD_EXPERIMENT.md).
 
 ---
 
@@ -353,15 +365,17 @@ states.
 
 | Role | Proto component |
 | --- | --- |
-| Tools | `bioemu-sample` |
+| Parent model families | `bioemu-sample`, `esmfold-prediction` |
 | Generator | `esm2` or `fampnn` |
 | Constraints | `structure-ensemble-rmsd`, `structure-plddt` |
 | Optimizer | `cycling` |
 
 **Topology:** `cycling` — sample ensemble → score → mutate → resample.
 
-**Sai fusion target:** `bioemu-sample` batch cost; good batching opportunity before
-learned fusion.
+**Sai fusion target:** one aligned two-output group containing BioEmu ensemble
+similarity and ESMFold confidence on the same variable sequence. The score-only
+ESMFold adapter discards an unused structure side output; mandatory final validation
+still reruns both parents. See [`BIOEMU_ESMFOLD_EXPERIMENT.md`](BIOEMU_ESMFOLD_EXPERIMENT.md).
 
 **Reference:** BioEmu conformational ensemble ML (2024–2025).
 
@@ -371,7 +385,8 @@ learned fusion.
 
 These extend the CUSTOM / DNA Chisel line with GPU-backed objectives. PARADE,
 AlphaGenome, and CodonFM remain backlog ideas. The related Evo 2 + Enformer + Borzoi
-joint-objective sources have been generated, but their collection remains unreviewed.
+joint-objective collection is reviewed and passes both handoff gates; its full runtime status is
+tracked in [`EVO2_REPRODUCTION.md`](EVO2_REPRODUCTION.md).
 
 ### PARADE tissue-specific UTR design
 
@@ -427,8 +442,9 @@ MCMC on ~200 bp promoter DNA for Morse-code chromatin accessibility patterns.
 | Constraints | `puffin-promoter-activity`, `borzoi-track-activity`, `enformer-chromatin-accessibility-morse`, `borzoi-chromatin-accessibility-morse` |
 
 The implemented related collection is `evo2-enformer-borzoi`: three full Morse-pattern
-programs plus one smoke program. Its manifest currently says `reviewed=false`, so this is
-generator coverage rather than an active handoff or completed model run.
+programs plus one smoke program. Its manifest is reviewed and its mechanical and paper gates
+pass. See [`EVO2_REPRODUCTION.md`](EVO2_REPRODUCTION.md) for the runtime gate and experiment
+order; only the three full programs produce paper-comparable results.
 
 ---
 

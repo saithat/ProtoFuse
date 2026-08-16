@@ -1,0 +1,162 @@
+diff --git a/run_alphafold.py b/run_alphafold.py
+index 860785c..e08c8f8 100644
+--- a/run_alphafold.py
++++ b/run_alphafold.py
+@@ -24,6 +24,7 @@ import csv
+ import dataclasses
+ import datetime
+ import functools
++import math
+ import multiprocessing
+ import os
+ import pathlib
+@@ -246,6 +247,12 @@ _NUM_RECYCLES = flags.DEFINE_integer(
+     'Number of recycles to use during inference.',
+     lower_bound=1,
+ )
++_PAIR_SCALING_BETA = flags.DEFINE_float(
++    'pair_scaling_beta',
++    0.0,
++    'Multiply the complete pair representation by 1 + beta immediately before'
++    ' every trunk Pairformer pass.',
++)
+ _NUM_DIFFUSION_SAMPLES = flags.DEFINE_integer(
+     'num_diffusion_samples',
+     5,
+@@ -277,15 +284,40 @@ def make_model_config(
+     flash_attention_implementation: attention.Implementation = 'triton',
+     num_diffusion_samples: int = 5,
+     num_recycles: int = 10,
++    pair_scaling_beta: float = 0.0,
+     return_embeddings: bool = False,
+ ) -> model.Model.Config:
+   """Returns a model config with some defaults overridden."""
++  allowed_pair_scaling_betas = (
++      -0.75,
++      -0.60,
++      -0.45,
++      -0.30,
++      -0.15,
++      0.0,
++      0.15,
++      0.30,
++      0.45,
++      0.60,
++      0.75,
++  )
++  if not math.isfinite(pair_scaling_beta):
++    raise ValueError('pair_scaling_beta must be finite')
++  if not any(
++      math.isclose(pair_scaling_beta, allowed, rel_tol=0.0, abs_tol=1e-12)
++      for allowed in allowed_pair_scaling_betas
++  ):
++    raise ValueError(
++        f'unsupported pair_scaling_beta {pair_scaling_beta}; expected one of '
++        f'{allowed_pair_scaling_betas}'
++    )
+   config = model.Model.Config()
+   config.global_config.flash_attention_implementation = (
+       flash_attention_implementation
+   )
+   config.heads.diffusion.eval.num_samples = num_diffusion_samples
+   config.num_recycles = num_recycles
++  config.evoformer.pair_scaling_beta = pair_scaling_beta
+   config.return_embeddings = return_embeddings
+   return config
+ 
+@@ -340,6 +372,16 @@ class ModelRunner:
+         result,
+     )
+     result = dict(result)
++    pair_scaling_count = result.pop('pair_scaling_audit_count', None)
++    expected_pair_scaling_count = self._model_config.num_recycles + 1
++    if pair_scaling_count is None:
++      raise RuntimeError('AlphaFold 3 pair-scaling audit count is missing')
++    if int(pair_scaling_count) != expected_pair_scaling_count:
++      raise RuntimeError(
++          'AlphaFold 3 pair scaling did not run at every trunk recycle input: '
++          f'observed {int(pair_scaling_count)}, expected '
++          f'{expected_pair_scaling_count}'
++      )
+     identifier = self.model_params['__meta__']['__identifier__'].tobytes()
+     result['__identifier__'] = identifier
+     return result
+@@ -765,6 +807,7 @@ def main(_):
+             ),
+             num_diffusion_samples=_NUM_DIFFUSION_SAMPLES.value,
+             num_recycles=_NUM_RECYCLES.value,
++            pair_scaling_beta=_PAIR_SCALING_BETA.value,
+             return_embeddings=_SAVE_EMBEDDINGS.value,
+         ),
+         device=devices[_GPU_DEVICE.value],
+diff --git a/src/alphafold3/model/model.py b/src/alphafold3/model/model.py
+index 902b72c..8d36d58 100644
+--- a/src/alphafold3/model/model.py
++++ b/src/alphafold3/model/model.py
+@@ -297,6 +297,7 @@ class Model(hk.Module):
+         'single': jnp.zeros(
+             [num_res, self.config.evoformer.seq_channel], dtype=jnp.float32
+         ),
++        'pair_scaling_count': jnp.asarray(0, dtype=jnp.int32),
+         'target_feat': target_feat,
+     }
+     if hk.running_init():
+@@ -333,6 +334,7 @@ class Model(hk.Module):
+     output = {
+         'diffusion_samples': samples,
+         'distogram': distogram,
++        'pair_scaling_audit_count': embeddings['pair_scaling_count'],
+         **confidence_output,
+     }
+     if self.config.return_embeddings:
+diff --git a/src/alphafold3/model/network/evoformer.py b/src/alphafold3/model/network/evoformer.py
+index fb245cd..53d4918 100644
+--- a/src/alphafold3/model/network/evoformer.py
++++ b/src/alphafold3/model/network/evoformer.py
+@@ -27,6 +27,16 @@ import jax
+ import jax.numpy as jnp
+ 
+ 
++def _scale_pairformer_input(
++    pair_activations: jnp.ndarray, beta: float
++) -> jnp.ndarray:
++  """Scales the complete pair representation immediately before Pairformer."""
++  if beta == 0.0:
++    return pair_activations
++  factor = jnp.asarray(1.0 + beta, dtype=pair_activations.dtype)
++  return pair_activations * factor
++
++
+ class Evoformer(hk.Module):
+   """Creates 'single' and 'pair' embeddings."""
+ 
+@@ -43,6 +53,7 @@ class Evoformer(hk.Module):
+     max_relative_idx: int = 32
+     num_msa: int = 1024
+     pair_channel: int = 128
++    pair_scaling_beta: float = 0.0
+     pairformer: 'Evoformer.PairformerConfig' = base_config.autocreate(
+         single_transition=base_config.autocreate(),
+         single_attention=base_config.autocreate(),
+@@ -293,6 +304,13 @@ class Evoformer(hk.Module):
+       )
+       del key  # Unused after this point.
+ 
++      pair_activations = _scale_pairformer_input(
++          pair_activations, self.config.pair_scaling_beta
++      )
++      pair_scaling_count = prev['pair_scaling_count'] + jnp.asarray(
++          1, dtype=jnp.int32
++      )
++
+       single_activations = hm.Linear(
+           self.config.seq_channel, name='single_activations'
+       )(target_feat)
+@@ -341,6 +359,7 @@ class Evoformer(hk.Module):
+       output = {
+           'single': single_activations,
+           'pair': pair_activations,
++          'pair_scaling_count': pair_scaling_count,
+           'target_feat': target_feat,
+       }
+ 

@@ -129,9 +129,33 @@ def audit_frozen_fusion(
     )
     if len(relevant_rows) != len(samples) * len(labels):
         raise ValueError("held-out traces have incomplete or unequal objective occurrences")
+    for sample in samples:
+        for output_index, normalization in enumerate(
+            artifact.model.resolved_output_normalizations
+        ):
+            computed_bins = normalization.sequence_bin_count(sample.sequences)
+            if computed_bins is None:
+                continue
+            if len(sample.output_target_bins) != len(labels):
+                raise ValueError(
+                    "sequence-bin normalization requires paper_target_bins trace metadata"
+                )
+            if sample.output_target_bins[output_index] != computed_bins:
+                raise ValueError(
+                    "paper_target_bins metadata does not match the frozen sequence-bin rule"
+                )
     actual = np.asarray([sample.outputs for sample in samples], dtype=np.float64)
-    if not np.all(np.isfinite(actual)) or np.any((actual < 0.0) | (actual > 1.0)):
-        raise ValueError("held-out parent scores must be finite and in [0, 1]")
+    normalized_actual = np.asarray(
+        [
+            artifact.model.normalize_outputs(sample.outputs, sample.sequences)
+            for sample in samples
+        ],
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(actual)) or not np.all(np.isfinite(normalized_actual)):
+        raise ValueError("held-out parent scores must be finite")
+    if np.any((normalized_actual < 0.0) | (normalized_actual > 1.0)):
+        raise ValueError("normalized held-out parent scores must be in [0, 1]")
 
     predictor = LinearEnsemblePredictor(artifact.model)
     predictions = [predictor.predict(sample.sequences) for sample in samples]
@@ -139,8 +163,8 @@ def audit_frozen_fusion(
     decisions = [
         linear_gate_decision(
             artifact.model,
-            values=prediction.values,
-            uncertainties=prediction.uncertainties,
+            values=prediction.normalized_values,
+            uncertainties=prediction.normalized_uncertainties,
             support_score=prediction.support_score,
         )
         for prediction in predictions

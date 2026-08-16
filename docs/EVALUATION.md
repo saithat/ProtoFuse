@@ -104,6 +104,21 @@ policy. Commit only aggregate reports, schemas, and small test fixtures with no 
 licensed content. Surrogate predictions and routes are currently reported by paired evaluation;
 they must be joined into the durable campaign trace before the first artifact is approved.
 
+Trace schema `1.1` snapshots the full seed-neutral program and callable/config identity before
+`Program.run()`. Proto may inject derived child seeds into mutable constraint configs during
+execution; those transient values are not part of the frozen contract, while `program_seed`
+remains recorded as execution provenance. Training rejects mixed trace schemas and validates
+new rows against the fresh full-program hash plus identity, config, threshold, and weight.
+Legacy `1.0` rows have no seed-neutral source hash and receive only the narrower constraint
+contract check; they cannot supply source-complete approval provenance.
+
+For Modal score collection, `trace --modal-gpu auto` deliberately uses the deployed service's
+accelerator fallback and records `selection_policy=deployment_default` with
+`timing_eligible=false` in the command report. It is suitable for teacher scores, not latency
+evidence. Timing and paired evaluation still require an exact accelerator. One stable trace
+context is reused per collection and tier so repeated seeds do not create a new warm-container
+variant for every trajectory.
+
 Operational runs also write `events.jsonl` beside their checkpoint manifest. It is a durable,
 ordered live-inspection stream covering run, program, and stage lifecycle events; optimizer
 progress and timing; checkpoint decisions; resume activity; energy scores; result hashes; and
@@ -220,6 +235,31 @@ The executable harness is `protofuse fusion evaluate <artifact> <collection> <pr
 counterbalances full-first and fused-first measured runs. The warmup durations are reported
 but never enter the primary speedup. A whole warmup run is not a pure cold-start measurement,
 so the harness does not subtract it from measured runs or label it as cold-start time.
+
+Modal timing additionally requires an exact accelerator, for example `--device modal
+--modal-gpu B200:1`. The harness routes both arms sequentially through the same unique Modal
+option set, limits that set to one container per service, disables retries, and keeps it warm for
+one hour. The report records this allocation. This verifies the same scheduler-enforced
+accelerator **class** and resource policy; current proto-tools services do not expose a physical
+GPU UUID, so do not claim that a Modal pair used the same physical card. Missing an explicit GPU
+is a hard error rather than an unpinned benchmark.
+
+For local timing, the report captures the hostname, machine architecture, CPU model, physical-core
+count when the OS exposes it, hardware-thread count, and OS-visible memory bytes. These fields
+describe the hardware used by that run; they do not imply that every thread or byte was available
+exclusively to ProtoFuse. The completed full CUSTOM campaign's exact node and worker allocation are
+recorded in [`CUSTOM_REPRODUCTION.md`](CUSTOM_REPRODUCTION.md).
+
+The full Evo2 design starts from a 40,960-base prompt and allocates cache capacity for the
+40,960-base prompt plus the 19,968-base design, or 60,928 positions. It exhausted both an 80 GB
+H100 and a 141 GB H200. The H200 failure occurred when the cached modal-FFT prefill, already near
+the 139.8 GiB device limit, requested another approximately 40 GiB temporary tensor; that is an
+observed implementation peak, not evidence that every 60,928-position Evo2 run intrinsically
+requires 163 GiB. Modal documents a 180 GB B200 in its
+[GPU guide](https://modal.com/docs/guide/gpu). The stock service's CUDA/PyTorch build supports
+only through `sm_90`, so the collection uses the repo-owned Arc/NVIDIA 25.04 B200 service in
+[`EVO2_REPRODUCTION.md`](EVO2_REPRODUCTION.md). Failed infrastructure calls never contribute
+trace or timing data.
 
 Proto requires evaluated scoring constraints to return finite scores in `[0, 1]` unless a
 reviewed raw-score scorer is used. Internally, NaN means a proposal was not evaluated, while

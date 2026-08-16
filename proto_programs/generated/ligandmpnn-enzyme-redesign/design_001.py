@@ -1,7 +1,7 @@
 """Full-tier LigandMPNN enzyme active-site MCMC (3HTB, 100 steps).
 
-Mutates ligand-aware active-site ordinals on a fixed holo backbone with
-LigandMPNN probability and ESMFold pLDDT gates.
+Mutates active-site ordinals on a fixed holo backbone with
+joint LigandMPNN probability and ESMFold pLDDT objectives.
 """
 
 from __future__ import annotations

@@ -21,6 +21,8 @@ data/analysis/*
 !data/analysis/.gitkeep
 data/models/*
 !data/models/.gitkeep
+data/experiments/*
+!data/experiments/.gitkeep
 
 # Reviewed, compact visualization exports are publication artifacts, not raw run data.
 !data/visualizations/

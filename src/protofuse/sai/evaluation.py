@@ -12,7 +12,13 @@ from typing import Any, Literal
 from proto_language.core import Program
 from proto_language.core.optimizer import derive_seeds
 
+from protofuse.execution_context import program_execution_scope
 from protofuse.sai.evaluation_report import aggregate_paired_runs
+from protofuse.sai.hardware import (
+    ExperimentHardware,
+    experiment_hardware,
+    pinned_modal_hardware,
+)
 from protofuse.sai.transform import transform_with_artifact
 
 Arm = Literal["full", "fused"]
@@ -112,6 +118,7 @@ class PairedEvaluation:
     runs: tuple[PairedRun, ...]
     warmup: WarmupReport | None
     offline_surrogate_metrics: Mapping[str, Any] | None = None
+    hardware: ExperimentHardware | None = None
 
     def as_dict(self) -> dict[str, Any]:
         run_records = [asdict(run) for run in self.runs]
@@ -121,12 +128,15 @@ class PairedEvaluation:
             "protocol": {
                 "comparison": (
                     "same program, seed, ordered candidate pool when available, "
-                    "stopping rule, and device"
+                    "stopping rule, and pinned hardware context"
                 ),
                 "measured_scope": "Program.run including routing, fallback, and final validation",
                 "arm_order": "counterbalanced full/fused by seed position",
                 "cold_start_in_primary_timing": False,
+                "hardware_match_required": True,
+                "hardware_match_level": "accelerator class and isolated Modal option set",
             },
+            "hardware": self.hardware.as_dict() if self.hardware is not None else None,
             "startup": {
                 "warmup": asdict(self.warmup) if self.warmup is not None else None,
                 "cold_start_seconds": None,
@@ -155,6 +165,7 @@ def evaluate_paired(
     *,
     seeds: Sequence[int],
     device: Literal["modal"] | None = None,
+    modal_gpu: str | None = None,
     warmup: bool = True,
     warmup_seed: int | None = None,
     offline_surrogate_metrics: Mapping[str, Any] | None = None,
@@ -168,6 +179,7 @@ def evaluate_paired(
         optimizer_index=int(artifact.manifest.optimizer_index),
         seeds=seeds,
         device=device,
+        modal_gpu=modal_gpu,
         warmup=warmup,
         warmup_seed=warmup_seed,
         offline_surrogate_metrics=offline_surrogate_metrics,
@@ -182,6 +194,7 @@ def evaluate_paired_transform(
     optimizer_index: int,
     seeds: Sequence[int],
     device: Literal["modal"] | None = None,
+    modal_gpu: str | None = None,
     warmup: bool = True,
     warmup_seed: int | None = None,
     offline_surrogate_metrics: Mapping[str, Any] | None = None,
@@ -192,6 +205,7 @@ def evaluate_paired_transform(
     resolved_seeds = tuple(seeds)
     if not resolved_seeds:
         raise ValueError("paired evaluation requires at least one seed")
+    hardware = experiment_hardware(device, modal_gpu)
 
     warmup_report = None
     if warmup:
@@ -206,6 +220,7 @@ def evaluate_paired_transform(
             fused,
             warmup_order,
             device,
+            hardware,
             optimizer_index=optimizer_index,
         )
         warmup_report = WarmupReport(
@@ -227,13 +242,19 @@ def evaluate_paired_transform(
                 seed=seed,
                 order=("full", "fused") if index % 2 == 0 else ("fused", "full"),
                 device=device,
+                hardware=hardware,
             )
         )
         if on_progress is not None:
             on_progress(
-                PairedEvaluation(tuple(runs), warmup_report, offline_surrogate_metrics)
+                PairedEvaluation(
+                    tuple(runs),
+                    warmup_report,
+                    offline_surrogate_metrics,
+                    hardware,
+                )
             )
-    return PairedEvaluation(tuple(runs), warmup_report, offline_surrogate_metrics)
+    return PairedEvaluation(tuple(runs), warmup_report, offline_surrogate_metrics, hardware)
 
 
 def apply_program_seed(program: Program, seed: int) -> None:
@@ -279,12 +300,14 @@ def _outputs(program: Program, *, optimizer_index: int) -> ProgramOutputs:
 def _execute(
     program: Program,
     device: Literal["modal"] | None,
+    hardware: ExperimentHardware,
     *,
     optimizer_index: int,
 ) -> ArmExecution:
     started = perf_counter()
     try:
-        program.run(device=device)
+        with program_execution_scope(), pinned_modal_hardware(hardware):
+            program.run(device=device)
     except Exception as error:  # noqa: BLE001 - experiment must retain failures by arm
         return ArmExecution(perf_counter() - started, None, type(error).__name__)
     return ArmExecution(
@@ -391,6 +414,7 @@ def _run_arms(
     fused: Program,
     order: tuple[Arm, Arm],
     device: Literal["modal"] | None,
+    hardware: ExperimentHardware,
     *,
     optimizer_index: int,
 ) -> dict[Arm, ArmExecution]:
@@ -398,7 +422,7 @@ def _run_arms(
     results: dict[Arm, ArmExecution] = {}
     for arm in order:
         results[arm] = _execute(
-            programs[arm], device, optimizer_index=optimizer_index
+            programs[arm], device, hardware, optimizer_index=optimizer_index
         )
     return results
 
@@ -411,6 +435,7 @@ def _paired_run(
     seed: int,
     order: tuple[Arm, Arm],
     device: Literal["modal"] | None,
+    hardware: ExperimentHardware,
 ) -> PairedRun:
     full = build_program()
     fused = transform_program(build_program())
@@ -421,6 +446,7 @@ def _paired_run(
         fused,
         order,
         device,
+        hardware,
         optimizer_index=optimizer_index,
     )
     full_run = executions["full"]

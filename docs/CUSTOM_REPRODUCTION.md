@@ -38,14 +38,15 @@ the selected ten. Use raw metric vectors, same-pool rank/set agreement, and pair
 
 Development model selection rejected the learned candidates that replaced all five objectives.
 That result changes only the ProtoFuse candidate, not the reproduction: released CUSTOM and Proto
-still generate, score, filter, and rank with all five exact metrics [1]. No final external-audit or
-paired outcome is asserted here.
+still generate, score, filter, and rank with all five exact metrics [1]. The frozen external audit
+and initial ten-seed paired cohorts reported below are complete; the reserved confirmation and
+challenge cohorts remain unopened.
 
 The amended comparison freezes two body-MFE candidates before confirmatory evaluation:
 
 | Candidate | MFE path | What remains exact |
 | --- | --- | --- |
-| **Exact parallel** | Run the complete released CUSTOM MFE calculation in eight ordered worker processes, with exact parent fallback on execution failure | Every MFE value, all 638 body-window calculations per sequence, MFEini, CAI, CPB, ENC, homopolymer filtering, and final validation |
+| **Exact parallel** | Run the complete released CUSTOM MFE calculation in eight ordered worker processes, with exact parent fallback on execution failure | Every MFE value, all 638 body-window calculations per sequence, MFEini, CAI, CPB, ENC, homopolymer filtering, and selected-candidate metadata; no second validation stage is needed because the complete pool is already exact |
 | **Sampled window** | Use the frozen stride-8, calibrated 40-nt-window estimate; an uncertainty gate routes each uncertain item to exact MFE | MFE for deferred items, MFEini, CAI, CPB, ENC, homopolymer filtering, and all final top-10 objectives |
 
 Exact parallelism uses more CPU cores to perform the same calculations; it does **not** reduce the
@@ -55,7 +56,8 @@ and speed gates. This narrower target is an MFE-only selective fusion, not a mul
 fusion claim. Conservative model management and fallback remain necessary because optimization
 can move an approximation away from its development distribution [3][4].
 
-Final validation recomputes all five metrics and the filter exactly on the selected top ten, but it
+For sampled-window ProtoFuse, final validation recomputes all five metrics and the filter exactly
+on the selected top ten, but it
 cannot recover a candidate excluded earlier by approximate MFE ranking. Therefore top-10 recall
 against same-pool Proto is a required gate, even when every delivered candidate has exact final
 metadata.
@@ -73,6 +75,43 @@ maximum, and all ten raw rows. `fusion evaluate-custom-mfe` records exact final 
 both arms under each run's `full_result_metadata` and `fused_result_metadata`; the CUSTOM values
 are nested under the `egfp_cds` segment and the five `custom_*` constraint labels. Label the paper
 row `historical, unpaired` and every same-seed Proto/ProtoFuse comparison `paired`.
+
+## Completed initial results
+
+The canonical compact artifact is
+`data/analysis/custom-egfp-lung/results-summary.json`; it records SHA-256 hashes for the parity,
+external-audit, and paired reports. Raw reports remain ignored under `data/`.
+
+| Result | Evidence | Outcome |
+| --- | --- | --- |
+| Released CUSTOM ↔ Proto parity | One identical ordered 1,000-candidate pool, seed 0 | Pass: all five maximum absolute metric deltas `0.0`, zero filter disagreements, ordered top-10 identity |
+| Sampled-MFE frozen audit | 4 untouched groups / 4,000 candidates, seeds 44–47 | Pass: 99.075% coverage, 37 exact fallbacks, accepted MAE 4.205% of q95–q05, accepted Spearman 0.9835 |
+| Proto ↔ exact-parallel ProtoFuse | 10 counterbalanced same-host pairs / 10,000 candidates, seeds 100–109 | Pass: 10/10 matching pool hashes and ordered top tens; 5.79× net speedup, bootstrap 95% CI 5.77–5.82×; zero fallback |
+| Proto ↔ sampled-window ProtoFuse | 10 counterbalanced same-host pairs / 10,000 candidates, seeds 100–109 | Pass: 10/10 matching pool hashes; mean top-10 recall 0.91, minimum 0.80; 12.26× net speedup, bootstrap 95% CI 12.00–12.52×; 98.81% coverage and 119 exact fallbacks |
+
+Every local computation in this reported campaign—released-CUSTOM parity, development trace
+collection and model selection, the frozen external audit, and both paired cohorts—ran CPU-only
+on one AMD Ryzen 9 7950X3D host with 16 physical cores / 32 hardware threads and 64 GiB installed
+memory (61.9 GiB visible to Linux). No GPU contributed to these results. Both arms of every paired
+comparison ran sequentially in one local process on that host, with arm order counterbalanced by
+seed. Exact parallel and the sampled-window audit/evaluation were capped at eight worker
+processes, so exact-parallel speedup is a wall-time-for-cores trade rather than avoided scientific
+calculation.
+
+The table below compares the single historical paper row with medians and ranges across the 100
+exactly rescored selected candidates from the ten paired seeds. It is descriptive and unpaired;
+the exact-parallel ProtoFuse vectors equal Proto's vectors, while sampled-window selection changes
+some members of the top ten.
+
+| Source | MFE ↓ | MFEini ↑ | CAI ↑ | CPB ↑ | ENC ↓ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Paper `mCKeGL1` [1] | -4.0138 | -0.6000 | 0.7198 | 0.0335 | 40.0143 |
+| Proto / exact-parallel ProtoFuse, median [min, max] | -3.9639 [-4.8386, -3.1458] | -2.8000 [-7.5000, -0.2000] | 0.7337 [0.7157, 0.7582] | 0.0371 [-0.0093, 0.1229] | 45.4824 [39.8650, 56.3239] |
+| Sampled-window ProtoFuse, median [min, max] | -4.0136 [-4.8386, -3.1458] | -2.8000 [-7.5000, -0.2000] | 0.7338 [0.7142, 0.7582] | 0.0347 [-0.0093, 0.1229] | 45.5935 [39.8650, 56.3239] |
+
+Do not interpret closeness to one paper row as historical sequence reproduction. The unreported
+paper seed prevents pairing, and the published row is one selected design rather than a target
+value or population mean.
 
 ## Experiment order
 

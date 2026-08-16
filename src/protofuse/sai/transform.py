@@ -48,16 +48,20 @@ def linear_gate_decision(
     uncertainties: Sequence[float],
     support_score: object,
 ) -> GateDecision:
-    """Apply the runtime's exact frozen-model acceptance gate."""
+    """Apply the runtime's gate to normalized scores and ensemble spread."""
 
     if isinstance(support_score, bool) or not isinstance(support_score, (int, float)):
         return GateDecision(False, "invalid_support_score")
     resolved_support = float(support_score)
+    if len(values) != len(model.output_labels) or len(uncertainties) != len(
+        model.output_labels
+    ):
+        return GateDecision(False, "invalid_prediction_shape")
     if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
         return GateDecision(False, "prediction_out_of_range")
     if not math.isfinite(resolved_support):
         return GateDecision(False, "invalid_support_score")
-    if any(not math.isfinite(value) for value in uncertainties):
+    if any(not math.isfinite(value) or value < 0.0 for value in uncertainties):
         return GateDecision(False, "invalid_uncertainty")
     if resolved_support > model.support_threshold:
         return GateDecision(False, "out_of_domain")
@@ -130,6 +134,10 @@ class _ConstraintGroupEvaluator:
                         metadata={
                             "protofuse_predicted_score": value,
                             "protofuse_uncertainty": prediction.uncertainties[index],
+                            "protofuse_normalized_score": prediction.normalized_values[index],
+                            "protofuse_normalized_uncertainty": (
+                                prediction.normalized_uncertainties[index]
+                            ),
                             "protofuse_support_score": prediction.support_score,
                         },
                     )
@@ -139,8 +147,8 @@ class _ConstraintGroupEvaluator:
                     SurrogatePrediction(
                         outputs,
                         {
-                            "values": prediction.values,
-                            "uncertainties": prediction.uncertainties,
+                            "normalized_values": prediction.normalized_values,
+                            "normalized_uncertainties": prediction.normalized_uncertainties,
                             "support_score": prediction.support_score,
                         },
                     )
@@ -156,8 +164,10 @@ class _ConstraintGroupEvaluator:
     ) -> GateDecision:
         started = perf_counter()
         try:
-            values = cast(tuple[float, ...], prediction.metadata["values"])
-            uncertainties = cast(tuple[float, ...], prediction.metadata["uncertainties"])
+            values = cast(tuple[float, ...], prediction.metadata["normalized_values"])
+            uncertainties = cast(
+                tuple[float, ...], prediction.metadata["normalized_uncertainties"]
+            )
             support_value = prediction.metadata["support_score"]
             return linear_gate_decision(
                 self.model,

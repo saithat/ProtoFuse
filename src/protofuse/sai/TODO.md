@@ -16,8 +16,10 @@ Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored)
 
 ## Active handoffs
 
-This table contains only collections whose manifest says `reviewed=true`. Program numbers
-are stable ordinals, not tier names. These two-program collections currently use
+This table contains collections whose manifest says `reviewed=true`, which is necessary but not
+sufficient. Only `custom-egfp-lung`, `dnachisel-num1`, `evo2-enformer-borzoi`, and
+`rfdiffusion3-af3-ppi` currently print `READY FOR HANDOFF`; do not launch another row until its
+mechanical review passes. Program numbers are stable ordinals, not tier names. Two-program collections use
 `design_001.py` for full and `design_002.py` for smoke, but the generated docstring is the
 authority. Smoke is a reduced executable workload, not a fake program.
 
@@ -34,18 +36,19 @@ authority. Smoke is a reduced executable workload, not a fake program.
 | `rfdiffusion3-boltz2-binder` | `proto_programs/generated/rfdiffusion3-boltz2-binder/` | **`design_001.py`** (70 aa) | RFdiffusion3 bootstrap + Boltz-2 cycling; shares 4RWS target. |
 | `ligandmpnn-enzyme-redesign` | `proto_programs/generated/ligandmpnn-enzyme-redesign/` | **`design_001.py`** (3HTB) | LigandMPNN active-site MCMC on holo enzyme. |
 | `bioemu-ensemble-filter` | `proto_programs/generated/bioemu-ensemble-filter/` | **`design_001.py`** (129 aa) | BioEmu ensemble RMSD vs 2LYZ; MCMC proxy for cycling. |
+| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | **`design_001.py`** (717 bp, 1,000 candidates) | Approved exact reproduction; initial exact and sampled paired cohorts are complete. |
+| `evo2-enformer-borzoi` | `proto_programs/generated/evo2-enformer-borzoi/` | **`design_001.py`–`design_003.py`** | Approved paper-scale regulatory patterns; H100/H200 OOM. Repo-owned Arc/NVIDIA 25.04 B200 service is implemented; deployment and a full-length call remain before tracing. |
+| `rfdiffusion3-af3-ppi` | `proto_programs/generated/rfdiffusion3-af3-ppi/` | **`design_001.py`–`design_005.py`** | Approved, but AF3 is unavailable on Modal and the local host; not executable yet. |
 
 Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashes, source drift, PDB/hotspot binding, preflight). Paper-evidence failures on internal benchmark fixtures are expected until evidence quotes are added.
 
-Generated collections `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`, and
-`evo2-enformer-borzoi` currently have `reviewed=false`. Do not analyze or train on them as
-handoffs until their paper encodings pass human review and the manifest status is updated
-through the normal finalization flow.
-
-The regenerated `custom-egfp-lung` v2 collection is also pending human paper-fidelity review.
-Its primary program is the exact 717-bp, 1,000-candidate workflow; use
-[`docs/CUSTOM_REPRODUCTION.md`](../../../docs/CUSTOM_REPRODUCTION.md) after approval, and never
-substitute the reduced-pool `design_002.py` diagnostic for results.
+`evo2-enformer-borzoi` and `rfdiffusion3-af3-ppi` now pass their paper and handoff gates.
+Only Evo2 `design_001.py`--`design_003.py` are result workloads; see
+[`docs/EVO2_REPRODUCTION.md`](../../../docs/EVO2_REPRODUCTION.md) for deployment gates and order.
+`af3-boltz2-state-sweep` remains unreviewed. The approved `custom-egfp-lung` primary program is
+the exact 717-bp, 1,000-candidate workflow; use
+[`docs/CUSTOM_REPRODUCTION.md`](../../../docs/CUSTOM_REPRODUCTION.md), and never substitute the
+reduced-pool `design_002.py` diagnostic for results.
 
 ## Analyze program collections
 

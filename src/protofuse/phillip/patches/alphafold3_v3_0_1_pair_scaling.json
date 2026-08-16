@@ -1,0 +1,12 @@
+{
+  "upstream_repository": "https://github.com/google-deepmind/alphafold3.git",
+  "upstream_tag": "v3.0.1",
+  "upstream_commit": "231efc9bb9c13b45cc59e43f7107869084ee9624",
+  "patch_file": "alphafold3_v3_0_1_pair_scaling.patch",
+  "patch_sha256": "339c4f9f9a8fe607eb01c6e898a57ee3d03b1823b40d8efe99c02e6a8d0cfead",
+  "patched_source_sha256": {
+    "run_alphafold.py": "950c4f9b4ebe4265a69b361d76f755268274da023e5fa0f01f2255734b0c09b9",
+    "src/alphafold3/model/model.py": "eb6a1901015c14b40ef22e6fcec45f2df61f0b93780776013e3ef12c526805ac",
+    "src/alphafold3/model/network/evoformer.py": "671d49e0c6b548842dc17d1144096f35dbbe31223d4ea7a9a6ffe056945ca8ac"
+  }
+}

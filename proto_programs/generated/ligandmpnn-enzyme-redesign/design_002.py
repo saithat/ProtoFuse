@@ -1,4 +1,4 @@
-"""Smoke-tier LigandMPNN enzyme redesign (20 MCMC steps)."""
+"""Smoke-tier LigandMPNN + ESMFold joint optimization (5 MCMC steps)."""
 
 from __future__ import annotations
 

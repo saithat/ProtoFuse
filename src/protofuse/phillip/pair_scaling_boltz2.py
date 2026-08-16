@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import modal
 from proto_tools.entities.structures import BFactorType, Structure
 from proto_tools.tools.structure_prediction.boltz2 import (
     Boltz2Config,
@@ -26,8 +25,12 @@ from proto_tools.tools.structure_prediction.shared_data_models import (
 )
 from proto_tools.utils.tool_instance import ToolInstance
 
+from protofuse.phillip.pair_scaling_msa import load_paper_server_msa
+from protofuse.phillip.pair_scaling_values import validate_paper_beta
+
 PAIR_SCALING_MODAL_APP = "protofuse-pair-scaling"
 PAIR_SCALING_MODAL_CLASS = "PairScalingBoltz2Service"
+PAIR_SCALING_MODAL_TOOL_KEY = "pair-scaled-boltz2"
 PAIR_SCALING_EXECUTION_ENV = "PROTOFUSE_PAIR_SCALING_EXECUTION"
 
 _STANDALONE_PATH = (
@@ -39,14 +42,16 @@ _BASE_INFERENCE_PATH = (
 
 
 def _boltz_config(request: Any) -> Boltz2Config:
+    validate_paper_beta(request.beta)
     return Boltz2Config(
         recycling_steps=request.recycling_steps,
         sampling_steps=request.sampling_steps,
         diffusion_samples=request.diffusion_samples,
         step_scale=request.step_scale,
+        use_msa=request.use_msa,
         max_msa_seqs=request.max_msa_seqs,
         subsample_msa=request.subsample_msa,
-        seed=request.seed,
+        seed=request.model_seed,
         device="cuda",
     )
 
@@ -55,11 +60,22 @@ def _prepare_inputs(
     sequences: list[str],
     config: Boltz2Config,
 ) -> tuple[Boltz2Input, Boltz2Config]:
+    if not sequences:
+        raise ValueError("pair-scaling requires at least one fixed-sequence draw")
+    if len(set(sequences)) != 1:
+        raise ValueError(
+            "pair-scaling diffusion draws must all use the same fixed sequence"
+        )
+    if len(sequences) != config.diffusion_samples:
+        raise ValueError(
+            "pair-scaling proposal count must equal diffusion_samples so every "
+            "paper draw comes from one seeded diffusion batch"
+        )
     complexes = [
-        Complex(chains=[Chain(sequence=sequence, entity_type="protein")])
-        for sequence in sequences
+        Complex(chains=[Chain(sequence=sequences[0], entity_type="protein")])
     ]
-    inputs = Boltz2Input(complexes=complexes)
+    msas = [load_paper_server_msa(sequences[0])] if config.use_msa else None
+    inputs = Boltz2Input(complexes=complexes, msas=msas)
     prepared = config.preprocess(inputs)
     if isinstance(prepared, tuple):
         prepared_inputs, prepared_config = prepared
@@ -101,11 +117,13 @@ def run_prepared_pair_scaled_boltz2(
     beta: float,
     instance: ToolInstance | None = None,
 ) -> list[Structure]:
-    """Run prepared inputs through the audited worker, one complex at a time."""
+    """Run one fixed sequence and return every audited diffusion sample."""
 
+    if len(inputs.complexes) != 1:
+        raise ValueError("pair-scaled Boltz expects one fixed-sequence complex")
     structures: list[Structure] = []
     base_seed = config.seed if config.seed is not None else config.get_random_int()
-    for index, sp_complex in enumerate(inputs.complexes):
+    for sp_complex in inputs.complexes:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "boltz2_output"
             output_dir.mkdir()
@@ -113,7 +131,7 @@ def run_prepared_pair_scaled_boltz2(
             if inputs.msas is not None:
                 chain_msa_paths = build_chain_msa_paths(
                     sp_complex,
-                    inputs.msas[index],
+                    inputs.msas[0],
                     temp_dir,
                     verbose=config.verbose,
                 )
@@ -138,7 +156,7 @@ def run_prepared_pair_scaled_boltz2(
                     "num_workers": config.num_workers,
                     "device": config.device,
                     "verbose": config.verbose,
-                    "seed": base_seed + index,
+                    "seed": base_seed,
                     "include_pae_matrix": config.include_pae_matrix,
                 },
                 instance=instance,
@@ -148,13 +166,23 @@ def run_prepared_pair_scaled_boltz2(
             audit = output_data.get("pair_scaling_audit")
             if not isinstance(audit, dict) or audit.get("beta") != beta:
                 raise RuntimeError("Boltz pair-scaling worker returned no matching audit record")
-            structure = Structure(
-                structure=output_data["structure_cif_output"],
-                b_factor_type=BFactorType.PLDDT,
-                metrics=_metrics_from_output(output_data),
-                source="boltz2-pair-scaled",
-            )
-            structures.append(normalize_output_chain_ids(structure, sp_complex.chains))
+            predictions = output_data.get("predictions")
+            if not isinstance(predictions, list) or len(predictions) != config.diffusion_samples:
+                raise RuntimeError(
+                    "Boltz pair-scaling worker did not return every requested diffusion sample"
+                )
+            for sample_index, output in enumerate(predictions):
+                if not isinstance(output, dict) or output.get("sample_index") != sample_index:
+                    raise RuntimeError("Boltz pair-scaling sample ordering audit failed")
+                structure = Structure(
+                    structure=output["structure_cif_output"],
+                    b_factor_type=BFactorType.PLDDT,
+                    metrics=_metrics_from_output(output),
+                    source="boltz2-pair-scaled",
+                )
+                structures.append(
+                    normalize_output_chain_ids(structure, sp_complex.chains)
+                )
     return structures
 
 
@@ -166,14 +194,22 @@ def boltz2_pair_scaling_backend(sequences: list[str], request: Any) -> list[Stru
     if os.environ.get(PAIR_SCALING_EXECUTION_ENV) == "local":
         return run_prepared_pair_scaled_boltz2(inputs, config, beta=request.beta)
 
+    from proto_tools.modal import client as modal_client
     from proto_tools.modal.app import resolve_environment
 
-    service = modal.Cls.from_name(
+    # Resolve through proto-tools' bound-method seam instead of looking the
+    # class up directly.  ProtoFuse's paired evaluator scopes that seam with
+    # one explicit accelerator, container pool, retry policy, and warm window;
+    # bypassing it would make the custom backend's reported hardware policy
+    # differ from the service that actually ran.
+    predict = modal_client._bound_method(  # noqa: SLF001 - shared Modal dispatch seam
         PAIR_SCALING_MODAL_APP,
         PAIR_SCALING_MODAL_CLASS,
-        environment_name=resolve_environment(),
-    )()
-    payload = service.predict.remote(
+        "predict",
+        PAIR_SCALING_MODAL_TOOL_KEY,
+        environment=resolve_environment(),
+    )
+    payload = predict.remote(
         inputs.model_dump(mode="json"),
         config.model_dump(mode="json"),
         request.beta,

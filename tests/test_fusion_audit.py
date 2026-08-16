@@ -12,7 +12,7 @@ from proto_language.optimizer import RejectionSamplingOptimizer, RejectionSampli
 
 from protofuse.sai.artifacts import FusionManifest, file_sha256, write_unreviewed_fusion_artifact
 from protofuse.sai.audit import audit_frozen_fusion
-from protofuse.sai.model import LinearEnsembleModel, SequenceFeatureSchema
+from protofuse.sai.model import LinearEnsembleModel, OutputNormalization, SequenceFeatureSchema
 from protofuse.sai.signatures import step_group_signature
 from protofuse.sai.tracing import TraceRow
 from protofuse.sai.training import SplitManifest
@@ -59,6 +59,7 @@ def _model(
     *,
     support_threshold: float = 10.0,
     feature_center: tuple[float, float] = (0.5, 0.5),
+    output_normalizations: tuple[OutputNormalization, ...] = (),
 ) -> LinearEnsembleModel:
     matrix = (
         (0.0, 0.0),
@@ -76,6 +77,7 @@ def _model(
             ),
         ),
         output_labels=LABELS,
+        output_normalizations=output_normalizations,
         coefficients=(matrix, matrix),
         feature_center=feature_center,
         feature_scale=(1.0, 1.0),
@@ -92,6 +94,7 @@ def _write_artifact(
     audit_group: str = "internal-audit",
     support_threshold: float = 10.0,
     feature_center: tuple[float, float] = (0.5, 0.5),
+    output_normalizations: tuple[OutputNormalization, ...] = (),
 ) -> Path:
     split = SplitManifest(
         seed=0,
@@ -128,6 +131,7 @@ def _write_artifact(
         model=_model(
             support_threshold=support_threshold,
             feature_center=feature_center,
+            output_normalizations=output_normalizations,
         ),
     )
     return root
@@ -138,6 +142,8 @@ def _write_trace(
     *,
     group_id: str = "external",
     constant_second_output: bool = False,
+    score_scale: float = 1.0,
+    paper_target_bins: int | None = None,
 ) -> Path:
     rows: list[TraceRow] = []
     for sample_index, sequence in enumerate(SEQUENCES):
@@ -162,8 +168,12 @@ def _write_trace(
                     input_sha256=(sha256(sequence.encode()).hexdigest(),),
                     input_sequences=(sequence,),
                     input_structure_sha256=(None,),
-                    score=score,
-                    metadata={},
+                    score=score * score_scale,
+                    metadata=(
+                        {"paper_target_bins": paper_target_bins}
+                        if paper_target_bins is not None
+                        else {}
+                    ),
                     has_structures=False,
                     has_logits=False,
                     call_latency_seconds=0.0,
@@ -208,6 +218,49 @@ def test_frozen_audit_reports_external_selective_metrics(tmp_path: Path) -> None
         {label: 1.0 for label in LABELS}
     )
     assert all(check["passed"] for check in report["checks"].values())
+
+
+def test_frozen_audit_accepts_sequence_bin_scores_in_raw_units(tmp_path: Path) -> None:
+    normalization = OutputNormalization(
+        kind="sequence_bins",
+        input_index=0,
+        resolution_bp=2,
+    )
+    artifact = _write_artifact(
+        tmp_path / "artifact",
+        output_normalizations=(normalization, normalization),
+    )
+    trace = _write_trace(
+        tmp_path / "heldout.jsonl",
+        score_scale=2.0,
+        paper_target_bins=2,
+    )
+
+    report = audit_frozen_fusion(
+        artifact,
+        (trace,),
+        min_groups=1,
+        require_reviewed=False,
+    )
+
+    assert report["status"] == "pass"
+    assert report["metrics"]["q95"]["fraction_a"] > 1.0
+    assert report["metrics"]["q95"]["fraction_c"] > 1.0
+    assert report["metrics"]["all_mae"] == pytest.approx(
+        {label: 0.0 for label in LABELS}
+    )
+
+    rows = [json.loads(line) for line in trace.read_text().splitlines()]
+    rows[0]["score"] = 2.01
+    invalid_trace = tmp_path / "out-of-range.jsonl"
+    invalid_trace.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    with pytest.raises(ValueError, match="normalized held-out parent scores"):
+        audit_frozen_fusion(
+            artifact,
+            (invalid_trace,),
+            min_groups=1,
+            require_reviewed=False,
+        )
 
 
 @pytest.mark.parametrize("leakage", ["hash", "group"])

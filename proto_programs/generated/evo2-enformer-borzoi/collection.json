@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "collection_id": "evo2-enformer-borzoi",
   "methodology_id": "evo2-enformer-borzoi-v3",
-  "proto_version": "f183febdfd365ed211d4d3ea63d6d3e28b85443e",
+  "proto_version": "2371dcc1ed0c792b6d2955882e4e47b667b99259",
   "registry_version": "1",
   "seed_policy": "paper generation seed not reported; BeamSearchOptimizer seed is fixed to 0, paired identically across full/fused arms, while Evo2Generator exposes no seed field",
   "reviewed": true,
@@ -30,6 +30,18 @@
       "path": "design_004.py",
       "entrypoint": "build_program",
       "sha256": "2a4f9ce64da0939322f4476d90416859ba926514ccb0d000f16797e494ceba8e"
+    },
+    {
+      "program_id": "design-005",
+      "path": "design_005.py",
+      "entrypoint": "build_program",
+      "sha256": "cd96414053f8bd278d91e4205145d1a8b303d4e2338029c50783e774c585805f"
+    },
+    {
+      "program_id": "design-006",
+      "path": "design_006.py",
+      "entrypoint": "build_program",
+      "sha256": "ebdd2b1e472e0205cf9608b3e607f4ccc4a22c7986d463e627c743584e267799"
     }
   ]
 }

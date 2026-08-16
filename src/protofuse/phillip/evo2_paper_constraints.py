@@ -33,6 +33,7 @@ from proto_tools.tools.sequence_scoring.shared_data_models import (
     SequenceTargetRange,
     SequenceWindow,
 )
+from sklearn.metrics import roc_auc_score  # type: ignore[import-untyped]
 
 
 def _pattern(config: object) -> list[tuple[int, int]]:
@@ -51,6 +52,32 @@ def _pattern(config: object) -> list[tuple[int, int]]:
         inter_letter_gap_bp=typed_config.inter_letter_gap_bp,
     )
     return highs
+
+
+def _binary_auroc(labels: np.ndarray, scores: np.ndarray) -> float | None:
+    """Return standard binary ROC AUC, or ``None`` before both classes exist."""
+
+    labels = np.asarray(labels).reshape(-1)
+    scores = np.asarray(scores, dtype=np.float64).reshape(-1)
+    if labels.shape != scores.shape:
+        raise ValueError("paper AUROC labels and predictions must have the same shape")
+    if not np.all((labels == 0) | (labels == 1)):
+        raise ValueError("paper AUROC target pattern must be binary")
+    if not np.all(np.isfinite(scores)):
+        raise ValueError("paper AUROC predictions must be finite")
+    if np.unique(labels).size < 2:
+        return None
+    return float(roc_auc_score(labels, scores))
+
+
+def _normalization_denom(model_name: str, values: np.ndarray) -> float:
+    """Validate non-negative model signals before paper normalization."""
+
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{model_name} prediction contains non-finite values")
+    if np.any(values < 0.0):
+        raise ValueError(f"{model_name} prediction contains negative values")
+    return float(np.max(values)) if values.size else 0.0
 
 
 def _l1_output(
@@ -79,12 +106,28 @@ def _l1_output(
         resolution=resolution,
     )
     l1_sum = float(np.sum(np.abs(pattern - target_signal)))
+    output_relative_highs = [
+        (start + target_start - output_start, end + target_start - output_start)
+        for start, end in highs
+    ]
+    full_pattern = build_binary_pattern_for_target(
+        output_relative_highs,
+        target_num_bins=len(normalized_signal),
+        resolution=resolution,
+    )
+    auroc = _binary_auroc(full_pattern, normalized_signal)
+    open_bins = int(np.count_nonzero(full_pattern))
     return ConstraintOutput(
         score=l1_sum,
         metadata={
             "paper_model": model_name.lower(),
             "paper_loss": "l1_sum",
             "paper_l1_sum": l1_sum,
+            "paper_auroc": auroc,
+            "paper_auroc_defined": auroc is not None,
+            "paper_auroc_scope": "complete_model_output",
+            "paper_auroc_open_bins": open_bins,
+            "paper_auroc_closed_bins": int(full_pattern.size - open_bins),
             "paper_target_bins": int(target_signal.size),
             "paper_output_resolution_bp": resolution,
             "paper_normalization_denom": normalization_denom,
@@ -149,7 +192,7 @@ def evo2_paper_enformer_l1_constraint(
         values = np.asarray(prediction.prediction, dtype=np.float32)
         if values.ndim != 2 or values.shape[1] != 1:
             raise ValueError(f"unexpected Enformer prediction shape: {values.shape}")
-        denom = float(np.max(values)) if values.size else 0.0
+        denom = _normalization_denom("Enformer", values)
         normalized = values[:, 0] / denom if denom > 0.0 else np.zeros(values.shape[0])
         outputs.append(
             _l1_output(
@@ -226,7 +269,7 @@ def evo2_paper_borzoi_l1_constraint(
         values = np.asarray(prediction.predictions, dtype=np.float32)
         if values.ndim != 3 or values.shape[0] != 4 or values.shape[1] != 1:
             raise ValueError(f"unexpected Borzoi ensemble prediction shape: {values.shape}")
-        denom = float(np.max(values)) if values.size else 0.0
+        denom = _normalization_denom("Borzoi", values)
         normalized = values / denom if denom > 0.0 else np.zeros_like(values)
         replicate_signals = normalized[:, 0, :]
         lower_confidence_bound = replicate_signals.mean(axis=0) - replicate_signals.std(

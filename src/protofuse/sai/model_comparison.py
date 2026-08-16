@@ -18,7 +18,7 @@ from sklearn.exceptions import ConvergenceWarning  # type: ignore[import-untyped
 from sklearn.neural_network import MLPRegressor  # type: ignore[import-untyped]
 from sklearn.preprocessing import StandardScaler  # type: ignore[import-untyped]
 
-from protofuse.sai.model import SequenceFeatureSchema
+from protofuse.sai.model import OutputNormalization, SequenceFeatureSchema
 from protofuse.sai.training import (
     PreparedTrainingData,
     TeacherSample,
@@ -57,7 +57,9 @@ def _fit_linear(data: PreparedTrainingData, *, seed: int, members: int) -> _Fitt
     fitted: list[np.ndarray] = []
     for _ in range(members):
         indices = _bootstrap_indices(data, rng)
-        fitted.append(np.linalg.lstsq(design[indices], data.y[indices], rcond=None)[0])
+        fitted.append(
+            np.linalg.lstsq(design[indices], data.normalized_y[indices], rcond=None)[0]
+        )
     coefficients = np.stack(fitted)
     fit_seconds = perf_counter() - started
 
@@ -87,7 +89,7 @@ def _fit_trees(data: PreparedTrainingData, *, seed: int, tree_count: int) -> _Fi
         n_jobs=1,
     )
     started = perf_counter()
-    train_targets = data.y[data.train_mask]
+    train_targets = data.normalized_y[data.train_mask]
     model.fit(
         data.x[data.train_mask],
         train_targets.ravel() if train_targets.shape[1] == 1 else train_targets,
@@ -138,7 +140,7 @@ def _fit_mlp(
         )
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", ConvergenceWarning)
-            targets = data.y[indices]
+            targets = data.normalized_y[indices]
             model.fit(
                 scaled[indices],
                 targets.ravel() if targets.shape[1] == 1 else targets,
@@ -232,16 +234,19 @@ def _evaluate_family(
     *,
     latency_repeats: int,
 ) -> dict[str, Any]:
-    member_predictions = family.predict_members(data.x)
-    prediction = member_predictions.mean(axis=0)
-    uncertainty = member_predictions.std(axis=0).max(axis=1)
+    normalized_member_predictions = family.predict_members(data.x)
+    normalized_prediction = normalized_member_predictions.mean(axis=0)
+    prediction = normalized_prediction * data.output_scales
+    uncertainty = normalized_member_predictions.std(axis=0).max(axis=1)
     center = data.x[data.train_mask].mean(axis=0)
     scale = np.maximum(data.x[data.train_mask].std(axis=0), 1e-6)
     support = np.sqrt(np.mean(np.square((data.x - center) / scale), axis=1))
     support_threshold = _quantile(support[data.calibration_mask], 0.99)
     uncertainty_threshold = _quantile(uncertainty[data.calibration_mask], 0.99)
     in_range = np.all(
-        np.isfinite(prediction) & (prediction >= 0.0) & (prediction <= 1.0),
+        np.isfinite(normalized_prediction)
+        & (normalized_prediction >= 0.0)
+        & (normalized_prediction <= 1.0),
         axis=1,
     )
     accepted = (
@@ -319,6 +324,7 @@ def compare_model_families(
     output_labels: tuple[str, ...],
     trace_paths: tuple[Path, ...],
     schemas: tuple[SequenceFeatureSchema, ...] | None = None,
+    output_normalizations: tuple[OutputNormalization, ...] = (),
     seed: int = 0,
     linear_ensemble_size: int = 8,
     tree_count: int = 64,
@@ -338,6 +344,7 @@ def compare_model_families(
         output_labels=output_labels,
         trace_paths=trace_paths,
         schemas=schemas,
+        output_normalizations=output_normalizations,
         seed=seed,
     )
     families = {
@@ -373,6 +380,10 @@ def compare_model_families(
             "samples": len(samples),
             "features": int(prepared.x.shape[1]),
             "output_labels": list(output_labels),
+            "output_normalizations": [
+                normalization.model_dump(mode="json")
+                for normalization in prepared.output_normalizations
+            ],
             "split": prepared.split.model_dump(mode="json"),
             "feature_schemas": [schema.model_dump(mode="json") for schema in prepared.schemas],
         },

@@ -1,6 +1,6 @@
-"""Full-tier pair-representation-scaling protocol slice.
+"""Full-tier query-only Boltz-2 pair-representation-scaling slice.
 
-Use beta=0.45 and implementation seed 0 for five AlphaFold3 and five Boltz-2 draws, with separate TM-scores to both reference states. Execution requires explicitly registered reviewed backends and has no unscaled fallback.
+Use beta=0.45 and implementation seed 0 for five Boltz-2 draws, with separate TM-scores to both reference states. Proto and ProtoFuse must use this same backend, input, and seed. AlphaFold 3 and paper-matched MSAs are optional validation recipes, not execution gates.
 """
 
 from __future__ import annotations

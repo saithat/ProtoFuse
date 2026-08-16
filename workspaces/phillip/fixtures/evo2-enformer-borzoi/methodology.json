@@ -276,6 +276,14 @@
       "conditions": {"reference": "mm39 chrX:52,051,929-52,123,468 upstream sequence"},
       "role": "input",
       "evidence": [{"quote": "For x prompt, we used a sequence of length 40,960 upstream of the genomic region chrX: 52,051,929-52,123,468 in the mm39 reference genome.", "section": "Regulatory sequence design methods"}]
+    },
+    {
+      "name": "computational final-design AUROC",
+      "value": "0.5 * (Enformer AUROC + Borzoi AUROC)",
+      "unit": "AUROC",
+      "conditions": {"scope": "complete normalized model outputs and complete binary target patterns", "role_in_optimization": "post-hoc only"},
+      "role": "validation",
+      "evidence": [{"quote": "The final reported AUROC score for a design is the average of the Enformer and Borzoi AUROCs.", "section": "Generative epigenomics in mouse cells: Inference-time scaling experiments"}]
     }
   ],
   "assumptions": [

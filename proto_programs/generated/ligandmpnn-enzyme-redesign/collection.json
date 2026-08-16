@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "collection_id": "ligandmpnn-enzyme-redesign",
-  "methodology_id": "ligandmpnn-enzyme-redesign-v1",
-  "proto_version": "041a70d06fd2d7b6eddb1059c2971eb0ec805603",
+  "methodology_id": "ligandmpnn-esmfold-joint-v2",
+  "proto_version": "2371dcc1ed0c792b6d2955882e4e47b667b99259",
   "registry_version": "1",
   "seed_policy": "enzyme sequence from holo PDB 3HTB; active-site masking via ResidueSelection",
   "reviewed": true,
@@ -11,13 +11,13 @@
       "program_id": "design-001",
       "path": "design_001.py",
       "entrypoint": "build_program",
-      "sha256": "5b1f5e9e37225872e7f0749e0c6857a80d97e604b50c43f5387b0baa00ec8703"
+      "sha256": "1edd213e87b6f730140a4fe74f0ab3a178bbdcc20bbcb77453b6e51a2c7d4295"
     },
     {
       "program_id": "design-002",
       "path": "design_002.py",
       "entrypoint": "build_program",
-      "sha256": "742a57619c93a78bfc895eb073e2c4e985d4d4c456d33ef467a740bdae9bd507"
+      "sha256": "deca5e739bd50030d9e86a3fda0ee6ff1dd78dde814c9c521c7b7e766a9beebe"
     }
   ]
 }

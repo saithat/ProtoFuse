@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from protofuse.phillip import compile_proto_plan, recommend_topologies
 from protofuse.phillip.contracts import MethodologySpec
 from protofuse.phillip.handoff_config import HANDOFF_CONFIGS
+from protofuse.sai.hardware import MODAL_GPU_CHOICES
 
 if TYPE_CHECKING:
     from proto_language.core import Program
@@ -192,8 +193,24 @@ def main() -> None:
     trace_parser.add_argument("--out", type=Path, required=True)
     trace_parser.add_argument("--run-id", required=True)
     trace_parser.add_argument("--group-id", required=True)
+    trace_parser.add_argument(
+        "--group-by-input-batch",
+        action="store_true",
+        help=(
+            "derive split groups from each proposal batch while keeping sibling proposals together"
+        ),
+    )
     trace_parser.add_argument("--seed", type=int, default=None)
     trace_parser.add_argument("--device", choices=("local", "modal"), default="local")
+    trace_parser.add_argument(
+        "--modal-gpu",
+        choices=(*MODAL_GPU_CHOICES, "auto"),
+        default=None,
+        help=(
+            "exact Modal accelerator, or 'auto' for score-collection-only deployment "
+            "fallback; required when --device modal"
+        ),
+    )
     trace_parser.add_argument("--tier", choices=("smoke", "full"), default=None)
     trace_parser.add_argument(
         "--hash-inputs-only",
@@ -237,6 +254,12 @@ def main() -> None:
     fusion_evaluate.add_argument("program_id")
     fusion_evaluate.add_argument("--seed", type=int, action="append", required=True)
     fusion_evaluate.add_argument("--device", choices=("local", "modal"), default="local")
+    fusion_evaluate.add_argument(
+        "--modal-gpu",
+        choices=MODAL_GPU_CHOICES,
+        default=None,
+        help="exact Modal accelerator shared by both arms; required for Modal evaluation",
+    )
     fusion_evaluate.add_argument("--allow-unreviewed", action="store_true")
     fusion_evaluate.add_argument(
         "--no-warmup",
@@ -445,27 +468,75 @@ def main() -> None:
         return
 
     if args.command == "trace":
+        from contextlib import AbstractContextManager, nullcontext
+
         from protofuse.sai.analyzer import load_reviewed_program
         from protofuse.sai.evaluation import apply_program_seed
+        from protofuse.sai.hardware import experiment_hardware, pinned_modal_hardware
         from protofuse.sai.tracing import JsonlTraceWriter, trace_program_constraints
 
         traced_program = load_reviewed_program(args.collection, program_id=args.program_id)
-        if args.seed is not None:
-            apply_program_seed(traced_program.program, args.seed)
+        device: Literal["modal"] | None = "modal" if args.device == "modal" else None
+        hardware_scope: AbstractContextManager[None]
+        if args.modal_gpu == "auto":
+            if device != "modal":
+                raise ValueError("--modal-gpu auto requires --device modal")
+            # Teacher scores are valid across supported accelerators, but timings are
+            # not comparable when each deployed service selects from its own fallback
+            # policy. Keep this path trace-only; paired evaluation still requires one
+            # exact accelerator class.
+            hardware_scope = nullcontext()
+            hardware_report = {
+                "purpose": "score_collection",
+                "device": "modal",
+                "accelerator": None,
+                "selection_policy": "deployment_default",
+                "timing_eligible": False,
+                "context_id": "deployment-default",
+                "pairing": "none",
+                "max_containers_per_service": None,
+                "retries": None,
+                "scaledown_window_seconds": None,
+                "identity_level": "unverified",
+                "same_physical_accelerator_verified": False,
+                "local_host": None,
+            }
+        else:
+            hardware = experiment_hardware(
+                device,
+                args.modal_gpu,
+                # Reuse one pinned option identity across a trace campaign so Modal can
+                # retain warm model containers. Run/group IDs remain in every trace row;
+                # changing this environment label per seed needlessly cold-started both
+                # parent services without improving data isolation.
+                context_id=(
+                    f"trace-{traced_program.collection.manifest.collection_id}-"
+                    f"{args.tier or 'unspecified'}"
+                ),
+            )
+            hardware_scope = pinned_modal_hardware(hardware)
+            hardware_report = hardware.as_dict()
         writer = JsonlTraceWriter(args.out)
-        with trace_program_constraints(
-            traced_program.program,
-            writer,
-            run_id=args.run_id,
-            group_id=args.group_id,
-            include_inputs=not args.hash_inputs_only,
-            collection_id=traced_program.collection.manifest.collection_id,
-            program_id=traced_program.entry.program_id,
-            methodology_id=traced_program.collection.manifest.methodology_id,
-            tier=args.tier,
+        with (
+            hardware_scope,
+            trace_program_constraints(
+                traced_program.program,
+                writer,
+                run_id=args.run_id,
+                group_id=args.group_id,
+                group_by_input_batch=args.group_by_input_batch,
+                include_inputs=not args.hash_inputs_only,
+                collection_id=traced_program.collection.manifest.collection_id,
+                program_id=traced_program.entry.program_id,
+                methodology_id=traced_program.collection.manifest.methodology_id,
+                tier=args.tier,
+            ),
         ):
-            traced_program.program.run(device="modal" if args.device == "modal" else None)
+            if args.seed is not None:
+                apply_program_seed(traced_program.program, args.seed)
+            traced_program.program.run(device=device)
         print(f"trace={args.out}")
+        print(f"hardware={json.dumps(hardware_report, sort_keys=True)}")
         return
 
     if args.command == "fusion":
@@ -497,6 +568,7 @@ def main() -> None:
             return
 
         if args.fusion_command == "compare-models":
+            from protofuse.sai.model import evo2_output_normalizations
             from protofuse.sai.model_comparison import compare_model_families
             from protofuse.sai.training import load_teacher_samples
 
@@ -507,10 +579,20 @@ def main() -> None:
                 optimizer_index=args.optimizer_index,
                 constraint_labels=labels,
             )
+            evo2_labels = {
+                "enformer_pattern_l1_sum",
+                "borzoi_pattern_l1_sum",
+            }
+            output_normalizations = (
+                evo2_output_normalizations(labels)
+                if labels and set(labels) <= evo2_labels
+                else ()
+            )
             report = compare_model_families(
                 samples,
                 output_labels=labels,
                 trace_paths=traces,
+                output_normalizations=output_normalizations,
                 seed=args.seed,
             )
             args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -519,9 +601,11 @@ def main() -> None:
             return
 
         if args.fusion_command == "train":
+            from protofuse.sai.model import evo2_output_normalizations
             from protofuse.sai.training import (
                 load_teacher_samples,
                 train_linear_ensemble,
+                validate_teacher_trace_contract,
                 write_trained_fusion,
             )
 
@@ -531,15 +615,28 @@ def main() -> None:
             )
             traces = tuple(args.trace)
             labels = tuple(args.constraint)
+            validate_teacher_trace_contract(
+                traces,
+                program=training_program.program,
+                optimizer_index=args.optimizer_index,
+                constraint_labels=labels,
+            )
             samples = load_teacher_samples(
                 traces,
                 optimizer_index=args.optimizer_index,
                 constraint_labels=labels,
             )
+            output_normalizations = (
+                evo2_output_normalizations(labels)
+                if training_program.collection.manifest.collection_id
+                == "evo2-enformer-borzoi"
+                else ()
+            )
             training = train_linear_ensemble(
                 samples,
                 output_labels=labels,
                 trace_paths=traces,
+                output_normalizations=output_normalizations,
                 seed=args.seed,
                 ensemble_size=args.ensemble_size,
             )
@@ -802,6 +899,7 @@ def main() -> None:
             artifact,
             seeds=args.seed,
             device="modal" if args.device == "modal" else None,
+            modal_gpu=args.modal_gpu,
             warmup=not args.no_warmup,
             offline_surrogate_metrics=offline_metrics,
             on_progress=persist_progress,
