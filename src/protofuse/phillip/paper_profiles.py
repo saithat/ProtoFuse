@@ -46,6 +46,14 @@ INTERNAL_REFERENCE_NOTES: dict[str, str] = {
     ),
 }
 
+# Curated primary figure per collection (Fig 1 unless the replicated result is clearer elsewhere).
+PRIMARY_FIGURE_IDS: dict[str, str] = {
+    "custom-egfp-lung": "Fig3",
+    "dnachisel-num1": "Fig1",
+    "gpcr-cxcr4-miniprotein": "Fig1",
+    "boltz2-state-sweep": "F1",
+}
+
 
 @dataclass(frozen=True)
 class FigureCandidate:
@@ -152,7 +160,10 @@ def _figure_candidates_from_manifest(
     if not isinstance(entry, dict):
         return [], None
     candidates: list[FigureCandidate] = []
-    for raw in entry.get("candidates", []):
+    raw_candidates = entry.get("candidates", [])
+    if not raw_candidates and isinstance(entry.get("primary"), dict):
+        raw_candidates = [entry["primary"]]
+    for raw in raw_candidates:
         if not isinstance(raw, dict):
             continue
         candidates.append(
@@ -240,3 +251,33 @@ def resolve_figure_path(candidate: FigureCandidate) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def primary_figure_id(collection_id: str, *, approved: str | None = None) -> str | None:
+    if approved:
+        return approved
+    return PRIMARY_FIGURE_IDS.get(collection_id)
+
+
+def primary_figure(profile: PaperProfile) -> FigureCandidate | None:
+    target_id = primary_figure_id(profile.collection_id, approved=profile.approved_figure_id)
+    if target_id:
+        for candidate in profile.figure_candidates:
+            if candidate.figure_id == target_id:
+                return candidate
+    return profile.figure_candidates[0] if profile.figure_candidates else None
+
+
+def figure_image_src(candidate: FigureCandidate) -> str | None:
+    local_path = resolve_figure_path(candidate)
+    if local_path is not None:
+        return str(local_path)
+    return candidate.url
+
+
+def apply_primary_figure_approvals() -> None:
+    """Write curated primary-figure ids into figure_manifest.json."""
+
+    from protofuse.phillip.paper_figures import sync_all_primary_figures
+
+    sync_all_primary_figures(fetch_if_missing=False)

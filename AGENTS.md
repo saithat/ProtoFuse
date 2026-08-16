@@ -27,6 +27,10 @@ Mechanical review is automated; run it instead of asking a human to check by han
   safety, manifest hashes, and drift between committed programs and generator output.
 - `uv run protofuse paper <fixture-id>` resolves the DOI, compares the registered title,
   and verifies every evidence quote verbatim against local full text.
+- For paper lookup, figure discovery, and quote verification, use **Paperclip first**
+  (`paperclip lookup`, `paperclip ls …/figures/`, `paperclip grep`). Run
+  `paperclip skill` before unfamiliar Paperclip workflows. Sync dashboard figures with
+  `uv run python scripts/fetch_paper_figures.py`.
 - Humans decide only whether the encoding is a fair reading of the paper. Never ask them
   to re-check something these commands already prove, and never self-certify
   `reviewed=True` for a paper you did not verify.

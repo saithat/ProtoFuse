@@ -22,9 +22,115 @@ def _():
     import marimo as mo
     import pandas as pd
 
-    mermaid_init = '%%{init: {"flowchart": {"wrappingWidth": 420}} }%%'
+    _box = (
+        "border:1px solid #484f58;background:#161b22;color:#e6edf3;"
+        "padding:10px 14px;border-radius:8px;white-space:nowrap;font-size:14px;"
+    )
+    _diamond = (
+        "border:1px solid #484f58;background:#161b22;color:#e6edf3;"
+        "padding:10px 12px;transform:rotate(45deg);width:92px;height:92px;"
+        "display:flex;align-items:center;justify-content:center;font-size:13px;"
+    )
+    _diamond_text = "transform:rotate(-45deg);text-align:center;line-height:1.2;"
+    _arrow = "color:#8b949e;font-size:20px;padding:0 8px;flex:0 0 auto;"
+    _label = "color:#8b949e;font-size:12px;text-align:center;min-width:36px;"
 
-    return Path, dedent, json, mermaid_init, mo, pd
+    def flow_node(label: str) -> str:
+        return f'<div style="{_box}">{label}</div>'
+
+    def flow_diamond(label: str) -> str:
+        inner = f'<span style="{_diamond_text}">{label}</span>'
+        return f'<div style="{_diamond}">{inner}</div>'
+
+    def flow_arrow(text: str = "→") -> str:
+        return f'<div style="{_arrow}">{text}</div>'
+
+    def flow_edge(label: str) -> str:
+        return f'<div style="{_label}">{label}</div>'
+
+    def runtime_flow_chart() -> mo.Html:
+        return mo.Html(
+            f"""
+            <div style="display:flex;flex-direction:column;gap:12px;margin:8px 0 16px;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+                {flow_node("User program")}
+                {flow_arrow()}
+                {flow_node("protofuse.optimize()")}
+                {flow_arrow()}
+                {flow_diamond("Fusion match?")}
+                {flow_edge("yes")}
+                {flow_arrow()}
+                {flow_node("Selective router")}
+                {flow_edge("accept")}
+                {flow_arrow()}
+                {flow_node("Learned surrogate")}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding-left:248px;">
+                {flow_edge("no / reject")}
+                {flow_arrow("↳")}
+                {flow_node("Original full-model path")}
+              </div>
+            </div>
+            """
+        )
+
+    def pipeline_flow_chart() -> mo.Html:
+        steps = [
+            "Frozen collections",
+            "protofuse analyze",
+            "protofuse trace",
+            "fusion profile",
+            "fusion train",
+            "Calibrate gate",
+            "Reviewed FusionBundle",
+            "protofuse.optimize()",
+        ]
+        parts: list[str] = []
+        for index, step in enumerate(steps):
+            parts.append(flow_node(step))
+            if index < len(steps) - 1:
+                parts.append(flow_arrow())
+        body = "".join(parts)
+        return mo.Html(
+            f"""
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:8px 0 16px;">
+              {body}
+            </div>
+            """
+        )
+
+    def smoke_flow_chart() -> mo.Html:
+        return mo.Html(
+            f"""
+            <div style="display:flex;flex-direction:column;gap:12px;margin:8px 0 16px;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+                {flow_node("CPU: protofuse run --tier smoke")}
+                {flow_arrow()}
+                {flow_node("Tiny sequence, one pass")}
+                {flow_arrow()}
+                {flow_node("Bindings OK")}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+                {flow_node("GPU: program.run() on Modal")}
+                {flow_arrow()}
+                {flow_node("Few MCMC steps, short construct")}
+                {flow_arrow()}
+                {flow_node("Bindings OK")}
+              </div>
+            </div>
+            """
+        )
+
+    return (
+        Path,
+        dedent,
+        json,
+        mo,
+        pd,
+        pipeline_flow_chart,
+        runtime_flow_chart,
+        smoke_flow_chart,
+    )
 
 
 @app.cell(hide_code=True)
@@ -175,7 +281,7 @@ def _(Path, json, pd):
             )
         return pd.DataFrame(rows)
 
-    return COLLECTION_META, REPO, load_collections
+    return (load_collections,)
 
 
 @app.cell(hide_code=True)
@@ -183,52 +289,152 @@ def _(Path, load_collections):
     collections_df = load_collections()
     test_modules = len(list((Path(__file__).resolve().parents[1] / "tests").glob("test_*.py")))
     reviewed_collections = int(collections_df["reviewed"].sum()) if not collections_df.empty else 0
-
     return collections_df, reviewed_collections, test_modules
 
 
 @app.cell(hide_code=True)
-def _(mermaid_init, dedent, mo):
-    runtime_flow = f"""
-    {mermaid_init}
-    flowchart TB
-        userProgram["User Proto<br/>program"] --> optimize["protofuse.optimize()"]
-        optimize --> match{{"Compatible<br/>registered fusion?"}}
-        match -->|no| fullModel["Original<br/>full-model path"]
-        match -->|yes| router["Selective<br/>router"]
-        router -->|unsafe or OOD| fullModel
-        router -->|safe| surrogate["Learned<br/>surrogate"]
-    """
-    pipeline_flow = f"""
-    {mermaid_init}
-    flowchart TB
-        collections["Frozen<br/>collections"] --> analyze["protofuse analyze"]
-        analyze --> trace["protofuse trace<br/>teacher.jsonl"]
-        trace --> profile["fusion profile"]
-        profile --> train["fusion train<br/>data/models/"]
-        train --> calibrate["Calibrate gate<br/>reviewed=false"]
-        calibrate --> bundle["Reviewed<br/>FusionBundle"]
-        bundle --> optimize["Auto-discover<br/>at optimize()"]
-    """
+def _(dedent, mo):
+    mo.md(
+        dedent(
+            """
+            # ProtoFuse — GXL Hackathon Progress
+
+            **Primary output:** a complete **learned-fusion pipeline** — analyze frozen
+            Proto programs, trace teacher outputs, train a multi-output surrogate,
+            calibrate a fail-closed gate, and apply it transparently via
+            `protofuse.optimize()`.
+            """
+        )
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(collections_df, mo, reviewed_collections, test_modules):
+    mo.hstack(
+        [
+            mo.stat(label="Programs", value=str(len(collections_df))),
+            mo.stat(label="Reviewed collections", value=str(reviewed_collections)),
+            mo.stat(label="Test modules", value=str(test_modules)),
+        ],
+        justify="start",
+        gap=1.5,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    from protofuse.phillip.paper_figures import sync_all_primary_figures
+    from protofuse.phillip.paper_profiles import (
+        figure_image_src,
+        load_all_paper_profiles,
+        primary_figure,
+    )
+
+    sync_all_primary_figures(fetch_if_missing=False)
+    paper_profiles = load_all_paper_profiles(fetch_online=True)
+    return figure_image_src, paper_profiles, primary_figure
+
+
+@app.cell(hide_code=True)
+def _(collections_df, figure_image_src, mo, paper_profiles, primary_figure):
+    def _bullet_block(title: str, items: list[str]) -> str:
+        if not items:
+            return ""
+        body = "\n".join(f"- {item}" for item in items)
+        return f"**{title}**\n\n{body}\n\n"
+
+    accordion_items: dict[str, object] = {}
+    for row in collections_df.sort_values("collection_id").itertuples(index=False):
+        profile = paper_profiles[row.collection_id]
+        reviewed = "yes" if row.reviewed else "no"
+        sai_note = row.sai_note or "No special fusion note."
+        title = f"{row.collection_id} — {row.domain}"
+
+        doi_line = (
+            f"[{profile.display_doi}]({profile.doi_link})"
+            if profile.display_doi and profile.doi_link
+            else f"`{profile.identifier or 'no registered DOI'}`"
+        )
+        abstract = profile.abstract or "_Publisher did not deposit an abstract via Crossref._"
+        if profile.reference_note:
+            abstract = f"{profile.reference_note}\n\n{abstract}"
+
+        text = (
+            f"### {profile.display_title}\n\n"
+            f"**DOI / identifier:** {doi_line}\n\n"
+            f"**Abstract**\n\n{abstract}\n\n"
+        )
+
+        blocks: list[object] = [mo.md(text)]
+
+        figure = primary_figure(profile)
+        if figure is not None:
+            src = figure_image_src(figure)
+            if src:
+                blocks.append(
+                    mo.vstack(
+                        [
+                            mo.md(f"**Primary figure — {figure.label}**"),
+                            mo.image(src=src),
+                        ]
+                    )
+                )
+
+        blocks.append(
+            mo.md(
+                f"{row.summary}\n\n"
+                f"- **Tool chain:** {row.tool_chain}\n"
+                f"- **Primary program:** `{row.primary_program}` "
+                f"({int(row.programs)} programs in the collection)\n"
+                f"- **Reviewed:** {reviewed}\n"
+                f"- **Sai note:** {sai_note}\n\n"
+                f"{_bullet_block('What we replicated from the paper', profile.replicated)}"
+                f"{_bullet_block('Simplifications in this handoff', profile.assumptions)}"
+                f"{_bullet_block('Not replicated (yet)', profile.not_replicated)}"
+            )
+        )
+
+        if figure is not None and figure.caption:
+            blocks.append(mo.md(f"*{figure.caption}*"))
+
+        accordion_items[title] = mo.vstack(blocks)
+
     mo.vstack(
         [
+            mo.md("## Programs"),
             mo.md(
-                dedent(
-                    """
-                    # ProtoFuse — GXL Hackathon Progress
-
-                    **Primary output:** a complete **learned-fusion pipeline** — analyze frozen
-                    Proto programs, trace teacher outputs, train a multi-output surrogate,
-                    calibrate a fail-closed gate, and apply it transparently via
-                    `protofuse.optimize()`.
-                    """
-                )
+                "Handoff artifacts with source paper context — title, DOI, abstract, primary "
+                "figure, and what we replicated."
             ),
-            mo.mermaid(runtime_flow, theme="dark"),
+            mo.accordion(accordion_items, multiple=True),
+            mo.callout(
+                mo.md(
+                    "**Recommended fusion target:** `boltz2-state-sweep` — Boltz-2 sweep with "
+                    "labelled RMSD ground truth (4GBY / 4GBZ)."
+                ),
+                kind="info",
+            ),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(dedent, mo, pipeline_flow_chart, runtime_flow_chart):
+    mo.vstack(
+        [
+            mo.md("## Runtime"),
+            runtime_flow_chart(),
+            mo.md(
+                "*Runtime:* `protofuse.optimize()` → fusion match → selective router → "
+                "surrogate (accept) or full models (reject / no match)."
+            ),
             mo.md(
                 dedent(
                     """
-                    ### Runtime (shipped)
+                    ### At execution (shipped)
 
                     1. **Match** — `FusionBundle` checks step signatures, tool versions, config,
                        and semantics (`sai/signatures.py`, `sai/transform.py`).
@@ -260,123 +466,10 @@ def _(mermaid_init, dedent, mo):
                     """
                 )
             ),
-            mo.mermaid(pipeline_flow, theme="dark"),
-            mo.callout(
-                mo.md(
-                    "Merge **`origin/main`** (`bc58898`) for the full Sai implementation: "
-                    "`analyzer`, `tracing`, `training`, `transform`, evaluation report, and "
-                    "visualization bundle. Local branch is ahead on Phillip handoffs but has "
-                    "not merged Sai's fusion pipeline yet."
-                ),
-                kind="info",
-            ),
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(collections_df, mo, reviewed_collections, test_modules):
-    mo.hstack(
-        [
-            mo.stat(label="Frozen collections", value=str(len(collections_df))),
-            mo.stat(label="Reviewed collections", value=str(reviewed_collections)),
-            mo.stat(label="Test modules", value=str(test_modules)),
-        ],
-        justify="start",
-        gap=1.5,
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _():
-    from protofuse.phillip.paper_profiles import load_all_paper_profiles, resolve_figure_path
-
-    paper_profiles = load_all_paper_profiles(fetch_online=True)
-    return load_all_paper_profiles, paper_profiles, resolve_figure_path
-
-
-@app.cell(hide_code=True)
-def _(REPO, collections_df, mo, paper_profiles, resolve_figure_path):
-    def _bullet_block(title: str, items: list[str]) -> str:
-        if not items:
-            return ""
-        body = "\n".join(f"- {item}" for item in items)
-        return f"**{title}**\n\n{body}\n\n"
-
-    accordion_items: dict[str, object] = {}
-    for row in collections_df.sort_values("collection_id").itertuples(index=False):
-        profile = paper_profiles[row.collection_id]
-        reviewed = "yes" if row.reviewed else "no"
-        sai_note = row.sai_note or "No special fusion note."
-        title = f"{row.collection_id} — {row.domain}"
-
-        doi_line = (
-            f"[{profile.display_doi}]({profile.doi_link})"
-            if profile.display_doi and profile.doi_link
-            else f"`{profile.identifier or 'no registered DOI'}`"
-        )
-        abstract = profile.abstract or "_Publisher did not deposit an abstract via Crossref._"
-        if profile.reference_note:
-            abstract = f"{profile.reference_note}\n\n{abstract}"
-
-        text = (
-            f"### {profile.display_title}\n\n"
-            f"**DOI / identifier:** {doi_line}\n\n"
-            f"**Abstract**\n\n{abstract}\n\n"
-            f"{row.summary}\n\n"
-            f"- **Tool chain:** {row.tool_chain}\n"
-            f"- **Primary program:** `{row.primary_program}` "
-            f"({int(row.programs)} programs in the collection)\n"
-            f"- **Reviewed:** {reviewed}\n"
-            f"- **Sai note:** {sai_note}\n\n"
-            f"{_bullet_block('What we replicated from the paper', profile.replicated)}"
-            f"{_bullet_block('Simplifications in this handoff', profile.assumptions)}"
-            f"{_bullet_block('Not replicated (yet)', profile.not_replicated)}"
-        )
-
-        blocks: list[object] = [mo.md(text)]
-
-        if profile.approved_figure_id:
-            approved = next(
-                (
-                    candidate
-                    for candidate in profile.figure_candidates
-                    if candidate.figure_id == profile.approved_figure_id
-                ),
-                None,
-            )
-            if approved is not None:
-                figure_path = resolve_figure_path(approved)
-                src = str(figure_path) if figure_path else approved.url
-                if src:
-                    blocks.append(
-                        mo.vstack(
-                            [
-                                mo.md(f"**Primary figure — {approved.label}**"),
-                                mo.md(approved.caption),
-                                mo.image(src=src),
-                            ]
-                        )
-                    )
-
-        accordion_items[title] = mo.vstack(blocks) if len(blocks) > 1 else blocks[0]
-
-    mo.vstack(
-        [
-            mo.md("## Frozen program collections"),
+            pipeline_flow_chart(),
             mo.md(
-                "Handoff artifacts with source paper context — title, DOI, abstract, and "
-                "what we replicated. Primary figures are added after curation."
-            ),
-            mo.accordion(accordion_items, multiple=True),
-            mo.callout(
-                mo.md(
-                    "**Recommended fusion target:** `boltz2-state-sweep` — Boltz-2 sweep with "
-                    "labelled RMSD ground truth (4GBY / 4GBZ)."
-                ),
-                kind="info",
+                "*Pipeline CLI:* `analyze` → `trace` → `fusion profile` → `fusion train` → "
+                "reviewed bundle → auto-discover at `optimize()`."
             ),
         ]
     )
@@ -384,26 +477,7 @@ def _(REPO, collections_df, mo, paper_profiles, resolve_figure_path):
 
 
 @app.cell(hide_code=True)
-def _(mermaid_init, dedent, mo):
-    smoke_flow = f"""
-    {mermaid_init}
-    flowchart TB
-        subgraph cpu ["Local CPU smoke"]
-            direction TB
-            dnaRun["protofuse run<br/>--tier smoke"]
-            dnaCheck["Tiny sequence<br/>one loop pass"]
-            dnaRun --> dnaCheck
-        end
-        subgraph gpu ["Modal GPU smoke"]
-            direction TB
-            modalRun["program.run()<br/>on Modal"]
-            gpuCheck["Few MCMC steps<br/>short construct"]
-            modalRun --> gpuCheck
-        end
-        goal["Prove tool<br/>bindings execute"]
-        dnaCheck --> goal
-        gpuCheck --> goal
-    """
+def _(dedent, mo, smoke_flow_chart):
     mo.vstack(
         [
             mo.md(
@@ -427,7 +501,7 @@ def _(mermaid_init, dedent, mo):
                     """
                 )
             ),
-            mo.mermaid(smoke_flow, theme="dark"),
+            smoke_flow_chart(),
         ]
     )
     return
