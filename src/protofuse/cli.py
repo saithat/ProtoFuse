@@ -82,9 +82,9 @@ def _run_fixture(
 
 
 def main() -> None:
-    from dotenv import load_dotenv
+    from protofuse.env import load_repo_env
 
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    load_repo_env()
     parser = argparse.ArgumentParser(prog="protofuse")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("validate", "recommend", "compile"):
@@ -283,6 +283,12 @@ def main() -> None:
         type=Path,
         default=None,
         help="verify quotes against this text instead of the fixture's paper.source_path",
+    )
+    paper_parser.add_argument(
+        "--search-doi",
+        default=None,
+        metavar="DOI",
+        help="verify quotes against this DOI's Paperclip full text (e.g. a preprint)",
     )
     paper_parser.add_argument("--json", action="store_true", help="emit machine-readable report")
     extract_parser = subparsers.add_parser("extract")
@@ -529,6 +535,7 @@ def main() -> None:
             args.fixture,
             offline=args.offline,
             text_path=args.text,
+            search_doi=args.search_doi,
         )
         if args.json:
             print(json.dumps(paper_review.as_dict(), indent=2))

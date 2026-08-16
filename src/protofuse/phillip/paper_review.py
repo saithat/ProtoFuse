@@ -13,12 +13,20 @@ import re
 import textwrap
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from protofuse.phillip.contracts import Evidence, MethodologySpec
+from protofuse.phillip.paper_ingest import (
+    PaperSearchError,
+    paperclip_document_path,
+    paperclip_grep,
+)
 from protofuse.phillip.program_builders import load_fixture_spec
+
+GrepFn = Callable[..., list[tuple[int, str]]]
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CROSSREF_WORK_URL = "https://api.crossref.org/works/{doi}"
@@ -67,6 +75,8 @@ class QuoteCheck:
     quote: str
     found: bool
     section: str | None = None
+    lines: tuple[int, ...] = ()
+    error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +84,8 @@ class QuoteCheck:
             "quote": self.quote,
             "found": self.found,
             "section": self.section,
+            "lines": list(self.lines),
+            "error": self.error,
         }
 
 
@@ -87,13 +99,28 @@ class PaperReview:
     title_agreement: TitleAgreement = "unknown"
     full_text_path: Path | None = None
     full_text_words: int = 0
+    quote_source: str | None = None
     quote_checks: list[QuoteCheck] = field(default_factory=list)
     components: list[tuple[str, str, dict[str, Any]]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
     def unverified_quotes(self) -> list[QuoteCheck]:
+        """Quotes not confirmed present, whether absent or never successfully searched."""
+
         return [check for check in self.quote_checks if not check.found]
+
+    @property
+    def missing_quotes(self) -> list[QuoteCheck]:
+        """Quotes searched successfully and not found in the paper."""
+
+        return [check for check in self.quote_checks if not check.found and check.error is None]
+
+    @property
+    def errored_quotes(self) -> list[QuoteCheck]:
+        """Quotes whose search failed, so nothing can be concluded about them."""
+
+        return [check for check in self.quote_checks if check.error is not None]
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +132,7 @@ class PaperReview:
             "record": self.record.as_dict() if self.record else None,
             "full_text_path": str(self.full_text_path) if self.full_text_path else None,
             "full_text_words": self.full_text_words,
+            "quote_source": self.quote_source,
             "quote_checks": [check.as_dict() for check in self.quote_checks],
             "notes": self.notes,
         }
@@ -270,6 +298,85 @@ def verify_quotes(spec: MethodologySpec, paper_text: str) -> list[QuoteCheck]:
     return checks
 
 
+def _raw_fragments(quote: str) -> list[str]:
+    """Split a quote on ellipses without normalising, for literal searching."""
+
+    parts = re.split(r"\.\.\.|…", quote)
+    return [" ".join(part.split()) for part in parts if part.strip()]
+
+
+def _search_anchors(fragment: str) -> list[str]:
+    """Literal search anchors for one fragment, most specific first.
+
+    Anchors only have to locate candidate lines; whether the quote actually matches is
+    decided afterwards against the returned text. So they get progressively shorter to
+    survive typographic differences, and never longer than needed, since each extra
+    anchor costs another network round trip.
+    """
+
+    words = fragment.split()
+    if not words:
+        return []
+    lengths = [len(words), 3] if len(words) <= 6 else [6, 3]
+    seen: set[str] = set()
+    anchors: list[str] = []
+    for length in lengths:
+        anchor = " ".join(words[:length])
+        if anchor and anchor not in seen:
+            seen.add(anchor)
+            anchors.append(anchor)
+    return anchors
+
+
+def verify_quotes_remote(
+    spec: MethodologySpec,
+    document_path: str,
+    *,
+    grep: GrepFn | None = None,
+) -> list[QuoteCheck]:
+    """Check evidence quotes against a remote Paperclip document via literal search.
+
+    Only the lines a quote's own anchors match are retrieved, so no copy of the paper is
+    stored locally. Each candidate line is then held to the same verbatim, whitespace
+    insensitive standard `verify_quotes` applies to local text. Neighbouring lines come
+    along too, since a quote may straddle a paragraph boundary.
+    """
+
+    search = grep if grep is not None else paperclip_grep
+    checks: list[QuoteCheck] = []
+    for component, evidence in _iter_evidence(spec):
+        hits: dict[int, str] = {}
+        failure: str | None = None
+        for fragment in _raw_fragments(evidence.quote):
+            for anchor in _search_anchors(fragment):
+                try:
+                    matched = search(document_path, anchor, context=1)
+                except PaperSearchError as error:
+                    failure = str(error)
+                    break
+                if matched:
+                    hits.update(dict(matched))
+                    break
+            if failure is not None:
+                break
+
+        haystack = " ".join(_normalize_words(" ".join(hits[key] for key in sorted(hits))))
+        fragments = _quote_fragments(evidence.quote)
+        found = bool(fragments) and _fragments_appear_in_order(fragments, haystack)
+        checks.append(
+            QuoteCheck(
+                component=component,
+                quote=evidence.quote,
+                found=found,
+                section=evidence.section,
+                lines=tuple(sorted(hits)),
+                # A failed search says nothing about a quote that was already confirmed.
+                error=None if found else failure,
+            )
+        )
+    return checks
+
+
 def _components(spec: MethodologySpec) -> list[tuple[str, str, dict[str, Any]]]:
     rows: list[tuple[str, str, dict[str, Any]]] = []
     for kind, items in (
@@ -288,8 +395,14 @@ def build_paper_review(
     offline: bool = False,
     timeout: int = 20,
     text_path: Path | None = None,
+    search_doi: str | None = None,
 ) -> PaperReview:
-    """Assemble paper metadata, abstract, full text, and quote checks for one fixture."""
+    """Assemble paper metadata, abstract, full text, and quote checks for one fixture.
+
+    `search_doi` verifies quotes against that DOI's Paperclip document instead of local
+    text, which is how quotes drawn from a preprint's Methods are checked when the
+    fixture cites the shorter published version.
+    """
 
     spec = load_fixture_spec(fixture_id)
     identifier = spec.paper.identifier
@@ -325,28 +438,76 @@ def build_paper_review(
         else:
             review.notes.append(f"{identifier!r} did not resolve in the Crossref registry")
 
+    if search_doi:
+        return _verify_against_paperclip(review, spec, identifier=search_doi, offline=offline)
+
     local = local_paper_text(spec, text_path=text_path)
     if local is None:
+        return _verify_against_paperclip(review, spec, identifier=identifier, offline=offline)
+
+    path, text = local
+    review.full_text_path = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+    review.full_text_words = len(text.split())
+    review.quote_source = f"local:{review.full_text_path}"
+    review.quote_checks = verify_quotes(spec, text)
+    _note_wholesale_quote_failure(review)
+    return review
+
+
+def _verify_against_paperclip(
+    review: PaperReview,
+    spec: MethodologySpec,
+    *,
+    identifier: str | None,
+    offline: bool,
+) -> PaperReview:
+    """Verify quotes by searching Paperclip when the fixture has no local full text."""
+
+    if offline or not identifier or not DOI_RE.match(identifier):
         review.notes.append(
             "no local full text; evidence quotes cannot be machine-verified "
             "(papers are gitignored)"
         )
         return review
 
-    path, text = local
-    review.full_text_path = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
-    review.full_text_words = len(text.split())
-    review.quote_checks = verify_quotes(spec, text)
+    document_path: str | None = None
+    for candidate in _doi_variants(identifier):
+        document_path = paperclip_document_path(candidate)
+        if document_path:
+            break
+    if not document_path:
+        review.notes.append(
+            "no local full text, and Paperclip returned no document for this DOI — either it "
+            "is not in the corpus or the lookup failed, so quotes are unverified rather than "
+            "absent. Confirm the CLI is authenticated (`paperclip login`, or export "
+            "PAPERCLIP_API_KEY) or pass `--text <path>`"
+        )
+        return review
 
-    unverified = len(review.unverified_quotes)
-    if unverified and unverified == len(review.quote_checks):
+    review.quote_source = f"paperclip:{document_path}"
+    review.quote_checks = verify_quotes_remote(spec, document_path)
+
+    errored = review.errored_quotes
+    if errored:
+        review.notes.append(
+            f"{len(errored)} of {len(review.quote_checks)} searches failed "
+            f"({errored[0].error}), so those quotes are unverified rather than absent; "
+            "retry before drawing any conclusion about them"
+        )
+    _note_wholesale_quote_failure(review)
+    return review
+
+
+def _note_wholesale_quote_failure(review: PaperReview) -> None:
+    """Flag the case where every searchable quote missed, which suggests the wrong document."""
+
+    missing = review.missing_quotes
+    if missing and not any(check.found for check in review.quote_checks):
         review.notes.append(
             "no quote matched this text, so the quotes were probably taken from a different "
             "document (a preprint, or a Methods section the ingest did not capture). Re-check "
             "with `--text <path>` before concluding they were invented"
         )
-
-    return review
 
 
 def format_review(review: PaperReview, *, abstract_only: bool = False, width: int = 96) -> str:
@@ -397,20 +558,32 @@ def format_review(review: PaperReview, *, abstract_only: bool = False, width: in
     if abstract_only:
         return "\n".join(lines)
 
+    searched_remotely = bool(review.quote_source and review.quote_source.startswith("paperclip:"))
     lines.extend(["", "FULL TEXT", ""])
     if review.full_text_path is not None:
         lines.append(f"  {review.full_text_path} ({review.full_text_words:,} words)")
+    elif searched_remotely:
+        document = review.quote_source.removeprefix("paperclip:")
+        lines.append(f"  searched in Paperclip at {document} (nothing stored locally)")
     else:
         lines.append("  not available locally — run the paper ingest to enable quote checking")
 
     if review.quote_checks:
         verified = len(review.quote_checks) - len(review.unverified_quotes)
-        header = f"EVIDENCE QUOTES — {verified}/{len(review.quote_checks)} verbatim in full text"
+        where = "Paperclip full text" if searched_remotely else "full text"
+        header = f"EVIDENCE QUOTES — {verified}/{len(review.quote_checks)} verbatim in {where}"
+        errored = len(review.errored_quotes)
+        if errored:
+            header += f", {errored} unverified (search failed)"
         lines.extend(["", header, ""])
         for check in review.quote_checks:
-            marker = "ok  " if check.found else "MISS"
+            marker = "ok  " if check.found else ("????" if check.error else "MISS")
             snippet = check.quote if len(check.quote) <= 72 else check.quote[:69] + "..."
-            lines.append(f"  [{marker}] {check.component}")
+            locator = ""
+            if check.lines:
+                shown = ", ".join(f"L{number}" for number in check.lines[:3])
+                locator = f"  ({shown}{', …' if len(check.lines) > 3 else ''})"
+            lines.append(f"  [{marker}] {check.component}{locator}")
             lines.append(f"         “{snippet}”")
 
     lines.extend(["", "ENCODED COMPONENTS — this is what you are signing off on", ""])
