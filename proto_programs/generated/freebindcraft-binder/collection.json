@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "collection_id": "freebindcraft-binder",
   "methodology_id": "freebindcraft-binder-v1",
-  "proto_version": "dec375b04fa26b1c809b248f1a6af2767da32293",
+  "proto_version": "cb00a5e16e1edda30d12e95139743495535675d5",
   "registry_version": "1",
   "seed_policy": "FreeBindCraft seeds from generator; rejection sampling is stateless per batch",
   "reviewed": true,

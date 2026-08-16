@@ -39,7 +39,7 @@
     {
       "name": "ESMFold interface quality",
       "description": "Require predicted binder-antigen interface confidence above threshold.",
-      "parameters": {"structure_tool": "esmfold", "min_iptm": 0.3},
+      "parameters": {"structure_tool": "boltz2", "min_iptm": 0.3},
       "evidence": [
         {
           "quote": "Constraints: ablang-perplexity, structure-iptm, protein-complexity, gap-gini",

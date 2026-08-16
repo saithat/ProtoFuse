@@ -1,0 +1,225 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Biasing Conformational Sampling in AlphaFold 3 and Boltz-2 via Pair Representation Scaling",
+    "identifier": "10.64898/2026.01.23.701250",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "fixed sequence inference sweep",
+      "description": "Hold the target amino-acid sequence fixed and draw independent Boltz-2 predictions by varying inference-time MSA subsampling and stochastic seeds.",
+      "parameters": {"mutations_per_step": 0},
+      "evidence": [
+        {
+          "quote": "Predict the second conformational state of a two-state protein by sweeping an inference-time control over repeated predictions of one fixed sequence, then scoring every draw against both experimental reference structures.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "structure"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "structure pLDDT filter",
+      "description": "Require Boltz-2 confidence on each sweep draw before comparing to reference states.",
+      "parameters": {"structure_tool": "boltz2", "min_plddt": 70.0},
+      "evidence": [],
+      "metric": "mean_plddt",
+      "direction": "maximize",
+      "weight": 0.5
+    },
+    {
+      "name": "dominant state RMSD",
+      "description": "Score each predicted structure against the deposited dominant (inward-facing) reference conformation.",
+      "parameters": {
+        "structure_tool": "boltz2",
+        "target_structure": "4GBY",
+        "inflection_point_angstroms": 2.0
+      },
+      "evidence": [
+        {
+          "quote": "Metrics: per-state success at 2 Å, worst-case minimum RMSD, fill ratio between states.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "metric": "rmsd",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "alternative state RMSD",
+      "description": "Score each predicted structure against the deposited alternative (outward-facing) reference conformation.",
+      "parameters": {
+        "structure_tool": "boltz2",
+        "target_structure": "4GBZ",
+        "inflection_point_angstroms": 2.0
+      },
+      "evidence": [
+        {
+          "quote": "Sai fusion target: boltz2-prediction, called once per sweep draw on an unchanging sequence.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "metric": "rmsd",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep the sequence length fixed to the benchmark transporter.",
+      "parameters": {},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "rejection sampling ensemble filter",
+      "description": "Draw independent Boltz-2 sweep samples and retain the subset whose ensemble best covers both experimental states.",
+      "parameters": {"num_samples": 55, "num_results": 10},
+      "evidence": [
+        {
+          "quote": "Topology: propose_score_select — enumerate sweep draws, predict, score against both reference states, keep the ensemble.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "rejection_sampling",
+      "stopping_criteria": {"num_samples": 55, "num_results": 10}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "Boltz-2",
+      "version_or_checkpoint": "2.2.1",
+      "provider": "MIT J-Clinic / Proto wrapper",
+      "purpose": "Structure prediction for each inference sweep draw on a fixed sequence",
+      "evidence": [
+        {
+          "quote": "Tier 1 (no fork, do this first): sweep only exposed knobs — seed, diffusion samples, recycles, and MSA subsampling depth.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ]
+    },
+    {
+      "name": "IOMemP benchmark",
+      "version_or_checkpoint": null,
+      "provider": "Xie & Huang, J. Chem. Inf. Model. 2024",
+      "purpose": "Ground-truth inward- and outward-facing reference structures for validation",
+      "evidence": [
+        {
+          "quote": "IOMemP: 32 high-resolution inward- and outward-facing structures across 16 transporters, with construction code at https://github.com/JingHuangLab/IOMemP.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ]
+    }
+  ],
+  "global_parameters": {
+    "workload": "boltz2_state_sweep",
+    "target_name": "XylE",
+    "target_uniprot": "P0AEJ8",
+    "target_chain_id": "A",
+    "dominant_state_pdb": "4GBY",
+    "alternative_state_pdb": "4GBZ",
+    "protein_sequence": "",
+    "num_samples": 55,
+    "num_results": 10,
+    "min_plddt": 70.0,
+    "per_state_success_angstroms": 2.0,
+    "subsample_msa": true,
+    "max_msa_seqs": 512,
+    "diffusion_samples": 1,
+    "step_scale": 1.5,
+    "recycling_steps": 3,
+    "smoke_dominant_state_pdb": "4AKE",
+    "smoke_alternative_state_pdb": "1AKE"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "enumerate_draw",
+        "operation": "Enumerate inference sweep draw (MSA subsample + seed)",
+        "inputs": ["protein_sequence"],
+        "outputs": ["inference_config"],
+        "parameters": {"subsample_msa": true},
+        "evidence": []
+      },
+      {
+        "id": "predict_structure",
+        "operation": "Boltz-2 structure prediction for fixed sequence",
+        "inputs": ["protein_sequence", "inference_config"],
+        "outputs": ["predicted_structure"],
+        "parameters": {"structure_tool": "boltz2"},
+        "evidence": []
+      },
+      {
+        "id": "score_states",
+        "operation": "RMSD to dominant and alternative deposited conformations",
+        "inputs": ["predicted_structure", "dominant_reference", "alternative_reference"],
+        "outputs": ["state_rmsds"],
+        "parameters": {"per_state_success_angstroms": 2.0},
+        "evidence": []
+      },
+      {
+        "id": "select_ensemble",
+        "operation": "Keep top draws whose ensemble covers both reference states",
+        "inputs": ["state_rmsds"],
+        "outputs": ["recovered_ensemble"],
+        "parameters": {"num_results": 10},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "enumerate_draw", "target": "predict_structure", "artifact": "inference_config"},
+      {"source": "predict_structure", "target": "score_states", "artifact": "predicted_structure"},
+      {"source": "score_states", "target": "select_ensemble", "artifact": "state_rmsds"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "per-state success at 2 Å",
+      "metric": "rmsd",
+      "operator": "<=",
+      "value": 2.0,
+      "unit": "angstrom",
+      "applies_to": "each sweep draw vs each deposited reference state",
+      "evidence": [
+        {
+          "quote": "Published baselines to beat or match: default inference recovers 0.61 of reference states per state in AlphaFold 3 versus 0.73 under the swept control",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ]
+    },
+    {
+      "name": "minimum Boltz-2 pLDDT",
+      "metric": "mean_plddt",
+      "operator": ">=",
+      "value": 70.0,
+      "unit": "score",
+      "applies_to": "each sweep draw",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "Full tier uses E. coli XylE (P0AEJ8) inward 4GBY and outward 4GBZ from the IOMemP transporter benchmark.",
+    "Smoke tier substitutes adenylate kinase 4AKE/1AKE (214 aa domain motion) for fast GPU sanity checks.",
+    "Tier-1 sweep varies Boltz-2 subsample_msa and max_msa_seqs; pair-representation scaling (β) is recorded as unknown until proto-tools exposes it.",
+    "Each constraint may invoke Boltz-2 independently unless Sai fuses or caches shared trunk outputs.",
+    "Rejection sampling with num_samples=55 (full) / 6 (smoke) stands in for the paper's 250-model-per-target budget."
+  ],
+  "unknowns": [
+    "Pair representation scaling at the Pairformer input is not exposed by boltz2-prediction; Tier 2 requires eject-standalone backend patching.",
+    "Ensemble-level per-state success and fill ratio are evaluated offline against IOMemP; the Proto program scores individual draws only.",
+    "AF-depth recovered both IOMemP states for 7/16 transporters at 255 models; this fixture targets XylE only in v1."
+  ]
+}

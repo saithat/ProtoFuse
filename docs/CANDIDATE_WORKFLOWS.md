@@ -1,9 +1,13 @@
 # Candidate workflows
 
-Lower-priority backlog of paper → Proto program scenarios to add after the active
-handoffs (`dnachisel-num1`, `custom-egfp-lung`). Each entry uses only components and
-tools already in the pinned `proto-language` / `proto-tools` packages — no new models or
+Backlog of paper → Proto program scenarios. Each entry uses only components and tools
+already in the pinned `proto-language` / `proto-tools` packages — no new models or
 external backends required.
+
+**Recommended next handoff: `boltz2-state-sweep`** (Wave 4 below). It is the only
+candidate that ships with experimental ground truth, so it is the one where Sai can
+report selective risk versus coverage against a published baseline instead of against
+his own predictions.
 
 **Current coverage (active workflows):** 4 / 103 `proto_language` keys
 (`random-nucleotide`, `mcmc`, `gc-content`, `max-homopolymer`); 0 / 140 `proto_tools`
@@ -17,21 +21,172 @@ regulatory models) inside MCMC, pool, or cycling loops.
 
 ## Priority order
 
-| Rank | Scenario ID (proposed) | Domain | Sai value | Effort |
-| --- | --- | --- | --- | --- |
-| 1 | `esm2-protein-maturation` | Protein | High — ESMFold every MCMC step | Low — reuses NUM1 topology |
-| 2 | `freebindcraft-binder` | Protein | High — validation per candidate | Medium — new builder |
-| 3 | `rfdiffusion3-boltz2-binder` | Protein | Very high — multi-tool cycling | Medium |
-| 4 | `parade-utr-liver` | RNA / mRNA | High — pool × PARADE scoring | Low — reuses pool optimizer |
-| 5 | `alphagenome-splice-junction` | DNA / splicing | High — variant scoring in loop | Medium |
-| 6 | `antibody-cdr-maturation` | Antibody | High — region-local + AbLang | Low — reuses region solver |
-| 7 | `ligandmpnn-enzyme-redesign` | Protein / ligand | Medium | Medium |
-| 8 | `ppi-interface-specificity` | Protein | High — dual target/off-target AF3 | Medium |
-| 9 | `symmetric-oligomer-ring` | Protein | Medium | Medium |
-| 10 | `bioemu-ensemble-filter` | Protein | Medium — ensemble sampling cost | Medium |
+| Rank | Scenario ID (proposed) | Domain | Sai value | Effort | Status |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `boltz2-state-sweep` | Protein / conformational states | Very high — Boltz-2 per sweep draw, **labelled ground truth** | Medium | Recommended next |
+| 2 | `tm-switch-multistate` | Membrane protein | High — dual-state Boltz-2 per MCMC step | Medium | Backlog (Wave 4) |
+| 3 | `rfdiffusion3-boltz2-binder` | Protein | Very high — multi-tool cycling | Medium | Backlog |
+| 4 | `parade-utr-liver` | RNA / mRNA | High — pool × PARADE scoring | Low — reuses pool optimizer | Backlog |
+| 5 | `alphagenome-splice-junction` | DNA / splicing | High — variant scoring in loop | Medium | Backlog |
+| 6 | `ligandmpnn-enzyme-redesign` | Protein / ligand | Medium | Medium | Backlog |
+| 7 | `bioemu-ensemble-filter` | Protein | Medium — ensemble sampling cost | Medium | Backlog |
+| — | `esm2-protein-maturation` | Protein | High — ESMFold every MCMC step | Low | Done |
+| — | `antibody-cdr-maturation` | Antibody | High — region-local + AbLang | Low | Done |
+| — | `freebindcraft-binder` | Protein | High — validation per candidate | Medium | Done |
+| — | `symmetric-oligomer-ring` | Protein | Medium | Medium | Done |
+| — | `ppi-interface-specificity` | Protein | High — dual target/off-target AF3 | Medium | Done |
+
+Completed rows are the collections listed in
+[`src/protofuse/sai/TODO.md`](../src/protofuse/sai/TODO.md); they stay here for topology
+reference only.
 
 Nucleic-acid-only candidates (`codonfm-egfp`, Borzoi/Enformer promoter design) are
 deferred unless we want more DNA/RNA before protein work.
+
+---
+
+## Wave 4 — conformational-state workflows
+
+Both entries come from the same literature thread: single-structure predictors return one
+dominant conformation, and the functionally interesting second state is what neither
+prediction nor design reliably reaches. Candidate A predicts alternative states of
+existing proteins; candidate B designs sequences that occupy two states on purpose.
+
+### A. Boltz-2 alternative-state sweep — **recommended next handoff**
+
+**Proposed ID:** `boltz2-state-sweep`
+
+Predict the *second* conformational state of a two-state protein by sweeping an
+inference-time control over repeated predictions of one fixed sequence, then scoring every
+draw against both experimental reference structures. Default inference collapses onto the
+dominant state; the sweep is what surfaces the alternative one.
+
+| Role | Proto component |
+| --- | --- |
+| Generator | none — the sequence is fixed; the sweep is over inference controls |
+| Optimizer | `rejection-sampling` or pool (`run_pool_optimizer`) over (control value, seed) |
+| Constraints | `structure-rmsd` (to each reference state), `structure-plddt`, `structure-ensemble-rmsd` |
+| Tools | `boltz2-prediction`; optional `alphafold3-prediction` / `protenix-prediction` cross-check, `bioemu-sample` as ensemble baseline |
+
+**Topology:** `propose_score_select` — enumerate sweep draws, predict, score against both
+reference states, keep the ensemble.
+
+**Sai fusion target:** `boltz2-prediction`, called once per sweep draw on an *unchanging*
+sequence. The published protocol budgets 250 models per target, and the control is swept
+over 10 non-zero values, so a single target is hundreds of GPU forward passes whose only
+varying inputs are a scalar and a seed.
+
+**Why this is the strongest Sai demo:**
+
+- **Exact wins before approximation.** Every draw re-runs the trunk on identical sequence
+  and MSA inputs, so caching and batching shared intermediates is a real, defensible
+  speedup that needs no learned model — Sai's ordered TODO step before fusion.
+- **Free, exact labels.** The teacher label is per-draw RMSD/TM-score to two deposited PDB
+  structures. No wet lab, no self-referential scoring, no label noise.
+- **86 natural leakage-resistant groups.** Splitting by target is the obvious grouping, and
+  the benchmark already carries two subgroup axes: soluble domain motions versus membrane
+  transporters, and before versus after each predictor's training cutoff.
+- **Top-k recall is the native metric.** "Does the subset of draws Sai chose to actually
+  run still contain the alternative state?" is exactly the top-k recall and
+  risk-versus-coverage reporting in `sai/TODO.md`, with a headline number a judge
+  understands: same states recovered, N× fewer Boltz-2 calls.
+- **Asymmetric costs are obvious.** Missing the alternative state is a scientific failure;
+  an extra forward pass is cents. That justifies a conservative gate and makes fail-closed
+  fallback a feature rather than a hedge.
+- **The paper's own failure mode is the fusion problem.** The response to the control is
+  not monotonic — across all 86 targets none showed a strictly monotonic change in
+  recovered TM-score — and the useful direction is target-specific, so without a reference
+  structure the method cannot say which draw is the alternative state. Predicting that is a
+  learning problem, not an arithmetic one.
+
+**Validation data (public, no lab work):**
+
+- IOMemP: 32 high-resolution inward- and outward-facing structures across 16 transporters,
+  with construction code at <https://github.com/JingHuangLab/IOMemP>.
+- The 86-target two-state set: 39 soluble domain-motion proteins plus 47 transporters.
+- Published baselines to beat or match: default inference recovers 0.61 of reference states
+  per state in AlphaFold 3 versus 0.73 under the swept control; earlier MSA-based ensembles
+  recovered both states for only 7 of 16 IOMemP transporters (AF-depth, 255 models per
+  sequence) and 3 of 16 (AF-cluster).
+- Metrics: per-state success at 2 Å, worst-case minimum RMSD, fill ratio between states.
+
+**Feasibility — two tiers.** The published control multiplies the latent pair
+representation at the Pairformer input, which `boltz2-prediction` does not expose.
+
+- *Tier 1 (no fork, do this first):* sweep only exposed knobs — seed, diffusion samples,
+  recycles, and MSA subsampling depth. MSA subsampling is a documented alternative-state
+  lever that acts purely through inputs, and combining it with the internal control was
+  what recovered the harder Boltz-2 metrics, so it is a legitimate standalone axis.
+- *Tier 2 (stretch):* `proto-tools eject-standalone` the Boltz-2 backend and add the scalar
+  at the Pairformer input. Only attempt after Tier 1 profiles cleanly.
+
+**Smoke tier:** 1 IOMemP transporter, 3 control values × 2 seeds.
+**Full tier:** 5 targets (mixed transporter + domain motion), 11 control values × 5 seeds.
+
+**Reference:** Suzuki & Amagasa, "Biasing Conformational Sampling in AlphaFold 3 and
+Boltz-2 via Pair Representation Scaling," [bioRxiv 2026](https://doi.org/10.64898/2026.01.23.701250)
+· benchmark dataset: Xie & Huang, [*J. Chem. Inf. Model.* 64, 3524–3536 (2024)](https://doi.org/10.1021/acs.jcim.3c01936).
+
+---
+
+### B. Dual-state transmembrane switch design
+
+**Proposed ID:** `tm-switch-multistate`
+
+Optimize a transmembrane helical dimer sequence so it is compatible with *two* target
+conformations at once, with a tunable preference between them — the design analogue of
+candidate A. Membrane protein design is where deep learning is furthest behind: TM
+interfaces are held together by weak polar and backbone-directed contacts that sequential
+structure-then-sequence pipelines cannot model, which is why the activity cycles of
+channels and transporters remain largely out of reach.
+
+| Role | Proto component |
+| --- | --- |
+| Generator | `esm2` or `mpnn-mutation` on the TM segment |
+| Optimizer | `mcmc`, region-local on the TM interface (`run_region_local_program`) |
+| Constraints | `structure-rmsd` against **both** reference states, `structure-iptm`, `structure-plddt`, `protein-complexity` |
+| Tools | `boltz2-prediction` (or `alphafold3-prediction`) scored twice per step, once per target state |
+
+**Topology:** `iterative_refinement` with a state-selective objective — reward sequences
+whose predicted structures satisfy both states, penalize collapse onto either one.
+
+**Sai fusion target:** two structure predictions per accepted/rejected MCMC proposal, the
+same dual-call shape as `ppi-interface-specificity` but with two conformations of one
+target instead of two different targets.
+
+**Why it ranks second for Sai, despite being the better science story:** there is no
+ground-truth label available inside a hackathon. The source paper's readouts are
+cell-based dimerization assays, pSTAT5 signalling, and steered-MD free-energy barriers;
+none are reproducible here, and steered MD is far too expensive to serve as a teacher.
+Sai would be training a surrogate against his own structure predictions, which makes the
+risk-versus-coverage curve much harder to defend. Build it *after* candidate A, which
+supplies the same "score a sequence against two reference states" machinery.
+
+**Backend constraint:** TMDiffusion has no `proto-tools` key, so it cannot be bound (see
+*Out of scope* below). This workflow reimplements the paper's *multi-state objective* —
+conditioning on both states throughout optimization rather than intersecting sequence pools
+afterwards — using in-catalog tools only. Record the model substitution in the fixture's
+`unknowns`.
+
+**Smoke tier:** 30 MCMC steps, one TM dimer, 2 states.
+**Full tier:** 100 steps, 3 designs per state preference.
+
+**References:** Rudden et al., "Deep learning-based joint sequence–structure de novo
+membrane protein design" (TMDiffusion), [bioRxiv 2025](https://doi.org/10.1101/2025.08.15.670493)
+· Jojoa-Cruz et al., "De novo design of transmembrane accessory subunits for fold
+stabilization and expansion," [bioRxiv 2026](https://doi.org/10.64898/2026.05.14.725059)
+· Montalvillo Ortega et al., "Generative Landscapes and Dynamics to Design Multidomain
+Artificial Transmembrane Transporters," [bioRxiv 2025](https://doi.org/10.1101/2025.03.28.645293).
+
+---
+
+### Surrogate design prior art (Sai reading, not a workflow)
+
+Sengar et al., "Beyond Ensembles: Simulating All-Atom Protein Dynamics in a Learned Latent
+Space," [arXiv:2509.02196](https://arxiv.org/abs/2509.02196) — an encoder–propagator–decoder
+surrogate that replaces MD in a learned latent space and recovers a GPCR activation
+surface. Same lab as TMDiffusion, and the closest published statement of ProtoFuse's own
+thesis; useful prior art to cite when justifying the surrogate architecture.
 
 ---
 
@@ -272,6 +427,9 @@ Do not spec workflows that depend on:
 - ColabFold-only or custom AF2 forks without Proto wrappers
 - RoseTTAFold, OmegaFold, or other structure predictors not in `proto-tools`
 - RFdiffusion v1/v2 (Proto ships **RFdiffusion3**)
+- TMDiffusion, LD-FPG/GLDP, and other published models without a `proto-tools` key —
+  reimplement their *objective* with in-catalog tools instead, and record the substitution
+  in `unknowns`
 - Any model or tool absent from the 140-key `proto-tools` catalog
 
 Verify keys with:

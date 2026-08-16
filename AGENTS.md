@@ -13,3 +13,18 @@
   model caches out of Git.
 - Before pushing to `main`, run `uv run ruff check .`, `uv run mypy src/protofuse`, and
   `uv run pytest`.
+
+## Handoff review gate
+
+Mechanical review is automated; run it instead of asking a human to check by hand.
+
+- `uv run protofuse review <fixture-id>` must print `READY FOR HANDOFF` before you
+  report a fixture or collection as done. It covers schema, bindings, preflight, import
+  safety, manifest hashes, and drift between committed programs and generator output.
+- `uv run protofuse paper <fixture-id>` resolves the DOI, compares the registered title,
+  and verifies every evidence quote verbatim against local full text.
+- Humans decide only whether the encoding is a fair reading of the paper. Never ask them
+  to re-check something these commands already prove, and never self-certify
+  `reviewed=True` for a paper you did not verify.
+- Never hand-edit `design_*.py`; change the builder or workload profile and regenerate,
+  or `source_drift` will fail.

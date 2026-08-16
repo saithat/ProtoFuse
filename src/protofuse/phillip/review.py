@@ -143,14 +143,24 @@ def _check_paper_source(report: ReviewReport, spec: MethodologySpec, *, required
     )
 
 
-def _check_paper_identity(report: ReviewReport, spec: MethodologySpec) -> None:
-    if not spec.paper.identifier:
+def _check_paper_identity(report: ReviewReport, spec: MethodologySpec, fixture_id: str) -> None:
+    from protofuse.phillip.paper_review import DOI_RE
+
+    identifier = spec.paper.identifier
+    if not identifier:
         report.add("paper_identity", "warn", "no DOI/PMID/arXiv identifier recorded")
+        return
+    if not DOI_RE.match(identifier):
+        report.add(
+            "paper_identity",
+            "warn",
+            f"{identifier!r} is not a DOI; this fixture is not tied to a registered publication",
+        )
         return
     report.add(
         "paper_identity",
         "warn",
-        f"identifier {spec.paper.identifier!r} not machine-verified; needs human or web check",
+        f"{identifier!r} is DOI-shaped; run `protofuse paper {fixture_id}` to resolve it",
     )
 
 
@@ -318,7 +328,7 @@ def review_fixture(
         return report
     report.add("fixture_spec", "pass", f"schema v{spec.schema_version}: {spec.paper.title}")
 
-    _check_paper_identity(report, spec)
+    _check_paper_identity(report, spec, fixture_id)
     _check_paper_source(report, spec, required=config.requires_paper_source)
     _check_evidence(report, spec)
     _check_disclosure(report, spec)

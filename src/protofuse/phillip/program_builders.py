@@ -81,6 +81,10 @@ from protofuse.phillip.dnachisel_constraints import (
     sliding_window_gc_constraint,
 )
 from protofuse.phillip.handoff_config import program_run_device, run_compiled_program
+from protofuse.phillip.state_sweep_generators import (
+    FixedSequenceSweepGenerator,
+    FixedSequenceSweepGeneratorConfig,
+)
 from protofuse.phillip.pool_optimizer import PoolOptimizerConfig, PoolOptimizerResult, run_pool_optimizer
 from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
 from protofuse.phillip.sequence_init import generate_filter_safe_sequence
@@ -152,6 +156,14 @@ BIOEMU_ENSEMBLE_SMOKE_DEFAULTS: dict[str, int] = {
     "segment_length_aa": 80,
     "num_steps": 20,
     "bioemu_num_samples": 2,
+}
+
+BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
+    "dominant_state_pdb": "4AKE",
+    "alternative_state_pdb": "1AKE",
+    "num_samples": 6,
+    "num_results": 3,
+    "max_msa_seqs": 128,
 }
 
 GFP_SEQUENCE = (
@@ -268,6 +280,21 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         "target_chain_id": spec.global_parameters.get("target_chain_id", "A"),
         "bioemu_num_samples": int(spec.global_parameters.get("bioemu_num_samples", 8)),
         "max_ensemble_rmsd": float(spec.global_parameters.get("max_ensemble_rmsd", 4.0)),
+        "target_name": spec.global_parameters.get("target_name", "XylE"),
+        "target_uniprot": spec.global_parameters.get("target_uniprot", "P0AEJ8"),
+        "target_chain_id": spec.global_parameters.get("target_chain_id", "A"),
+        "dominant_state_pdb": spec.global_parameters.get("dominant_state_pdb", "4GBY"),
+        "alternative_state_pdb": spec.global_parameters.get("alternative_state_pdb", "4GBZ"),
+        "protein_sequence": spec.global_parameters.get("protein_sequence", ""),
+        "per_state_success_angstroms": float(
+            spec.global_parameters.get("per_state_success_angstroms", 2.0)
+        ),
+        "subsample_msa": bool(spec.global_parameters.get("subsample_msa", True)),
+        "max_msa_seqs": int(spec.global_parameters.get("max_msa_seqs", 512)),
+        "diffusion_samples": int(spec.global_parameters.get("diffusion_samples", 1)),
+        "step_scale": float(spec.global_parameters.get("step_scale", 1.5)),
+        "recycling_steps": int(spec.global_parameters.get("recycling_steps", 3)),
+        "boltz2_seed": spec.global_parameters.get("boltz2_seed"),
     }
     if workload == "esm2_protein_maturation":
         params["seed_sequence"] = _resolve_protein_seed_sequence(
@@ -312,6 +339,8 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
                 tier="smoke",
                 segment_length_aa=int(params["segment_length_aa"]),
             )
+        elif workload == "boltz2_state_sweep":
+            params.update(BOLTZ2_STATE_SWEEP_SMOKE_DEFAULTS)
         else:
             params.update(SMOKE_DEFAULTS)
     return params
@@ -959,7 +988,7 @@ def build_antibody_cdr_maturation_program(
         Constraint(
             inputs=[antibody, antigen],
             function=structure_iptm_constraint,
-            function_config={"structure_tool": "esmfold"},
+            function_config={"structure_tool": "boltz2"},
             threshold=float(params["min_iptm"]),
             label="interface_iptm",
         ),
@@ -1548,4 +1577,102 @@ def run_bioemu_ensemble_filter(*, tier: WorkloadTier = "full") -> tuple[Program,
     program = build_bioemu_ensemble_filter_program(params)
     start = perf_counter()
     run_compiled_program(program, fixture_id="bioemu-ensemble-filter")
+    return program, (perf_counter() - start) * 1000
+
+
+def _boltz2_sweep_structure_config(params: dict[str, Any]) -> dict[str, Any]:
+    """Boltz-2 config for inference-parameter sweeps on a fixed sequence."""
+
+    boltz2_config: dict[str, Any] = {
+        "subsample_msa": bool(params.get("subsample_msa", True)),
+        "max_msa_seqs": int(params.get("max_msa_seqs", 512)),
+        "diffusion_samples": int(params.get("diffusion_samples", 1)),
+        "step_scale": float(params.get("step_scale", 1.5)),
+        "recycling_steps": int(params.get("recycling_steps", 3)),
+    }
+    seed = params.get("boltz2_seed")
+    if seed is not None:
+        boltz2_config["seed"] = int(seed)
+    return {"structure_tool": "boltz2", "boltz2_config": boltz2_config}
+
+
+def _resolve_state_sweep_sequence(params: dict[str, Any]) -> str:
+    explicit = params.get("protein_sequence")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    chain_id = str(params.get("target_chain_id", "A"))
+    return _target_sequence_from_pdb(str(params["dominant_state_pdb"]), [chain_id])
+
+
+def build_boltz2_state_sweep_program(params: dict[str, Any]) -> Program:
+    """Rejection-sampling Boltz-2 sweep on a fixed sequence scored against two PDB states."""
+
+    sequence = _resolve_state_sweep_sequence(params)
+    segment = Segment(sequence=sequence, sequence_type="protein", label="target")
+    construct = Construct([segment])
+
+    generator = FixedSequenceSweepGenerator(FixedSequenceSweepGeneratorConfig())
+    generator.assign(segment)
+
+    boltz_config = _boltz2_sweep_structure_config(params)
+    inflection = float(params.get("per_state_success_angstroms", 2.0))
+    dominant_structure = _target_structure_from_pdb(str(params["dominant_state_pdb"]))
+    alternative_structure = _target_structure_from_pdb(str(params["alternative_state_pdb"]))
+
+    constraints = [
+        Constraint(
+            inputs=[segment],
+            function=structure_plddt_constraint,
+            function_config=boltz_config,
+            threshold=float(params["min_plddt"]),
+            label="plddt",
+        ),
+        Constraint(
+            inputs=[segment],
+            function=structure_rmsd_constraint,
+            function_config={
+                **boltz_config,
+                "target_structure": dominant_structure,
+                "inflection_point_angstroms": inflection,
+            },
+            weight=1.0,
+            label="rmsd_dominant",
+        ),
+        Constraint(
+            inputs=[segment],
+            function=structure_rmsd_constraint,
+            function_config={
+                **boltz_config,
+                "target_structure": alternative_structure,
+                "inflection_point_angstroms": inflection,
+            },
+            weight=1.0,
+            label="rmsd_alternative",
+        ),
+        Constraint(
+            inputs=[segment],
+            function=protein_length_constraint,
+            function_config={"min_length": len(sequence), "max_length": len(sequence)},
+            threshold=0.0,
+            label="length",
+        ),
+    ]
+    optimizer = RejectionSamplingOptimizer(
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=RejectionSamplingOptimizerConfig(
+            num_results=int(params["num_results"]),
+            num_samples=int(params["num_samples"]),
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    spec = load_fixture_spec("boltz2-state-sweep")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_boltz2_state_sweep_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="boltz2-state-sweep")
     return program, (perf_counter() - start) * 1000

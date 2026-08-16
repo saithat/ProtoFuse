@@ -1,7 +1,7 @@
 # Pipeline benchmarks (all Phillip workloads)
 
-**Recorded:** 2026-08-16T00:03:26.989657+00:00
-**Proto commit:** `dec375b04fa26b1c809b248f1a6af2767da32293`
+**Recorded:** 2026-08-16T00:26:14.514729+00:00
+**Proto commit:** `cb00a5e16e1edda30d12e95139743495535675d5`
 **Host:** mac
 **Modal profile:** configured
 
@@ -27,8 +27,8 @@ Per-pipeline handoff timing notes:
 
 | Pipeline | Run | Device | Status | Wall time | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `dnachisel-num1` | `preflight_2808` | local | ok | 6.6 s | Paper construct length binding ladder |
-| `dnachisel-num1` | `preflight_936` | local | ok | 0.6 s | Executable fixture length |
+| `dnachisel-num1` | `preflight_2808` | local | ok | 7.0 s | Paper construct length binding ladder |
+| `dnachisel-num1` | `preflight_936` | local | ok | 0.7 s | Executable fixture length |
 | `dnachisel-num1` | `outer_loop_smoke` | local | ok | 0.0 s | 100 bp, 1 region pass |
 | `dnachisel-num1` | `compile_local` | local | ok | 0.0 s | Plan metadata only; MCMC executes locally regardless |
 | `dnachisel-num1` | `compile_modal` | modal | ok | 0.0 s | Plan metadata only; MCMC executes locally regardless |
@@ -46,8 +46,8 @@ Per-pipeline handoff timing notes:
 | `antibody-cdr-maturation` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `antibody-cdr-maturation` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `antibody-cdr-maturation` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `freebindcraft-binder` | `preflight_smoke` | local | ok | 0.9 s | 50 aa smoke binder; build-only L0 |
-| `freebindcraft-binder` | `handoff_pipeline` | local | ok | 0.1 s | compile → generate → finalize via run_handoff_pipeline |
+| `freebindcraft-binder` | `preflight_smoke` | local | ok | 0.8 s | 50 aa smoke binder; build-only L0 |
+| `freebindcraft-binder` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
 | `freebindcraft-binder` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `freebindcraft-binder` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `freebindcraft-binder` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
@@ -56,12 +56,12 @@ Per-pipeline handoff timing notes:
 | `symmetric-oligomer-ring` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `symmetric-oligomer-ring` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `symmetric-oligomer-ring` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `ppi-interface-specificity` | `preflight_smoke` | local | ok | 0.7 s | 65 aa binder seed; build-only L0 |
-| `ppi-interface-specificity` | `handoff_pipeline` | local | ok | 0.1 s | compile → generate → finalize via run_handoff_pipeline |
+| `ppi-interface-specificity` | `preflight_smoke` | local | ok | 1.4 s | 65 aa binder seed; build-only L0 |
+| `ppi-interface-specificity` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
 | `ppi-interface-specificity` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `ppi-interface-specificity` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `ppi-interface-specificity` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 16.6 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
+| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 19.8 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
 | `gpcr-cxcr4-miniprotein` | `compile_local` | local | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
 | `gpcr-cxcr4-miniprotein` | `compile_modal` | modal | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
 | `gpcr-cxcr4-miniprotein` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |

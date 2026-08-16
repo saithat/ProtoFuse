@@ -24,3 +24,7 @@ data/models/*
 
 # Proto model/tool caches belong outside Git.
 .proto/
+
+# Per-contributor local agent instructions stay out of the shared repo.
+AGENTS.local.md
+**/AGENTS.local.md

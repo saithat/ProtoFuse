@@ -99,6 +99,7 @@ uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU + handoff
 | `freebindcraft-binder` | 5 samples | 50 samples |
 | `rfdiffusion3-boltz2-binder` | 2 cycles | 10 cycles |
 | `gpcr-cxcr4-miniprotein` | 2 samples, 40 aa | 10 samples, 70 aa |
+| `boltz2-state-sweep` | 6 samples, 214 aa (AK proxy) | 55 samples, 491 aa (XylE) |
 
 ## Allowed imports in generated `design_*.py`
 

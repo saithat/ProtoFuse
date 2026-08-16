@@ -93,6 +93,14 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
         seed_policy="lysozyme seed sequence; smoke truncates to 80 aa",
         compile_device="modal",
     ),
+    "boltz2-state-sweep": HandoffConfig(
+        fixture_id="boltz2-state-sweep",
+        methodology_id="boltz2-state-sweep-v1",
+        seed_policy=(
+            "fixed benchmark sequence; Boltz-2 stochasticity from subsample_msa and implicit seeds"
+        ),
+        compile_device="modal",
+    ),
 }
 
 

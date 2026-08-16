@@ -243,6 +243,10 @@ def main() -> None:
             from protofuse.phillip.program_builders import run_bioemu_ensemble_filter
 
             program, wall_ms = run_bioemu_ensemble_filter(tier=args.tier)
+        elif args.fixture == "boltz2-state-sweep":
+            from protofuse.phillip.program_builders import run_boltz2_state_sweep
+
+            program, wall_ms = run_boltz2_state_sweep(tier=args.tier)
         else:
             raise SystemExit(f"run not implemented for fixture={args.fixture}")
         sequence = program.constructs[0].joined_sequences[0].sequence

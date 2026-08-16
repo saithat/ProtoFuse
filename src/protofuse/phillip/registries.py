@@ -139,6 +139,18 @@ BIOEMU_ENSEMBLE_REGISTRY: dict[str, str] = {
     "protein length range": "proto_language.constraint.protein_length_constraint",
 }
 
+BOLTZ2_STATE_SWEEP_REGISTRY: dict[str, str] = {
+    **PROTEIN_SHARED_REGISTRY,
+    "fixed sequence inference sweep": (
+        "protofuse.phillip.state_sweep_generators.FixedSequenceSweepGenerator"
+    ),
+    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "dominant state RMSD": "proto_language.constraint.structure_rmsd_constraint",
+    "alternative state RMSD": "proto_language.constraint.structure_rmsd_constraint",
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+    "rejection sampling ensemble filter": "proto_language.optimizer.RejectionSamplingOptimizer",
+}
+
 FREEBINDCRAFT_REGISTRY: dict[str, str] = {
     "FreeBindCraft binder design": "proto_language.generator.FreeBindCraftGenerator",
     "structure ipTM filter": "proto_language.constraint.structure_iptm_constraint",
@@ -164,6 +176,7 @@ REGISTRY_BY_NAME: dict[str, dict[str, str]] = {
     "rfdiffusion3-boltz2-binder": RFDIFFUSION3_BOLTZ2_REGISTRY,
     "ligandmpnn-enzyme-redesign": LIGANDMPNN_ENZYME_REGISTRY,
     "bioemu-ensemble-filter": BIOEMU_ENSEMBLE_REGISTRY,
+    "boltz2-state-sweep": BOLTZ2_STATE_SWEEP_REGISTRY,
 }
 
 WorkloadTier = Literal["smoke", "full"]
@@ -496,6 +509,42 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                     "Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, 20 steps, 2 BioEmu samples)."
                 ),
                 builder_call="build_bioemu_ensemble_filter_program(params)",
+            ),
+        ),
+    ),
+    "boltz2_state_sweep": WorkloadProfile(
+        workload_key="boltz2_state_sweep",
+        fixture_id="boltz2-state-sweep",
+        registry_name="boltz2-state-sweep",
+        builder_symbol="build_boltz2_state_sweep_program",
+        required_global_parameters=(
+            "workload",
+            "dominant_state_pdb",
+            "alternative_state_pdb",
+            "num_samples",
+        ),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier Boltz-2 alternative-state sweep (XylE 491 aa, 55 draws).\n\n"
+                    "Fixed E. coli XylE sequence; repeated Boltz-2 predictions with MSA\n"
+                    "subsampling scored against inward 4GBY and outward 4GBZ references\n"
+                    "(IOMemP transporter benchmark). Sai fusion target: boltz2-prediction\n"
+                    "per sweep draw with labelled RMSD ground truth."
+                ),
+                builder_call="build_boltz2_state_sweep_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier Boltz-2 state sweep (adenylate kinase 214 aa, 6 draws).\n\n"
+                    "Soluble domain-motion proxy for fast GPU sanity checks before the\n"
+                    "full XylE IOMemP transporter benchmark."
+                ),
+                builder_call="build_boltz2_state_sweep_program(params)",
             ),
         ),
     ),

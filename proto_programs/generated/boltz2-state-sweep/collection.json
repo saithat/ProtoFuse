@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "boltz2-state-sweep",
+  "methodology_id": "boltz2-state-sweep-v1",
+  "proto_version": "a4041a6520ea58f881156fd13e3fd85efdc08b7c",
+  "registry_version": "1",
+  "seed_policy": "fixed benchmark sequence; Boltz-2 stochasticity from subsample_msa and implicit seeds",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "c414fced7b63531c94ec107df14c00fdcf87d232bb377ff0d1efd5c7ee66c093"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "380330f449da67b79490f2c8f7d461d32540837cf7028cc09f70c00130a6cd7a"
+    }
+  ]
+}

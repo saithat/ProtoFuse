@@ -22,6 +22,7 @@ from protofuse.phillip.dnachisel_constraints import (
 )
 from protofuse.phillip.program_builders import (
     build_antibody_cdr_maturation_program,
+    build_boltz2_state_sweep_program,
     build_dnachisel_num1_program,
     build_esm2_protein_maturation_program,
     build_freebindcraft_binder_program,
@@ -349,6 +350,7 @@ def run_preflight(
         "freebindcraft_binder",
         "symmetric_oligomer_ring",
         "ppi_interface_specificity",
+        "boltz2_state_sweep",
     }:
         params = resolve_workload_params(spec, tier="smoke")
         if workload == "esm2_protein_maturation":
@@ -370,6 +372,10 @@ def run_preflight(
             length = target_length or int(params["segment_length_aa"])
             program = build_symmetric_oligomer_ring_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "boltz2_state_sweep":
+            program = build_boltz2_state_sweep_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+            length = target_length or built_length
         else:
             length = target_length or len(str(spec.global_parameters.get("binder_sequence", "")))
             program = build_ppi_interface_specificity_program(params, region_pass=0)

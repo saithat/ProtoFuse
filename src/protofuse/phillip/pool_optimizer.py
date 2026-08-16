@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 from proto_language.core import Program
+
+ProgramRunDevice = Literal["modal"] | None
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,7 @@ def run_pool_optimizer(
     *,
     config: PoolOptimizerConfig,
     target_gc: float = 50.0,
+    run_device: ProgramRunDevice = None,
 ) -> PoolOptimizerResult:
     """Generate a pool of MCMC candidates and return the top-scoring feasible sequence."""
 
@@ -90,7 +94,7 @@ def run_pool_optimizer(
 
     for _ in range(config.n_pool):
         program = build_program()
-        program.run()
+        program.run(device=run_device)
         sequence = program.constructs[0].joined_sequences[0].sequence.upper()
         max_run = _max_homopolymer_run(sequence)
         homopolymer_ok = max_run < config.homopolymer_max

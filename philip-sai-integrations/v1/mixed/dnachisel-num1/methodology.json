@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "paper": {
     "title": "DNA Chisel NUM1 codon optimization (Figure 1)",
-    "identifier": "10.1093/bioinformatics/btaa558-num1",
+    "identifier": "10.1093/bioinformatics/btaa558",
     "source_path": "data/papers/dnachisel.txt"
   },
   "generators": [

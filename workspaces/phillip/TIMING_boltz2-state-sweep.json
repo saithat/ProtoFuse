@@ -1,12 +1,12 @@
 {
-  "fixture_id": "freebindcraft-binder",
-  "collection_id": "freebindcraft-binder",
-  "methodology_id": "freebindcraft-binder-v1",
-  "paper_identifier": "freebindcraft-2025",
+  "fixture_id": "boltz2-state-sweep",
+  "collection_id": "boltz2-state-sweep",
+  "methodology_id": "boltz2-state-sweep-v1",
+  "paper_identifier": "10.64898/2026.01.23.701250",
   "paper_source_path": "docs/CANDIDATE_WORKFLOWS.md",
   "topology": "multiobjective_search",
   "compile_device": "modal",
-  "total_elapsed_s": 0.025,
+  "total_elapsed_s": 0.03,
   "stages": [
     {
       "stage": "methodology_fixture",
@@ -22,8 +22,8 @@
     },
     {
       "stage": "finalize_collection",
-      "elapsed_s": 0.025
+      "elapsed_s": 0.03
     }
   ],
-  "handoff_path": "proto_programs/generated/freebindcraft-binder"
+  "handoff_path": "proto_programs/generated/boltz2-state-sweep"
 }

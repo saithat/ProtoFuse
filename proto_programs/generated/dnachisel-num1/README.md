@@ -1,7 +1,8 @@
 # dnachisel-num1
 
 Frozen program collection for **DNA Chisel Figure 1 NUM1** codon optimization
-(Zaragoza et al., *Bioinformatics* 2020, DOI 10.1093/bioinformatics/btaa558).
+(Zulkower & Rosser, "DNA Chisel, a versatile sequence optimizer", *Bioinformatics* 2020,
+DOI 10.1093/bioinformatics/btaa558).
 
 | Program | Tier | Description |
 |---------|------|-------------|

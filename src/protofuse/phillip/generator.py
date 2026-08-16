@@ -17,6 +17,7 @@ ALLOWED_PROGRAM_BUILDER_SYMBOLS = frozenset(
     {
         "build_antibody_cdr_maturation_program",
         "build_bioemu_ensemble_filter_program",
+        "build_boltz2_state_sweep_program",
         "build_custom_egfp_program",
         "build_dnachisel_num1_program",
         "build_esm2_protein_maturation_program",

@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 from proto_language.core import Program
 
 ConstraintScoreFn = Callable[[Program], float]
+ProgramRunDevice = Literal["modal"] | None
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,7 @@ def run_region_local_program(
     *,
     config: RegionSolverConfig,
     score_program: ConstraintScoreFn | None = None,
+    run_device: ProgramRunDevice = None,
 ) -> RegionSolverResult:
     """Run MCMC passes with optional per-window inner refinement."""
 
@@ -49,7 +52,7 @@ def run_region_local_program(
 
     for region_pass in range(config.max_region_passes):
         program = build_program(region_pass=region_pass)
-        program.run()
+        program.run(device=run_device)
         region_passes = region_pass + 1
 
         if config.inner_refinement_steps > 0:
@@ -63,7 +66,7 @@ def run_region_local_program(
                     inner_refinement=window_index + 1,
                 )
                 _set_optimizer_steps(program, config.inner_refinement_steps)
-                program.run()
+                program.run(device=run_device)
                 inner_refinements += 1
                 refinements_this_pass += 1
 

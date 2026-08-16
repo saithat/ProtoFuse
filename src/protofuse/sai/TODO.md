@@ -20,6 +20,7 @@ Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored)
 | `esm2-protein-maturation` | `proto_programs/generated/esm2-protein-maturation/` | **`design_001.py`** (129 aa) | GPU MCMC; profile inside `run_esm2_protein_maturation(tier="full")`. |
 | `antibody-cdr-maturation` | `proto_programs/generated/antibody-cdr-maturation/` | **`design_001.py`** (121 aa) | GPU CDR MCMC; best Sai fusion target after esm2. |
 | `gpcr-cxcr4-miniprotein` | `proto_programs/generated/gpcr-cxcr4-miniprotein/` | **`design_001.py`** (70 aa) | RFdiffusion3+Boltz-2; `structure_binding` passes 4RWS hotspots. |
+| `boltz2-state-sweep` | `proto_programs/generated/boltz2-state-sweep/` | **`design_001.py`** (491 aa XylE) | Boltz-2 sweep vs 4GBY/4GBZ; labelled RMSD ground truth for Sai fusion. |
 | `freebindcraft-binder` | `proto_programs/generated/freebindcraft-binder/` | **`design_001.py`** (70 aa) | FreeBindCraft rejection sampling. |
 | `symmetric-oligomer-ring` | `proto_programs/generated/symmetric-oligomer-ring/` | **`design_001.py`** (C6 pool) | Pool optimizer; protein scorer still DNA-heuristic. |
 | `ppi-interface-specificity` | `proto_programs/generated/ppi-interface-specificity/` | **`design_001.py`** (65 aa) | Dual target/off-target; AF3 specificity is protein-DNA proxy. |
