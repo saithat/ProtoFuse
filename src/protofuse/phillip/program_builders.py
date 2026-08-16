@@ -269,6 +269,7 @@ LYSOZYME_SEQUENCE = (
 )
 
 
+@lru_cache(maxsize=32)
 def load_fixture_spec(fixture_id: str) -> MethodologySpec:
     """Load a workspace methodology fixture by ID."""
 

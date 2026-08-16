@@ -29,6 +29,7 @@ from protofuse.phillip.program_builders import load_fixture_spec
 GrepFn = Callable[..., list[tuple[int, str]]]
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+CROSSREF_CACHE_PATH = REPO_ROOT / "data" / "papers" / "crossref_cache.json"
 CROSSREF_WORK_URL = "https://api.crossref.org/works/{doi}"
 USER_AGENT = "ProtoFuse/0.1 (paper review; mailto:noreply@example.com)"
 DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$")
@@ -187,16 +188,108 @@ def _record_from_crossref(message: dict[str, Any]) -> PaperRecord:
     )
 
 
-def fetch_paper_record(doi: str, *, timeout: int = 20) -> PaperRecord | None:
+def _record_to_cache_dict(record: PaperRecord) -> dict[str, Any]:
+    return {
+        "doi": record.doi,
+        "title": record.title,
+        "container": record.container,
+        "year": record.year,
+        "authors": list(record.authors),
+        "abstract": record.abstract,
+        "url": record.url,
+    }
+
+
+def _record_from_cache_dict(payload: dict[str, Any]) -> PaperRecord:
+    authors = payload.get("authors") or []
+    return PaperRecord(
+        doi=str(payload.get("doi", "")),
+        title=str(payload.get("title", "")),
+        container=str(payload["container"]) if payload.get("container") else None,
+        year=int(payload["year"]) if payload.get("year") is not None else None,
+        authors=tuple(str(author) for author in authors),
+        abstract=str(payload["abstract"]) if payload.get("abstract") else None,
+        url=str(payload.get("url", "")),
+    )
+
+
+def load_crossref_cache() -> dict[str, Any]:
+    if not CROSSREF_CACHE_PATH.is_file():
+        return {}
+    payload = json.loads(CROSSREF_CACHE_PATH.read_text())
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_crossref_cache(cache: dict[str, Any]) -> None:
+    CROSSREF_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CROSSREF_CACHE_PATH.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+
+
+def fetch_paper_record(
+    doi: str,
+    *,
+    timeout: int = 20,
+    use_cache: bool = True,
+    refresh: bool = False,
+) -> PaperRecord | None:
     """Look up a DOI's registered metadata, including the abstract when deposited."""
 
+    cache = load_crossref_cache() if use_cache else {}
+    cached = cache.get(doi)
+    if use_cache and not refresh and doi in cache:
+        if cached is None:
+            return None
+        if isinstance(cached, dict):
+            return _record_from_cache_dict(cached)
+        return None
+
     payload = _fetch_json(CROSSREF_WORK_URL.format(doi=doi), timeout=timeout)
-    if not payload:
-        return None
-    message = payload.get("message")
-    if not isinstance(message, dict):
-        return None
-    return _record_from_crossref(message)
+    record: PaperRecord | None = None
+    if payload:
+        message = payload.get("message")
+        if isinstance(message, dict):
+            record = _record_from_crossref(message)
+
+    if use_cache:
+        cache[doi] = _record_to_cache_dict(record) if record else None
+        save_crossref_cache(cache)
+    return record
+
+
+def sync_crossref_metadata(
+    dois: list[str] | None = None,
+    *,
+    timeout: int = 20,
+) -> dict[str, PaperRecord | None]:
+    """Refresh the on-disk Crossref cache for the given DOIs (or all fixture DOIs)."""
+
+    if dois is None:
+        dois = sorted(_fixture_dois())
+    synced: dict[str, PaperRecord | None] = {}
+    for doi in dois:
+        synced[doi] = fetch_paper_record(doi, timeout=timeout, use_cache=True, refresh=True)
+    return synced
+
+
+def _fixture_dois() -> set[str]:
+    from protofuse.phillip.program_builders import FIXTURES_DIR
+
+    found: set[str] = set()
+    for fixture_dir in sorted(FIXTURES_DIR.iterdir()):
+        if not fixture_dir.is_dir():
+            continue
+        methodology_path = fixture_dir / "methodology.json"
+        if not methodology_path.is_file():
+            continue
+        payload = json.loads(methodology_path.read_text())
+        paper = payload.get("paper") if isinstance(payload, dict) else None
+        if not isinstance(paper, dict):
+            continue
+        for key in ("identifier", "full_text_identifier"):
+            identifier = paper.get(key)
+            if isinstance(identifier, str) and DOI_RE.match(identifier):
+                found.add(identifier)
+    return found
 
 
 def _doi_variants(identifier: str) -> list[str]:

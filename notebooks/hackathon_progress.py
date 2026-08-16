@@ -326,32 +326,68 @@ def _(collections_df, mo, reviewed_collections, test_modules):
 
 @app.cell(hide_code=True)
 def _():
-    from protofuse.phillip.paper_figures import sync_all_primary_figures
     from protofuse.phillip.paper_profiles import (
         figure_image_src,
         load_all_paper_profiles,
         primary_figure,
     )
 
-    sync_all_primary_figures(fetch_if_missing=False)
-    paper_profiles = load_all_paper_profiles(fetch_online=True)
+    paper_profiles = load_all_paper_profiles(fetch_online=False)
     return figure_image_src, paper_profiles, primary_figure
 
 
 @app.cell(hide_code=True)
-def _(collections_df, figure_image_src, mo, paper_profiles, primary_figure):
+def _(collections_df, mo):
+    collection_options = {
+        f"{row.collection_id} — {row.domain}": row.collection_id
+        for row in collections_df.sort_values("collection_id").itertuples(index=False)
+    }
+    default_option = next(iter(collection_options.keys()), None)
+    collection_picker = mo.ui.dropdown(
+        options=collection_options,
+        label="Program collection",
+        value=default_option,
+    )
+    overview = collections_df.sort_values("collection_id")[
+        ["collection_id", "domain", "tool_chain", "reviewed"]
+    ]
+    mo.vstack(
+        [
+            mo.md("## Programs"),
+            mo.md(
+                "Handoff artifacts with source paper context — title, DOI, abstract, primary "
+                "figure, and what we replicated. Select a collection to load its details."
+            ),
+            mo.ui.table(overview),
+            collection_picker,
+        ]
+    )
+    return collection_picker
+
+
+@app.cell(hide_code=True)
+def _(
+    collection_picker,
+    collections_df,
+    figure_image_src,
+    mo,
+    paper_profiles,
+    primary_figure,
+):
     def _bullet_block(title: str, items: list[str]) -> str:
         if not items:
             return ""
         body = "\n".join(f"- {item}" for item in items)
         return f"**{title}**\n\n{body}\n\n"
 
-    accordion_items: dict[str, object] = {}
-    for row in collections_df.sort_values("collection_id").itertuples(index=False):
-        profile = paper_profiles[row.collection_id]
+    selected_id = collection_picker.value
+    if not selected_id or selected_id not in paper_profiles:
+        collection_detail = mo.md("_Select a collection above._")
+    else:
+        row = collections_df.loc[collections_df["collection_id"] == selected_id].iloc[0]
+        profile = paper_profiles[selected_id]
         reviewed = "yes" if row.reviewed else "no"
         sai_note = row.sai_note or "No special fusion note."
-        title = f"{row.collection_id} — {row.domain}"
 
         doi_line = (
             f"[{profile.display_doi}]({profile.doi_link})"
@@ -400,26 +436,20 @@ def _(collections_df, figure_image_src, mo, paper_profiles, primary_figure):
         if figure is not None and figure.caption:
             blocks.append(mo.md(f"*{figure.caption}*"))
 
-        accordion_items[title] = mo.vstack(blocks)
-
-    mo.vstack(
-        [
-            mo.md("## Programs"),
-            mo.md(
-                "Handoff artifacts with source paper context — title, DOI, abstract, primary "
-                "figure, and what we replicated."
-            ),
-            mo.accordion(accordion_items, multiple=True),
-            mo.callout(
-                mo.md(
-                    "**Recommended fusion target:** `boltz2-state-sweep` — Boltz-2 sweep with "
-                    "labelled RMSD ground truth (4GBY / 4GBZ)."
+        collection_detail = mo.vstack(
+            [
+                *blocks,
+                mo.callout(
+                    mo.md(
+                        "**Recommended fusion target:** `boltz2-state-sweep` — Boltz-2 sweep with "
+                        "labelled RMSD ground truth (4GBY / 4GBZ)."
+                    ),
+                    kind="info",
                 ),
-                kind="info",
-            ),
-        ]
-    )
-    return
+            ]
+        )
+
+    collection_detail
 
 
 @app.cell(hide_code=True)

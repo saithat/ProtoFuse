@@ -183,7 +183,7 @@ def load_paper_profile(
     collection_id: str,
     *,
     manifest: dict[str, Any] | None = None,
-    fetch_online: bool = True,
+    fetch_online: bool = False,
 ) -> PaperProfile:
     spec = load_fixture_spec(collection_id)
     identifier = spec.paper.identifier
@@ -191,8 +191,12 @@ def load_paper_profile(
 
     registered: PaperRecord | None = None
     abstract: str | None = None
-    if is_doi and fetch_online:
-        registered = fetch_paper_record(identifier)  # type: ignore[arg-type]
+    if is_doi:
+        registered = fetch_paper_record(  # type: ignore[arg-type]
+            identifier,
+            use_cache=True,
+            refresh=fetch_online,
+        )
         if registered:
             abstract = registered.abstract
 
@@ -220,7 +224,7 @@ def load_paper_profile(
     )
 
 
-def load_all_paper_profiles(*, fetch_online: bool = True) -> dict[str, PaperProfile]:
+def load_all_paper_profiles(*, fetch_online: bool = False) -> dict[str, PaperProfile]:
     manifest = load_figure_manifest()
     profiles: dict[str, PaperProfile] = {}
     for fixture_dir in sorted(FIXTURES_DIR.iterdir()):
@@ -273,8 +277,25 @@ def primary_figure(profile: PaperProfile) -> FigureCandidate | None:
 def figure_image_src(candidate: FigureCandidate) -> str | None:
     local_path = resolve_figure_path(candidate)
     if local_path is not None:
+        web_path = _web_display_path(local_path)
+        if web_path.is_file():
+            return str(web_path)
+        if local_path.suffix.lower() in {".tif", ".tiff"}:
+            return candidate.url or str(local_path)
         return str(local_path)
     return candidate.url
+
+
+def _web_display_path(local_path: Path) -> Path:
+    """Prefer a pre-optimized sibling JPEG when present."""
+
+    web_jpg = local_path.with_name(f"{local_path.stem}-web.jpg")
+    if web_jpg.is_file():
+        return web_jpg
+    plain_jpg = local_path.with_suffix(".jpg")
+    if plain_jpg.is_file() and local_path.suffix.lower() in {".png", ".tif", ".tiff"}:
+        return plain_jpg
+    return local_path
 
 
 def apply_primary_figure_approvals() -> None:
