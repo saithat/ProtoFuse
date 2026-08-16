@@ -43,3 +43,45 @@ regression pilot—such as a training-loss curve or classification accuracy—ar
 The evidence appendix also explains the split unit. One seeded optimizer trajectory can emit many
 correlated proposal rows, but all of them remain in one train, calibration, or test group. It shows
 the preferred 60/20/20 trajectory collection target separately from raw proposal-sample counts.
+
+## 16:9 slide deck (Google Slides)
+
+`protofuse-evaluation-slides.html` is a widescreen slide deck generated from the same
+aggregate data as the scroll report. Every frame is exactly **1920×1080** (16:9) with the
+same gentle gray grid borders (`#d7d4cb`) used in the portable report.
+
+Generate it after the visualization bundle and primary analysis artifacts are present:
+
+```bash
+python3 scripts/build_visualization_bundle.py --strict
+python3 scripts/build_evaluation_report.py --strict --slides
+```
+
+Open `reports/protofuse-evaluation-slides.html` in a browser. Each `.slide` block is a
+self-contained frame — snapshot it (screenshot or copy-as-image) and paste into Google Slides.
+Use **Page setup → Widescreen 16:9** in Google Slides so pasted images align with the default canvas.
+
+The `--slides` flag writes only the deck HTML (default:
+`reports/protofuse-evaluation-slides.html`). Omit `--slides` to regenerate the scroll report
+instead. Both share the same `--strict`, `--repo-root`, `--analysis-dir`, and `--output` options.
+
+## 16:9 slide deck PDF
+
+Export the same widescreen frames as a multi-page PDF (one 16:9 page per slide):
+
+```bash
+uv sync --extra pdf
+playwright install chromium
+python3 scripts/build_evaluation_report.py --strict --pdf
+```
+
+Default output: `reports/protofuse-evaluation-slides.pdf`.
+
+Combine flags to write HTML and PDF together:
+
+```bash
+python3 scripts/build_evaluation_report.py --strict --slides --pdf
+```
+
+When both `--slides` and `--pdf` are set, `--output` applies to the format matching its extension
+(`.html` or `.pdf`); the other format uses its default path.

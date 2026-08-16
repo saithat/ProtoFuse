@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import html
 import json
+import tempfile
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -868,7 +869,57 @@ def _gap_card(
 
 
 def _render_gaps(summary: dict[str, Any], checkpoints: dict[str, Any]) -> str:
-    gaps = [
+    return "".join(
+        _gap_card(index, title, evidence, measurement, priority)
+        for index, (title, evidence, measurement, priority) in enumerate(
+            _gap_definitions(summary, checkpoints), start=1
+        )
+    )
+
+
+def _render_measurement_plan() -> str:
+    return "".join(
+        '<article class="plan-row">'
+        f'<span class="plan-index">{index:02d}</span><div><strong>{_escape(stage)}</strong>'
+        f'<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>'
+        for index, (stage, question, measures) in enumerate(_measurement_plan_rows(), start=1)
+    )
+
+
+def _measurement_plan_rows() -> list[tuple[str, str, str]]:
+    return [
+        (
+            "Instrument",
+            "What happened at every proposal?",
+            "Objective version, inputs, parent outputs, latency, accelerator time, errors, and cost.",
+        ),
+        (
+            "Freeze cohorts",
+            "Can the router distinguish value from risk?",
+            "Train, calibration, in-domain test, negative, positive, uncertain-positive, and OOD manifests.",
+        ),
+        (
+            "Train + calibrate",
+            "Does one surrogate preserve the joint objective group?",
+            "Per-objective error, rank quality, uncertainty calibration, and applicability coverage.",
+        ),
+        (
+            "Pair executions",
+            "Does fusion improve the real pipeline?",
+            "Same seed/input/stopping rule; time, steps, parent calls, final regret, and full-model validation.",
+        ),
+        (
+            "Decide",
+            "Is the speed/coverage tradeoff safe and useful?",
+            "Selective risk, false acceptance/rejection, deferral recovery, confidence intervals, and net cost.",
+        ),
+    ]
+
+
+def _gap_definitions(
+    summary: dict[str, Any], checkpoints: dict[str, Any]
+) -> list[tuple[str, str, str, str]]:
+    return [
         (
             "No eval-grade model trace",
             (
@@ -922,46 +973,621 @@ def _render_gaps(summary: dict[str, Any], checkpoints: dict[str, Any]) -> str:
             "blocks scope claim",
         ),
     ]
-    return "".join(
-        _gap_card(index, title, evidence, measurement, priority)
-        for index, (title, evidence, measurement, priority) in enumerate(gaps, start=1)
+
+
+def _chunk(items: list[Any], size: int) -> list[list[Any]]:
+    if size <= 0:
+        raise ValueError("chunk size must be positive")
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
+def _slide_heading(index: str, title: str, subtitle: str = "") -> str:
+    subtitle_html = (
+        f'<p class="heading-note">{_escape(subtitle)}</p>' if subtitle else ""
+    )
+    return (
+        '<header class="heading">'
+        f'<div><span class="index">{_escape(index)}</span><h2>{_escape(title)}</h2></div>'
+        f"{subtitle_html}</header>"
     )
 
 
-def _render_measurement_plan() -> str:
-    rows = [
+def _wrap_slides(slides: list[str]) -> str:
+    total = len(slides)
+    rendered: list[str] = []
+    for number, body in enumerate(slides, start=1):
+        rendered.append(
+            f'<section class="slide" id="slide-{number:02d}">'
+            f'<div class="slide-inner">{body}'
+            f'<footer class="slide-footer">PROTOFUSE / EVALUATION · {number:02d} / {total:02d}'
+            f"</footer></div></section>"
+        )
+    return "".join(rendered)
+
+
+def _render_slide_benchmark_rows(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return '<div class="empty">No benchmark summaries were supplied.</div>'
+    head = (
+        '<div class="benchmark-table">'
+        '<div class="benchmark-head">'
+        "<span>Workload</span><span>Work</span><span>Full</span>"
+        "<span>Fused</span><span>Objective error</span></div>"
+    )
+    body = []
+    for row in rows:
+        fused = row.get("fused_seconds")
+        body.append(
+            '<div class="benchmark-row">'
+            f'<span class="workload"><strong>{_escape(row["workload"])}</strong>'
+            f'<small>{_escape(row["tier"])}</small></span>'
+            f'<span>{_escape(row["work"])}</span>'
+            f'<span class="mono">{_escape(_format_time(row.get("full_seconds")))}</span>'
+            f'<span class="mono {"good" if fused is not None else "muted"}">'
+            f'{_escape(_format_time(fused))}</span>'
+            f'<span>{_escape(row["objective_error"])}</span>'
+            "</div>"
+        )
+    return head + "".join(body) + "</div>"
+
+
+def _render_slide_plan_rows(rows: list[tuple[str, str, str]], start_index: int) -> str:
+    return "".join(
+        '<article class="plan-row">'
+        f'<span class="plan-index">{start_index + offset:02d}</span><div>'
+        f"<strong>{_escape(stage)}</strong>"
+        f"<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>"
+        for offset, (stage, question, measures) in enumerate(rows)
+    )
+
+
+def _render_slide_surrogate_static(pilot: dict[str, Any]) -> str:
+    audit = pilot.get("audit", {})
+    support = pilot.get("support", {})
+    challenges = support.get("challenge_accepted", {}) if isinstance(support, dict) else {}
+    if not isinstance(challenges, dict):
+        challenges = {}
+    rejected = sum(not bool(value) for value in challenges.values())
+    challenge_count = len(challenges)
+    audit_cards = "".join(
         (
-            "Instrument",
-            "What happened at every proposal?",
-            "Objective version, inputs, parent outputs, latency, accelerator time, errors, and cost.",
+            _surrogate_metric_card(
+                _format_error(audit.get("tissue_mae")),
+                "tissue-score MAE",
+                "Held-out audit split.",
+            ),
+            _surrogate_metric_card(
+                _format_error(audit.get("gc_percentage_point_mae"), " pp"),
+                "GC MAE",
+                "Percentage-point error on the held-out audit split.",
+            ),
+            _surrogate_metric_card(
+                _format_percent(support.get("audit_coverage")),
+                "audit coverage",
+                "Fraction of in-domain audit samples accepted by the support gate.",
+            ),
+            _surrogate_metric_card(
+                f"{rejected} / {challenge_count}",
+                "negative challenges rejected",
+                "Useful specificity evidence, but the sample is small and hand-crafted.",
+            ),
+        )
+    )
+    return (
+        '<div class="surrogate-header"><div><span class="kicker">MODEL CARD · CUSTOM eGFP LUNG</span>'
+        "<h3>Surrogate performance, with missing metrics made explicit.</h3></div>"
+        f'<p>{pilot.get("teacher_samples", 0):,} teacher labels · '
+        f'{_format_time(pilot.get("teacher_collection_seconds"))} collection · '
+        f'{pilot.get("objective_count", 0)} joint objectives</p></div>'
+        f'<div class="surrogate-grid">{audit_cards}</div>'
+        '<p class="metric-note"><strong>Metric interpretation:</strong> MAE and maximum error are '
+        "appropriate for these continuous outputs. Routing accuracy needs positive holdouts.</p>"
+    )
+
+
+def _render_slide_visualization_condensed(visualizations: dict[str, Any]) -> str:
+    candidates = visualizations.get("candidates", [])
+    structures = visualizations.get("structures", [])
+    molecules = visualizations.get("molecules", [])
+    gaps = visualizations.get("gaps", [])
+    if not isinstance(candidates, list) or not candidates:
+        return '<div class="empty">No curated visualization bundle is available.</div>'
+    summary = (
+        '<div class="artifact-summary">'
+        f'<div><strong>{len(candidates)}</strong><span>sequence artifacts</span></div>'
+        f'<div><strong>{len(structures) if isinstance(structures, list) else 0}</strong>'
+        "<span>structure artifacts</span></div>"
+        f'<div><strong>{len(molecules) if isinstance(molecules, list) else 0}</strong>'
+        "<span>molecule artifacts</span></div></div>"
+    )
+    cards: list[str] = []
+    for candidate in candidates[:2]:
+        if not isinstance(candidate, dict):
+            continue
+        sequence = candidate.get("sequence", {})
+        if not isinstance(sequence, dict):
+            continue
+        value = sequence.get("value")
+        sequence_type = str(sequence.get("type", "unknown"))
+        if not isinstance(value, str) or not value:
+            continue
+        preview = _escape(value[:48] + ("…" if len(value) > 48 else ""))
+        cards.append(
+            '<article class="artifact-card"><div class="artifact-head"><div>'
+            f'<span class="kicker">{_escape(candidate.get("fixture", "unknown"))} · '
+            f'{_escape(candidate.get("tier", "unknown"))}</span>'
+            f'<h3>{_escape(candidate.get("segment_label", "construct"))}</h3></div></div>'
+            f'<div class="artifact-meta"><span>{_escape(sequence_type)}</span>'
+            f"<span>{len(value):,} residues / bases</span></div>"
+            f'<p class="mono">{preview}</p></article>'
+        )
+    gap_count = len(gaps) if isinstance(gaps, list) else 0
+    gap_note = (
+        f'<p class="artifact-gaps-inline">{gap_count} documented visualization gap(s) remain.</p>'
+        if gap_count
+        else ""
+    )
+    return (
+        '<div class="artifact-intro"><div><span class="kicker">CURATED VISUALIZATION BUNDLE</span>'
+        "<h3>Saved design outputs, not screenshots.</h3></div>"
+        "<p>Sequences are embedded for direct inspection in the full report.</p></div>"
+        f"{summary}<div class=\"artifact-grid\">{''.join(cards)}</div>{gap_note}"
+    )
+
+
+def _render_slide_appendix(
+    summary: dict[str, Any],
+    checkpoints: dict[str, Any],
+    splits: dict[str, Any],
+    source_count: int,
+) -> str:
+    checkpoint_available = checkpoints["run_count"] > 0
+    stats = [
+        (
+            str(checkpoints["run_count"]),
+            "checkpoint runs",
+            "Operational resume manifests supplied.",
         ),
         (
-            "Freeze cohorts",
-            "Can the router distinguish value from risk?",
-            "Train, calibration, in-domain test, negative, positive, uncertain-positive, and OOD manifests.",
+            f'{checkpoints["completed_units"]} / {checkpoints["planned_units"]}',
+            "completed units",
+            "Across supplied checkpoint programs.",
         ),
         (
-            "Train + calibrate",
-            "Does one surrogate preserve the joint objective group?",
-            "Per-objective error, rank quality, uncertainty calibration, and applicability coverage.",
+            str(checkpoints["trace_rows"]),
+            "trace rows",
+            "Checkpoint trace lines, not eval-grade teacher outputs.",
         ),
         (
-            "Pair executions",
-            "Does fusion improve the real pipeline?",
-            "Same seed/input/stopping rule; time, steps, parent calls, final regret, and full-model validation.",
+            str(source_count),
+            "hashed sources",
+            "Aggregate inputs recorded in the full report appendix.",
         ),
         (
-            "Decide",
-            "Is the speed/coverage tradeoff safe and useful?",
-            "Selective risk, false acceptance/rejection, deferral recovery, confidence intervals, and net cost.",
+            f'{summary["paper_source_count"]} / {summary["fixture_count"]}',
+            "paper-linked fixtures",
+            "Methodology files pointing to paper-specific text.",
+        ),
+        (
+            f'{splits["train"] + splits["calibration"] + splits["audit"]:,}',
+            "pilot split rows",
+            "Train, calibration, and audit trajectory groups.",
+        ),
+    ]
+    cards = "".join(
+        '<article class="metric">'
+        f'<div class="metric-value">{_escape(value)}</div>'
+        f'<div class="metric-label">{_escape(label)}</div>'
+        f"<p>{_escape(detail)}</p></article>"
+        for value, label, detail in stats
+    )
+    trace_state = (
+        _state(f'{checkpoints["run_count"]} run(s)', "available")
+        if checkpoint_available
+        else _state("no manifests supplied", "partial")
+    )
+    return (
+        f"{cards}"
+        '<div class="appendix-note">'
+        f"<strong>Trace readiness:</strong> run summaries partial · checkpoints {trace_state} · "
+        "eval-grade teacher outputs missing · surrogate routing missing."
+        "</div>"
+    )
+
+
+def _render_slide_pilot_cards(pilot: dict[str, Any]) -> str:
+    chains = pilot.get("comparison_chains")
+    identical = pilot.get("identical_final_sequences")
+    sequence_result = (
+        f"{identical} / {chains}"
+        if isinstance(chains, int) and isinstance(identical, int)
+        else "not available"
+    )
+    results = [
+        (
+            _format_speedup(pilot.get("scoring_speedup")),
+            "parent-scoring speedup",
+            "Feature extraction plus two-output prediction versus the two CPU objectives.",
+        ),
+        (
+            _format_speedup(pilot.get("end_to_end_speedup")),
+            "end-to-end speedup",
+            "Observed across the injected 20-chain full pilot; orchestration limits the gain.",
+        ),
+        (
+            sequence_result,
+            "identical final sequences",
+            "This checks the narrow pilot outcome, not generalization to new objectives or models.",
+        ),
+        (
+            _format_error(pilot.get("max_final_energy_difference")),
+            "maximum final-energy difference",
+            "The joint linear surrogate is effectively exact for these two simple objectives.",
+        ),
+    ]
+    cards = "".join(
+        '<article class="result-card">'
+        f'<strong>{_escape(value)}</strong><span>{_escape(label)}</span><p>{_escape(detail)}</p>'
+        "</article>"
+        for value, label, detail in results
+    )
+    return (
+        '<div class="result-intro"><div><span class="kicker">WHAT THE PILOT ESTABLISHES</span>'
+        "<h3>A joint surrogate can reproduce two base-composition objectives.</h3></div>"
+        "<p>The CUSTOM experiment fits one ordinary least-squares matrix to tissue codon score "
+        "and GC fraction. It is a useful instrumentation proof, but neither objective is an "
+        "expensive GPU parent model and no FusionBundle is registered.</p></div>"
+        f'<div class="result-grid">{cards}</div>'
+    )
+
+
+def _render_slide_pilot_cards_compact(pilot: dict[str, Any]) -> str:
+    chains = pilot.get("comparison_chains")
+    identical = pilot.get("identical_final_sequences")
+    sequence_result = (
+        f"{identical} / {chains}"
+        if isinstance(chains, int) and isinstance(identical, int)
+        else "not available"
+    )
+    results = [
+        (
+            _format_speedup(pilot.get("scoring_speedup")),
+            "parent-scoring speedup",
+            "Feature extraction plus two-output prediction versus the two CPU objectives.",
+        ),
+        (
+            _format_speedup(pilot.get("end_to_end_speedup")),
+            "end-to-end speedup",
+            "Observed across the injected 20-chain full pilot; orchestration limits the gain.",
+        ),
+        (
+            sequence_result,
+            "identical final sequences",
+            "Checks the narrow pilot outcome, not generalization to new objectives or models.",
+        ),
+        (
+            _format_error(pilot.get("max_final_energy_difference")),
+            "maximum final-energy difference",
+            "The joint linear surrogate is effectively exact for these two simple objectives.",
         ),
     ]
     return "".join(
+        '<article class="result-card">'
+        f'<strong>{_escape(value)}</strong><span>{_escape(label)}</span><p>{_escape(detail)}</p>'
+        "</article>"
+        for value, label, detail in results
+    )
+
+
+def _render_slide_surrogate_compact(pilot: dict[str, Any]) -> str:
+    audit = pilot.get("audit", {})
+    support = pilot.get("support", {})
+    challenges = support.get("challenge_accepted", {}) if isinstance(support, dict) else {}
+    if not isinstance(challenges, dict):
+        challenges = {}
+    rejected = sum(not bool(value) for value in challenges.values())
+    challenge_count = len(challenges)
+    return "".join(
+        (
+            _surrogate_metric_card(
+                _format_error(audit.get("tissue_mae")),
+                "tissue-score MAE",
+                "Held-out audit split.",
+            ),
+            _surrogate_metric_card(
+                _format_error(audit.get("gc_percentage_point_mae"), " pp"),
+                "GC MAE",
+                "Percentage-point error on the held-out audit split.",
+            ),
+            _surrogate_metric_card(
+                _format_percent(support.get("audit_coverage")),
+                "audit coverage",
+                "Fraction of in-domain audit samples accepted by the support gate.",
+            ),
+            _surrogate_metric_card(
+                f"{rejected} / {challenge_count}",
+                "negative challenges rejected",
+                "Useful specificity evidence, but the sample is small and hand-crafted.",
+            ),
+        )
+    )
+
+
+def _render_slide_visualization_minimal(visualizations: dict[str, Any]) -> str:
+    candidates = visualizations.get("candidates", [])
+    structures = visualizations.get("structures", [])
+    molecules = visualizations.get("molecules", [])
+    gaps = visualizations.get("gaps", [])
+    if not isinstance(candidates, list) or not candidates:
+        return '<div class="empty">No curated visualization bundle is available.</div>'
+    gap_count = len(gaps) if isinstance(gaps, list) else 0
+    gap_note = (
+        f'<p class="artifact-gaps-inline">{gap_count} documented visualization gap(s) remain.</p>'
+        if gap_count
+        else ""
+    )
+    return (
+        '<div class="artifact-summary">'
+        f'<div><strong>{len(candidates)}</strong><span>sequence artifacts</span></div>'
+        f'<div><strong>{len(structures) if isinstance(structures, list) else 0}</strong>'
+        "<span>structure artifacts</span></div>"
+        f'<div><strong>{len(molecules) if isinstance(molecules, list) else 0}</strong>'
+        f"<span>molecule artifacts</span></div></div>{gap_note}"
+        "<p class=\"viz-note\">Saved design outputs embedded for inspection in the full report.</p>"
+    )
+
+
+def _render_slide_evidence_combined(
+    *,
+    metrics: str,
+    pilot: dict[str, Any],
+    visualizations: dict[str, Any],
+    benchmark_rows: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> str:
+    paper_warning = (
+        '<p class="paper-warning"><strong>Paper parity is not established.</strong> '
+        f'{summary["paper_source_count"]} / {summary["fixture_count"]} methodology fixtures '
+        "point to paper-specific text.</p>"
+    )
+    return (
+        '<div class="evidence-slide">'
+        '<section class="evidence-block evidence-metrics">'
+        '<p class="block-label">Current evidence summary</p>'
+        f'<div class="metrics metrics-compact">{metrics}</div></section>'
+        '<div class="evidence-columns">'
+        '<section class="evidence-block">'
+        '<p class="block-label">What the pilot establishes</p>'
+        f'<div class="result-grid result-grid-compact">{_render_slide_pilot_cards_compact(pilot)}</div>'
+        "</section>"
+        '<section class="evidence-block">'
+        '<p class="block-label">Surrogate performance</p>'
+        f'<div class="surrogate-grid surrogate-grid-compact">{_render_slide_surrogate_compact(pilot)}</div>'
+        "</section></div>"
+        '<div class="evidence-columns">'
+        '<section class="evidence-block evidence-viz">'
+        '<p class="block-label">Curated visualization bundle</p>'
+        f"{_render_slide_visualization_minimal(visualizations)}"
+        "</section>"
+        '<section class="evidence-block evidence-benchmarks">'
+        '<p class="block-label">Full-model benchmark summaries</p>'
+        f'{_render_slide_benchmark_rows(benchmark_rows)}{paper_warning}'
+        "</section></div></div>"
+    )
+
+
+def _render_slide_gaps_compact(
+    gap_definitions: list[tuple[str, str, str, str]],
+) -> str:
+    return "".join(
+        _gap_card(index, title, evidence, measurement, priority)
+        for index, (title, evidence, measurement, priority) in enumerate(
+            gap_definitions, start=1
+        )
+    )
+
+
+def _render_slide_plan_compact(rows: list[tuple[str, str, str]]) -> str:
+    return "".join(
         '<article class="plan-row">'
-        f'<span class="plan-index">{index:02d}</span><div><strong>{_escape(stage)}</strong>'
-        f'<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>'
+        f'<span class="plan-index">{index:02d}</span><div>'
+        f"<strong>{_escape(stage)}</strong>"
+        f"<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>"
         for index, (stage, question, measures) in enumerate(rows, start=1)
     )
+
+
+def _render_slide_next_steps_combined(
+    *,
+    gap_definitions: list[tuple[str, str, str, str]],
+    plan_rows: list[tuple[str, str, str]],
+) -> str:
+    return (
+        '<div class="next-steps-slide">'
+        '<section class="next-steps-block next-steps-gaps">'
+        '<p class="block-label">What blocks the next claim</p>'
+        f'<div class="gap-grid gap-grid-compact">{_render_slide_gaps_compact(gap_definitions)}</div>'
+        "</section>"
+        '<section class="next-steps-block next-steps-plan">'
+        '<p class="block-label">What to measure next</p>'
+        f'<div class="plan plan-compact">{_render_slide_plan_compact(plan_rows)}</div>'
+        "</section></div>"
+    )
+
+
+def render_slides_html(data: dict[str, Any]) -> str:
+    summary = data["summary"]
+    checkpoints = data["checkpoints"]
+    splits = data["splits"]
+    pilot = data["pilot"]
+    benchmarks = data["benchmarks"]
+    metrics = "".join(
+        [
+            _metric(
+                _format_speedup(pilot.get("scoring_speedup")),
+                "pilot scoring speedup",
+                "CPU feature extraction plus two-output regression versus both parent objectives.",
+            ),
+            _metric(
+                _format_speedup(pilot.get("end_to_end_speedup")),
+                "pilot end-to-end speedup",
+                "Full 20-chain injected comparison, including optimizer overhead.",
+            ),
+            _metric(
+                summary["full_model_baselines"],
+                "full-model Modal baselines",
+                "Completed full-path summaries available for the other workloads.",
+            ),
+            _metric(
+                summary["registered_surrogates"],
+                "registered FusionBundles",
+                "The current surrogate remains analysis-only and is not a routed production bundle.",
+            ),
+        ]
+    )
+    benchmark_chunks = _chunk(benchmarks, 4) or [[]]
+    plan_rows = _measurement_plan_rows()
+    gap_definitions = _gap_definitions(summary, checkpoints)
+
+    slides: list[str] = [
+        (
+            '<div class="hero-grid">'
+            f'<div><div class="eyebrow">motivation · evidence · next measurements · audit '
+            f'{_escape(data["audit_date"])}</div>'
+            "<h1>Make expensive design loops faster.<br>"
+            "<span>Keep the full models when risk is high.</span></h1>"
+            "<p class=\"lede\">Proto programs repeatedly call sequence and structure models while "
+            "searching for better biological designs. ProtoFuse asks whether recurring groups of "
+            "objectives can be learned jointly—then used only where a calibrated gate has evidence "
+            "to trust them.</p></div>"
+            '<aside class="verdict"><small>Current conclusion</small>'
+            "<strong>PROMISING / UNPROVEN</strong>"
+            "<p>One narrow CPU surrogate is fast and effectively exact. No learned fusion has yet "
+            "been tested against the expensive GPU parent workloads, paper-matched scores, or "
+            "positive routing holdouts.</p></aside></div>"
+        ),
+        _slide_heading(
+            "01",
+            "Why ProtoFuse",
+            "Joint surrogates reduce repeated parent calls; routing keeps the full models when risk is high.",
+        )
+        + '<div class="why-routing-slide"><div class="motivation-grid"><article class="motivation">'
+        "<b>01 · COST</b><h3>Repeated model calls dominate.</h3>"
+        "<p>An optimizer can score thousands of nearby proposals with the same sequence, structure, "
+        "and binding models. Reusing learned local behavior could reduce time, accelerator use, and credits.</p>"
+        "</article><article class=\"motivation\"><b>02 · JOIN</b>"
+        "<h3>Objectives travel together.</h3>"
+        "<p>The opportunity is to learn recurring groups—not replace one model at a time—so feature work "
+        "and predictions are shared across the same optimization decision.</p></article>"
+        '<article class="motivation"><b>03 · TRUST</b>'
+        "<h3>Deferral is part of the design.</h3>"
+        "<p>Unmatched, uncertain, out-of-distribution, or failed cases must retain the original full-model path. "
+        "Coverage matters only alongside selective risk.</p></article></div>"
+        '<p class="flow-label">Routing concept</p>'
+        '<div class="flow" aria-label="ProtoFuse routing concept"><div><span>Original</span>'
+        "<strong>Proto optimization program</strong></div><div><span>Detect</span>"
+        "<strong>Recurring expensive objective group</strong></div><div><span>Learn</span>"
+        "<strong>Joint calibrated surrogate</strong></div><div><span>Gate</span>"
+        "<strong>Check support + uncertainty</strong></div><div><span>Route</span>"
+        "<strong>Surrogate or full models</strong></div></div></div>",
+        _slide_heading(
+            "02",
+            "Current evidence",
+            "Observed measurements, pilot results, surrogate metrics, curated outputs, and full-model baselines.",
+        )
+        + _render_slide_evidence_combined(
+            metrics=metrics,
+            pilot=pilot,
+            visualizations=data["visualizations"],
+            benchmark_rows=benchmark_chunks[0] if benchmark_chunks else [],
+            summary=summary,
+        ),
+    ]
+
+    for chunk_index, chunk in enumerate(benchmark_chunks[1:], start=2):
+        slides.append(
+            _slide_heading(
+                "02",
+                "Full-model benchmark summaries",
+                f"Workload timing and objective error ({chunk_index} / {len(benchmark_chunks)}).",
+            )
+            + _render_slide_benchmark_rows(chunk)
+            + (
+                '<p class="paper-warning"><strong>Paper parity is not established.</strong> '
+                f'{summary["paper_source_count"]} / {summary["fixture_count"]} methodology fixtures '
+                "point to paper-specific text.</p>"
+                if chunk_index == len(benchmark_chunks)
+                else ""
+            )
+        )
+
+    slides.append(
+        _slide_heading(
+            "03",
+            "Gaps and next measurements",
+            "What blocks the next claim and the claim ladder to close each gap.",
+        )
+        + _render_slide_next_steps_combined(
+            gap_definitions=gap_definitions,
+            plan_rows=plan_rows,
+        )
+    )
+
+    slides.append(
+        _slide_heading(
+            "05",
+            "Evidence appendix summary",
+            "Trace readiness, cohorts, checkpoints, and provenance at a glance.",
+        )
+        + f'<div class="metrics appendix-metrics">{_render_slide_appendix(summary, checkpoints, splits, len(data["sources"]))}</div>'
+    )
+
+    embedded = json.dumps(data, sort_keys=True, separators=(",", ":")).replace("<", "\\u003c")
+    return SLIDES_PAGE_TEMPLATE.replace("__AUDIT_DATE__", _escape(data["audit_date"])).replace(
+        "__SLIDES__", _wrap_slides(slides)
+    ).replace("__EMBEDDED_JSON__", embedded)
+
+
+SLIDES_PAGE_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<meta name="description" content="ProtoFuse evaluation slide deck (16:9 widescreen)">
+<title>ProtoFuse / Evaluation Slides</title>
+<style>
+:root{--ink:#14233d;--blue:#274d7d;--muted:#667184;--paper:#f4f1e9;--card:#fffdf8;--line:#d7d4cb;--orange:#e55d2f;--green:#16806a;--yellow:#9a640c;--red:#b63a32;--soft-orange:#f6ded4;--soft-blue:#e8eef5;--slide-w:1920px;--slide-h:1080px;--slide-px:88px;--slide-py:68px}
+*{box-sizing:border-box}body{margin:0;background:#d8d4cb;color:var(--ink);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.deck{display:flex;flex-direction:column;align-items:center;gap:32px;padding:32px 0 64px}a{color:inherit}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.slide{width:var(--slide-w);height:var(--slide-h);aspect-ratio:16/9;overflow:hidden;background:var(--paper);position:relative;box-shadow:0 8px 32px rgba(20,35,61,.12)}.slide-inner{padding:var(--slide-py) var(--slide-px);height:100%;display:flex;flex-direction:column;gap:20px}
+.slide-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font:700 10px ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
+.eyebrow,.kicker{color:var(--orange);font:800 10px ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;align-items:end;flex:1}.hero-grid h1{margin:16px 0 0;font:700 52px/1.02 Georgia,serif;letter-spacing:-.04em}.hero-grid h1 span{color:var(--orange)}.lede{margin:20px 0 0;color:var(--muted);font-size:18px;line-height:1.65;max-width:920px}
+.verdict{padding:24px;background:var(--ink);color:white;border-radius:11px 11px 11px 2px;box-shadow:10px 10px 0 var(--soft-orange)}.verdict small{color:#aebad0;font:750 9px ui-monospace,monospace;text-transform:uppercase}.verdict strong{display:block;margin:12px 0;color:#ff875d;font:780 24px ui-monospace,monospace}.verdict p{margin:0;color:#ccd5e3;font-size:13px;line-height:1.55}
+.heading{display:flex;align-items:end;justify-content:space-between;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--line)}.heading>div{display:flex;align-items:baseline;gap:12px}.index{color:var(--orange);font:800 10px ui-monospace,monospace}.heading h2{margin:0;font:700 36px Georgia,serif;letter-spacing:-.025em}.heading-note{max-width:520px;margin:0;color:var(--muted);font-size:13px;line-height:1.5;text-align:right}
+.motivation-grid{display:grid;grid-template-columns:repeat(3,1fr);border-left:1px solid var(--line);flex:1}.motivation{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.motivation b{color:var(--orange);font:800 10px ui-monospace,monospace}.motivation h3{margin:18px 0 8px;font:700 22px/1.15 Georgia,serif}.motivation p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line)}.why-routing-slide .motivation{padding:16px 18px}.why-routing-slide .motivation h3{margin:12px 0 6px;font-size:18px}.why-routing-slide .motivation p{font-size:12px;line-height:1.5}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);background:var(--ink);gap:1px;flex:1}.flow div{min-height:120px;padding:16px;background:var(--paper);display:flex;flex-direction:column;gap:8px;justify-content:center;position:relative}.why-routing-slide .flow{flex:.85}.why-routing-slide .flow div{min-height:88px;padding:12px 14px}.flow div:not(:last-child):after{content:"→";position:absolute;right:-10px;z-index:2;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:50%;background:var(--paper);font-size:11px}.flow span{color:var(--orange);font:800 8px ui-monospace,monospace;text-transform:uppercase}.flow strong{font-size:12px;line-height:1.4}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:3px solid var(--ink);flex:1}.appendix-metrics{grid-template-columns:repeat(3,1fr)}.metric{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.metric:nth-child(4n){border-right:0}.appendix-metrics .metric:nth-child(3n){border-right:0}.appendix-metrics .metric:nth-child(4n){border-right:1px solid var(--line)}.metric-value{font:760 30px ui-monospace,monospace;letter-spacing:-.05em}.metric-label{margin-top:12px;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric p{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+.evidence-slide{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}.evidence-slide .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.evidence-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}.evidence-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.evidence-metrics .metrics-compact{border-top-width:1px}.metrics-compact .metric{padding:12px 14px}.metrics-compact .metric-value{font-size:22px}.metrics-compact .metric-label{margin-top:8px;font-size:8px}.metrics-compact .metric p{font-size:10px;line-height:1.4}.result-grid-compact,.surrogate-grid-compact{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);flex:1}.result-grid-compact .result-card,.surrogate-grid-compact .surrogate-metric{padding:12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper)}.result-grid-compact .result-card:nth-child(2n),.surrogate-grid-compact .surrogate-metric:nth-child(2n){border-right:0}.result-grid-compact .result-card:nth-last-child(-n+2),.surrogate-grid-compact .surrogate-metric:nth-last-child(-n+2){border-bottom:0}.result-grid-compact .result-card strong{font-size:20px}.result-grid-compact .result-card span,.surrogate-grid-compact .surrogate-metric span{margin-top:8px;font-size:8px}.result-grid-compact .result-card p,.surrogate-grid-compact .surrogate-metric p{font-size:10px;line-height:1.4}.surrogate-grid-compact .surrogate-metric strong{font-size:14px}.evidence-viz .artifact-summary{border:1px solid var(--line)}.evidence-viz .artifact-summary div{padding:12px}.evidence-viz .artifact-summary strong{font-size:20px}.evidence-viz .viz-note{margin:10px 0 0;color:var(--muted);font-size:10px;line-height:1.45}.evidence-benchmarks .benchmark-table{flex:1;min-height:0}.evidence-benchmarks .benchmark-head{min-height:28px;font-size:8px}.evidence-benchmarks .benchmark-row{min-height:42px;font-size:11px}.evidence-benchmarks .paper-warning{margin-top:10px;padding:10px 12px;font-size:10px;line-height:1.45}
+.result-intro,.surrogate-header{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:end;padding:24px;background:var(--ink);color:white}.result-intro h3,.surrogate-header h3{margin:8px 0 0;font:700 24px/1.2 Georgia,serif}.result-intro p,.surrogate-header p{margin:0;color:#cbd4e3;font-size:12px;line-height:1.6}.result-grid{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid var(--line)}.result-card{padding:20px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.result-card strong{display:block;font:760 26px ui-monospace,monospace}.result-card span,.surrogate-metric span{display:block;margin-top:12px;font:800 9px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}.result-card p,.surrogate-metric p{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.55}
+.model-card,.visualization-card{border:1px solid var(--ink);flex:1;display:flex;flex-direction:column;overflow:hidden}.surrogate-header{background:var(--blue)}.surrogate-header p{text-align:right}.surrogate-grid{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}.surrogate-metric{padding:18px;background:var(--card);border-right:1px solid var(--line)}.surrogate-metric:last-child{border-right:0}.surrogate-metric strong{display:block;font:720 17px/1.3 ui-monospace,monospace;overflow-wrap:anywhere}.metric-note{margin:0;padding:14px 18px;background:var(--soft-blue);color:var(--blue);font-size:11px;line-height:1.55}
+.artifact-intro{display:grid;grid-template-columns:1.1fr 1fr;gap:36px;align-items:end;padding:22px;background:#263b35;color:white}.artifact-intro h3{margin:8px 0 0;font:700 22px Georgia,serif}.artifact-intro p{margin:0;color:#cbd8d2;font-size:12px;line-height:1.55}.artifact-summary{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}.artifact-summary div{padding:16px;background:var(--card);border-right:1px solid var(--line)}.artifact-summary div:last-child{border-right:0}.artifact-summary strong{display:block;font:760 24px ui-monospace,monospace}.artifact-summary span{font:800 8px ui-monospace,monospace;text-transform:uppercase}.artifact-grid{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid var(--line)}.artifact-card{padding:18px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.artifact-head h3{margin:6px 0 0;font:700 18px Georgia,serif}.artifact-meta{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.artifact-meta span{padding:4px 7px;border-radius:999px;background:#ebe7dd;font:750 8px ui-monospace,monospace;text-transform:uppercase}.artifact-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.artifact-gaps-inline{margin:0;padding:12px 16px;background:#fff8e8;color:var(--yellow);font-size:11px;border-top:1px solid var(--line)}
+.paper-warning{margin:0;padding:14px 16px;background:#fff8e8;border:1px solid #e5d4ad;font-size:12px;line-height:1.55}.benchmark-table{border:1px solid var(--line);flex:1;display:flex;flex-direction:column;overflow:hidden}.benchmark-head,.benchmark-row{display:grid;grid-template-columns:1.35fr 1fr .7fr .7fr 1.5fr;align-items:center;gap:12px;padding:0 12px}.benchmark-head{min-height:36px;border-bottom:1px solid var(--line);color:var(--muted);font:800 9px ui-monospace,monospace;text-transform:uppercase;background:var(--card)}.benchmark-row{min-height:56px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);font-size:12px}.benchmark-row:last-child{border-bottom:0}.workload{display:flex;flex-direction:column;gap:4px}.workload strong{font-size:13px}.workload small{color:var(--muted);font:650 9px ui-monospace,monospace;text-transform:uppercase}.good{color:var(--green);font-weight:800}.muted{color:var(--muted)}.empty{padding:28px;background:var(--card);color:var(--muted);text-align:center}
+.gap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1}.gap-card{padding:20px;background:var(--card);border:1px solid var(--line);border-top:3px solid var(--orange)}.gap-meta{display:flex;justify-content:space-between;align-items:center;color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.gap-meta b{padding:4px 7px;border-radius:999px;background:var(--soft-orange);color:var(--red)}.gap-card h3{margin:16px 0 10px;font:700 20px Georgia,serif}.gap-card p{margin:6px 0;color:var(--muted);font-size:11px;line-height:1.55}.gap-card p strong{color:var(--ink)}
+.next-steps-slide{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;flex:1;min-height:0}.next-steps-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.next-steps-block .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.gap-grid-compact{grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.gap-grid-compact .gap-card{padding:10px 12px;border-top-width:2px}.gap-grid-compact .gap-meta{font-size:8px}.gap-grid-compact .gap-card h3{margin:8px 0 6px;font-size:13px;line-height:1.2}.gap-grid-compact .gap-card p{margin:4px 0;font-size:9px;line-height:1.4}.plan-compact{border-left:1px solid var(--line);flex:1;overflow:hidden}.plan-compact .plan-row{grid-template-columns:42px 1fr}.plan-compact .plan-index{font-size:10px}.plan-compact .plan-row>div{padding:10px 12px}.plan-compact .plan-row h3{margin:4px 0 2px;font-size:13px;line-height:1.2}.plan-compact .plan-row p{font-size:9px;line-height:1.4}
+.plan{border-left:1px solid var(--line);flex:1}.plan-row{display:grid;grid-template-columns:64px 1fr;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.plan-index{display:grid;place-items:center;color:var(--orange);background:#ebe7dd;font:800 12px ui-monospace,monospace}.plan-row>div{padding:18px 22px}.plan-row>div>strong{color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.plan-row h3{margin:6px 0 4px;font:700 18px Georgia,serif}.plan-row p{margin:0;color:var(--muted);font-size:11px;line-height:1.55}
+.appendix-note{margin-top:8px;padding:14px 16px;background:var(--soft-blue);color:var(--blue);font-size:12px;line-height:1.55;border:1px solid var(--line)}.state{white-space:nowrap;border-radius:999px;padding:4px 8px;font:800 8px ui-monospace,monospace;text-transform:uppercase}.state.available{color:var(--green);background:#dceee8}.state.partial{color:var(--yellow);background:#f5e7c8}.state.missing{color:var(--red);background:#f4dcd8}
+@media print{@page{size:10in 5.625in;margin:0}html,body{margin:0;padding:0;background:var(--paper);-webkit-print-color-adjust:exact;print-color-adjust:exact}.deck{display:block;gap:0;padding:0}.slide{display:block;width:10in;height:5.625in;max-height:5.625in;aspect-ratio:16/9;box-shadow:none;overflow:hidden;page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid}.slide:last-child{page-break-after:auto;break-after:auto}}
+</style>
+</head>
+<body>
+<div class="deck" aria-label="ProtoFuse evaluation slides · audit __AUDIT_DATE__">
+__SLIDES__
+</div>
+<script type="application/json" id="protofuse-report-data">__EMBEDDED_JSON__</script>
+</body>
+</html>
+"""
 
 
 def render_report(data: dict[str, Any]) -> str:
@@ -1145,6 +1771,108 @@ def _resolve(root: Path, supplied: Path | None, default: str) -> Path:
     return supplied if supplied.is_absolute() else root / supplied
 
 
+def _export_slides_pdf(html_path: Path, pdf_path: Path) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise SystemExit(
+            "PDF export requires playwright. Install with: "
+            "uv sync --extra pdf && playwright install chromium"
+        ) from exc
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+        page.emulate_media(media="print")
+        slide_count = page.locator(".slide").count()
+        if slide_count == 0:
+            browser.close()
+            raise SystemExit("slide deck HTML contains no .slide frames")
+
+        if slide_count == 1:
+            page.pdf(
+                path=str(pdf_path),
+                width="10in",
+                height="5.625in",
+                print_background=True,
+                prefer_css_page_size=True,
+                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+            )
+            browser.close()
+            return
+
+        temp_paths: list[Path] = []
+        try:
+            for index in range(slide_count):
+                page.evaluate(
+                    """(activeIndex) => {
+                        document.querySelectorAll('.slide').forEach((element, idx) => {
+                            element.style.display = idx === activeIndex ? 'block' : 'none';
+                        });
+                        const deck = document.querySelector('.deck');
+                        if (deck) {
+                            deck.style.display = 'block';
+                            deck.style.gap = '0';
+                            deck.style.padding = '0';
+                        }
+                    }""",
+                    index,
+                )
+                temp_path = pdf_path.with_suffix(f".{index:03d}.pdf")
+                page.pdf(
+                    path=str(temp_path),
+                    width="10in",
+                    height="5.625in",
+                    print_background=True,
+                    margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
+                )
+                temp_paths.append(temp_path)
+
+            try:
+                from pypdf import PdfWriter
+            except ImportError as exc:
+                raise SystemExit(
+                    "Merging slide PDFs requires pypdf. Install with: uv sync --extra pdf"
+                ) from exc
+
+            writer = PdfWriter()
+            for temp_path in temp_paths:
+                writer.append(str(temp_path))
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            with pdf_path.open("wb") as handle:
+                writer.write(handle)
+        finally:
+            browser.close()
+            for temp_path in temp_paths:
+                temp_path.unlink(missing_ok=True)
+
+
+def _resolve_slide_outputs(
+    root: Path,
+    output: Path | None,
+    *,
+    write_html: bool,
+    write_pdf: bool,
+) -> tuple[Path | None, Path | None]:
+    default_html = root / "reports" / "protofuse-evaluation-slides.html"
+    default_pdf = root / "reports" / "protofuse-evaluation-slides.pdf"
+    if output is None:
+        return (default_html if write_html else None, default_pdf if write_pdf else None)
+    resolved = output if output.is_absolute() else root / output
+    if write_html and write_pdf:
+        if resolved.suffix.lower() == ".pdf":
+            return default_html, resolved
+        if resolved.suffix.lower() == ".html":
+            return resolved, default_pdf
+        return resolved.with_suffix(".html"), resolved.with_suffix(".pdf")
+    if write_pdf:
+        pdf_path = resolved if resolved.suffix.lower() == ".pdf" else resolved.with_suffix(".pdf")
+        return None, pdf_path
+    html_path = resolved if resolved.suffix.lower() == ".html" else resolved.with_suffix(".html")
+    return html_path, None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build a self-contained ProtoFuse evaluation HTML report."
@@ -1159,11 +1887,25 @@ def main() -> int:
         action="store_true",
         help="fail if the Modal summary or surrogate pilot report is missing",
     )
+    parser.add_argument(
+        "--slides",
+        action="store_true",
+        help="write a 16:9 widescreen slide deck HTML instead of the scroll report",
+    )
+    parser.add_argument(
+        "--pdf",
+        action="store_true",
+        help="write a 16:9 widescreen slide deck PDF (one page per slide)",
+    )
     args = parser.parse_args()
     root = args.repo_root.resolve()
     analysis_dir = _resolve(root, args.analysis_dir, "data/analysis")
     checkpoint_dir = _resolve(root, args.checkpoint_dir, "data/runs/checkpoints")
-    output = _resolve(root, args.output, "reports/protofuse-evaluation.html")
+    output = (
+        args.output
+        if args.slides or args.pdf
+        else _resolve(root, args.output, "reports/protofuse-evaluation.html")
+    )
     required = [
         analysis_dir / "modal_smoke_summary.json",
         analysis_dir / "custom-egfp-lung" / "surrogate_pilot_report.json",
@@ -1177,9 +1919,42 @@ def main() -> int:
         analysis_dir=analysis_dir,
         checkpoint_dir=checkpoint_dir,
     )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_report(data), encoding="utf-8")
-    print(f"wrote {output}")
+    if args.slides or args.pdf:
+        slides_html = render_slides_html(data)
+        html_output, pdf_output = _resolve_slide_outputs(
+            root,
+            output,
+            write_html=args.slides,
+            write_pdf=args.pdf,
+        )
+        temp_html: Path | None = None
+        html_for_pdf: Path | None = None
+        if html_output is not None:
+            html_output.parent.mkdir(parents=True, exist_ok=True)
+            html_output.write_text(slides_html, encoding="utf-8")
+            print(f"wrote {html_output}")
+            html_for_pdf = html_output
+        if pdf_output is not None:
+            pdf_output.parent.mkdir(parents=True, exist_ok=True)
+            if html_for_pdf is None:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    suffix=".html",
+                    encoding="utf-8",
+                    delete=False,
+                ) as temp_file:
+                    temp_file.write(slides_html)
+                    temp_html = Path(temp_file.name)
+                html_for_pdf = temp_html
+            _export_slides_pdf(html_for_pdf, pdf_output)
+            print(f"wrote {pdf_output}")
+            if temp_html is not None:
+                temp_html.unlink(missing_ok=True)
+    else:
+        scroll_output = _resolve(root, args.output, "reports/protofuse-evaluation.html")
+        scroll_output.parent.mkdir(parents=True, exist_ok=True)
+        scroll_output.write_text(render_report(data), encoding="utf-8")
+        print(f"wrote {scroll_output}")
     return 0
 
 
