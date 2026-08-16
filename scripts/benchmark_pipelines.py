@@ -1,11 +1,17 @@
 #!/usr/bin/env -S uv run python
-"""Benchmark all Phillip pipelines locally and on Modal; write a consolidated record."""
+"""Benchmark Phillip pipelines locally and on Modal at the smoke tier.
+
+Smoke is the validation bar for Phillip: one `program.run()` per collection, enough to
+prove bindings execute on GPU. Full-tier and paper-length timings belong to Sai, so the
+minute-scale CPU loops are opt-in via `--full`.
+"""
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -16,14 +22,15 @@ from time import perf_counter
 from typing import Any, Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RECORD_JSON = REPO_ROOT / "workspaces/phillip/PIPELINE_BENCHMARKS.json"
+# One file per invocation, so concurrent sessions never overwrite each other's rows.
+RUNS_DIR = REPO_ROOT / "workspaces/phillip/benchmark_runs"
 RECORD_MD = REPO_ROOT / "workspaces/phillip/PIPELINE_BENCHMARKS.md"
 
 
 def _load_repo_env() -> None:
-    from dotenv import load_dotenv
+    from protofuse.env import load_repo_env
 
-    load_dotenv(REPO_ROOT / ".env")
+    load_repo_env()
 
 RunStatus = Literal["ok", "failed", "skipped"]
 
@@ -48,9 +55,19 @@ class BenchmarkRecord:
     recorded_at: str = ""
     environment: dict[str, str] = field(default_factory=dict)
     runs: list[RunRecord] = field(default_factory=list)
+    run_path: Path | None = None
 
     def add(self, record: RunRecord) -> None:
         self.runs.append(record)
+        # Flush per row: a GPU pipeline can hang for hours, and rows already earned
+        # should survive a kill.
+        self.flush()
+
+    def flush(self) -> None:
+        if self.run_path is None:
+            return
+        self.run_path.parent.mkdir(parents=True, exist_ok=True)
+        self.run_path.write_text(json.dumps(self.to_json(), indent=2) + "\n")
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -210,6 +227,35 @@ def run_design_program(collection_id: str, design_file: str) -> dict[str, Any]:
     return {"design": design_file, "output_lengths": lengths, "num_results": len(joined)}
 
 
+EXEC_RESULT_MARKER = "__BENCH_EXEC_RESULT__ "
+
+
+def run_design_isolated(
+    collection_id: str, design_file: str, timeout: float | None
+) -> dict[str, Any]:
+    """Execute one design in a child process so a stuck GPU call can be killed cleanly.
+
+    `on_demand_modal_tools()` configures a *process-global* dispatch backend. Abandoning a
+    hung call in-process leaves that backend engaged, and every later pipeline then dies on
+    "another dispatch backend is configured", so isolation has to be a process boundary.
+    """
+
+    argv = [sys.executable, str(Path(__file__).resolve()), "--exec-one", collection_id, design_file]
+    try:
+        proc = subprocess.run(
+            argv, cwd=REPO_ROOT, text=True, capture_output=True, timeout=timeout, check=False
+        )
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(f"killed after {timeout:.0f}s with no result") from None
+
+    for line in proc.stdout.splitlines():
+        if line.startswith(EXEC_RESULT_MARKER):
+            return json.loads(line[len(EXEC_RESULT_MARKER) :])
+
+    detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+    raise RuntimeError(detail[-1] if detail else f"child exited {proc.returncode} with no result")
+
+
 def benchmark_cpu_pipelines(record: BenchmarkRecord, *, include_full: bool) -> None:
     import logging
 
@@ -353,6 +399,7 @@ def benchmark_gpu_collection(
     execute_notes: str,
     skip_modal_exec: bool,
     design_file: str = "design_002.py",
+    exec_timeout: float | None = None,
 ) -> None:
     """Preflight, handoff generate, compile, and optional Modal execute for a GPU fixture."""
 
@@ -421,7 +468,7 @@ def benchmark_gpu_collection(
             device="modal",
             kind="execute",
             command=f"build_program().run() via {design_file}",
-            fn=lambda: run_design_program(fixture_id, design_file),
+            fn=lambda: run_design_isolated(fixture_id, design_file, exec_timeout),
             notes=execute_notes,
         )
 
@@ -485,6 +532,7 @@ def benchmark_gpcr_modal_exec(
     design_file: str,
     run_id: str,
     notes: str,
+    exec_timeout: float | None = None,
 ) -> None:
     pipeline = "gpcr-cxcr4-miniprotein"
     timed_run(
@@ -497,9 +545,45 @@ def benchmark_gpcr_modal_exec(
             f"uv run python -c \"import ...; build_program().run()\" "
             f"({design_file})"
         ),
-        fn=lambda: run_design_program(pipeline, design_file),
+        fn=lambda: run_design_isolated(pipeline, design_file, exec_timeout),
         notes=notes,
     )
+
+
+def run_file_path(recorded_at: str) -> Path:
+    """Unique destination for one invocation, so concurrent runs cannot collide."""
+
+    stamp = recorded_at.replace(":", "").replace("-", "").split(".")[0]
+    return RUNS_DIR / f"run-{stamp}-{os.getpid()}.json"
+
+
+def load_rollup() -> dict[str, Any]:
+    """Merge every per-run file, keeping the newest result per (pipeline, run_id, device)."""
+
+    files = sorted(RUNS_DIR.glob("run-*.json")) if RUNS_DIR.is_dir() else []
+    if not files:
+        raise ValueError(f"no benchmark runs found under {RUNS_DIR}")
+
+    merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+    latest: dict[str, Any] = {}
+    for path in files:
+        payload = json.loads(path.read_text())
+        if payload.get("recorded_at", "") >= latest.get("recorded_at", ""):
+            latest = payload
+        for run in payload["runs"]:
+            key = (run["pipeline"], run["run_id"], run["device"])
+            previous = merged.get(key)
+            if previous is None or payload["recorded_at"] >= previous["_recorded_at"]:
+                merged[key] = {**run, "_recorded_at": payload["recorded_at"]}
+
+    runs = sorted(merged.values(), key=lambda item: (item["pipeline"], item["run_id"]))
+    return {
+        "schema_version": "1.1",
+        "recorded_at": latest.get("recorded_at", ""),
+        "environment": latest.get("environment", {}),
+        "run_files": [path.name for path in files],
+        "runs": runs,
+    }
 
 
 def render_markdown(data: dict[str, Any]) -> str:
@@ -514,11 +598,19 @@ def render_markdown(data: dict[str, Any]) -> str:
         "Re-run:",
         "",
         "```bash",
-        "uv run python scripts/benchmark_pipelines.py",
+        "uv run python scripts/benchmark_pipelines.py --write-markdown",
         "uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU only",
+        "uv run python scripts/benchmark_pipelines.py --rollup-only --write-markdown",
         "```",
         "",
-        "Machine-readable record: [`PIPELINE_BENCHMARKS.json`](PIPELINE_BENCHMARKS.json).",
+        "Scope: **smoke tier only** — one `program.run()` per collection, enough to prove",
+        "bindings execute on GPU. Full-tier and paper-length timings are Sai's; absent",
+        "full-tier rows are expected, not a gap (`--full` opts in).",
+        "",
+        "Rows are merged from per-invocation files in `benchmark_runs/` (newest wins per",
+        f"pipeline/run/device), so concurrent sessions do not overwrite each other. "
+        f"This summary merges {len(data.get('run_files', []))} run file(s); raw runs are"
+        " gitignored.",
         "",
         "This file is a timestamped run record, not a current feature matrix. A `skipped` "
         "row records only what this benchmark invocation omitted.",
@@ -600,9 +692,14 @@ def main() -> int:
     _load_repo_env()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--full",
+        action="store_true",
+        help="also run minute-scale full-tier CPU loops (Sai's scope; off by default)",
+    )
+    parser.add_argument(
         "--skip-full",
         action="store_true",
-        help="skip minute-scale full-tier CPU runs",
+        help="accepted for compatibility; full tiers are already off by default",
     )
     parser.add_argument(
         "--skip-modal-exec",
@@ -614,19 +711,65 @@ def main() -> int:
         default="design_002.py",
         help="GPCR collection program to execute on Modal (default: smoke tier)",
     )
+    parser.add_argument(
+        "--exec-timeout",
+        type=float,
+        default=900.0,
+        help=(
+            "seconds to wait for one Modal execute before recording a timeout and moving on "
+            "(0 disables; smoke runs should never need hours)"
+        ),
+    )
+    parser.add_argument(
+        "--write-markdown",
+        action="store_true",
+        help="regenerate PIPELINE_BENCHMARKS.md from all per-run files",
+    )
+    parser.add_argument(
+        "--rollup-only",
+        action="store_true",
+        help="rebuild the rollup from existing per-run files without benchmarking",
+    )
+    parser.add_argument(
+        "--exec-one",
+        nargs=2,
+        metavar=("COLLECTION_ID", "DESIGN_FILE"),
+        help="internal: execute one design in this process and print its result",
+    )
     args = parser.parse_args()
 
+    if args.exec_one:
+        collection_id, design_file = args.exec_one
+        result = run_design_program(collection_id, design_file)
+        print(EXEC_RESULT_MARKER + json.dumps(result))
+        return 0
+
+    if args.rollup_only:
+        rollup = load_rollup()
+        if args.write_markdown:
+            RECORD_MD.write_text(render_markdown(rollup))
+            print(f"wrote {RECORD_MD.relative_to(REPO_ROOT)}")
+        else:
+            print(
+                f"merged {len(rollup['runs'])} rows from "
+                f"{len(rollup['run_files'])} run file(s); pass --write-markdown to render"
+            )
+        return 0
+
+    recorded_at = datetime.now(tz=UTC).isoformat()
     record = BenchmarkRecord(
-        recorded_at=datetime.now(tz=UTC).isoformat(),
+        recorded_at=recorded_at,
         environment={
             "host": platform.node(),
             "platform": platform.platform(),
             "proto_version": git_head(),
             "modal_profile": modal_profile() or "",
         },
+        run_path=run_file_path(recorded_at),
     )
+    exec_timeout = args.exec_timeout or None
 
-    benchmark_cpu_pipelines(record, include_full=not args.skip_full)
+    benchmark_cpu_pipelines(record, include_full=args.full)
     benchmark_gpu_collection(
         record,
         fixture_id="esm2-protein-maturation",
@@ -635,6 +778,7 @@ def main() -> int:
         preflight_notes="80 aa smoke segment; build-only L0",
         execute_notes="ESM-2 + ESMFold on Modal (smoke: 80 aa, 50 MCMC steps)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -644,6 +788,7 @@ def main() -> int:
         preflight_notes="121 aa nanobody framework; build-only L0",
         execute_notes="ESM-2 + AbLang + ESMFold on Modal (smoke: CDR1, 30 steps)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -653,6 +798,7 @@ def main() -> int:
         preflight_notes="50 aa smoke binder; build-only L0",
         execute_notes="FreeBindCraft + AF2 validation on Modal (smoke: 5 samples)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -662,6 +808,7 @@ def main() -> int:
         preflight_notes="60 aa C3 monomer smoke; build-only L0",
         execute_notes="Symmetry + ESMFold composite on Modal (smoke: pool=100)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -671,6 +818,7 @@ def main() -> int:
         preflight_notes="65 aa binder seed; build-only L0",
         execute_notes="Dual target/off-target scoring on Modal (smoke: 20 MCMC steps)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -680,6 +828,7 @@ def main() -> int:
         preflight_notes="50 aa smoke binder; build-only L0",
         execute_notes="RFdiffusion3 bootstrap + Boltz-2 cycling on Modal (smoke: 2 cycles)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -689,6 +838,7 @@ def main() -> int:
         preflight_notes="3HTB holo enzyme; build-only L0",
         execute_notes="LigandMPNN active-site MCMC on Modal (smoke: 20 steps)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpu_collection(
         record,
@@ -698,6 +848,7 @@ def main() -> int:
         preflight_notes="80 aa lysozyme smoke segment; build-only L0",
         execute_notes="BioEmu ensemble RMSD + ESM-2 on Modal (smoke: 20 steps, 2 samples)",
         skip_modal_exec=args.skip_modal_exec,
+        exec_timeout=exec_timeout,
     )
     benchmark_gpcr_handoff(record)
     if args.skip_modal_exec:
@@ -716,13 +867,16 @@ def main() -> int:
             design_file=args.gpcr_design,
             run_id="execute_smoke" if args.gpcr_design == "design_002.py" else "execute_full",
             notes="RFdiffusion3 + ProteinMPNN + Boltz-2 on Modal",
+            exec_timeout=exec_timeout,
         )
 
-    data = record.to_json()
-    RECORD_JSON.write_text(json.dumps(data, indent=2) + "\n")
-    RECORD_MD.write_text(render_markdown(data))
-    print(f"\nwrote {RECORD_JSON.relative_to(REPO_ROOT)}")
-    print(f"wrote {RECORD_MD.relative_to(REPO_ROOT)}")
+    record.flush()
+    print(f"\nwrote {record.run_path.relative_to(REPO_ROOT)}")
+    if args.write_markdown:
+        RECORD_MD.write_text(render_markdown(load_rollup()))
+        print(f"wrote {RECORD_MD.relative_to(REPO_ROOT)}")
+    else:
+        print("markdown not regenerated; pass --write-markdown to refresh the rollup")
     failed = sum(1 for item in record.runs if item.status == "failed")
     return 1 if failed else 0
 

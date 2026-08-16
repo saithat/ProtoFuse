@@ -25,6 +25,11 @@ dev = [
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
 ]
+notebook = [
+  "marimo>=0.23,<1",
+  "pandas>=2.2,<3",
+  "altair>=5.5,<6",
+]
 
 [project.scripts]
 protofuse = "protofuse.cli:main"
@@ -57,3 +62,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["protofuse"]
+
+[tool.marimo.display]
+theme = "dark"
+default_width = "full"
+cell_output = "above"

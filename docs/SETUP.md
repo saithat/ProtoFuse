@@ -30,7 +30,9 @@ Each teammate completes account authentication locally:
    sign-in cannot be completed by an unattended project install. Alternatively, use
    Paperclip's hosted MCP server. For non-interactive scripts, put a dashboard-created
    `PAPERCLIP_API_KEY` in `.env`.
-4. Run `uv run modal setup` only when a selected Proto component needs Modal compute.
+4. For Modal GPU tools, either run `uv run modal setup` **or** put service-user tokens in `.env`:
+   `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, and `MODAL_ENVIRONMENT=main` (see `.env.example`).
+   Add a payment method at [modal.com/settings/billing](https://modal.com/settings/billing) before deploying H100 apps.
 5. Add `HF_TOKEN` only when a selected model requires it.
 
 Never paste credentials into source files, commits, issues, or experiment artifacts.
@@ -155,3 +157,20 @@ acceptable.
 After human review explicitly changes the manifest status, `protofuse.optimize()` lazily
 discovers hash-valid bundles under `data/models/`. Set `PROTOFUSE_BUNDLE_DIR` to use a
 different artifact root. No model artifact in the repository is currently reviewed.
+
+## Hackathon progress notebook
+
+Read-only GXL demo dashboard built from collection manifests, benchmark JSON, and git history:
+
+```bash
+uv sync --extra notebook
+uv run marimo run notebooks/hackathon_progress.py    # app view — no code cells
+# or
+uv run marimo edit notebooks/hackathon_progress.py   # editor with visible code
+```
+
+Export static HTML for judges:
+
+```bash
+uv run marimo export html notebooks/hackathon_progress.py -o notebooks/hackathon_progress.html
+```

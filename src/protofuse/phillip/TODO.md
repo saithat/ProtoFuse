@@ -51,6 +51,9 @@ The reviewed corpus now includes both DNA handoffs and ten protein workflows, in
 BioEmu ensemble filtering. See
 [`docs/PROTEIN_WORKFLOW_SCAFFOLD.md`](../../../docs/PROTEIN_WORKFLOW_SCAFFOLD.md).
 
+- [x] Generate, finalize, commit, and hand off **`boltz2-state-sweep`**
+      (`proto_programs/generated/boltz2-state-sweep/`; collection ID on `main`).
+
 The next handoff work is not more builder plumbing. It is human paper-encoding review for
 the three `reviewed=false` joint-objective collections named above, followed by normal
 finalization if accepted. Unbuilt ideas such as `tm-switch-multistate` remain in
@@ -69,6 +72,6 @@ Internal only — not the Sai handoff:
 
 - `workspaces/phillip/fixtures/<fixture-id>/methodology.json`
 - `data/analysis/<collection_id>/` (ignored local Sai node profiles)
-- `workspaces/phillip/PIPELINE_BENCHMARKS.json` (orchestrator wall times, all pipelines)
+- `workspaces/phillip/benchmark_runs/` (raw per-invocation wall times; rollup markdown is tracked)
 
 Builder library: `program_builders.py`, `dnachisel_constraints.py`, `region_solver.py`.

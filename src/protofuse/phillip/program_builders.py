@@ -1059,6 +1059,7 @@ def build_antibody_cdr_maturation_program(
         ),
         Constraint(
             inputs=[antibody, reference],
+            input_labels=["Query Sequence", "Reference Sequence"],
             function=gap_gini_constraint,
             function_config={
                 "max_gap_gini": float(params["max_gap_gini"]),

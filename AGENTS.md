@@ -11,6 +11,10 @@
   cases retain or invoke the original full-model path.
 - Keep raw papers, runs, teacher traces, calibration data, weights, credentials, and
   model caches out of Git.
+- Phillip validates on Modal at the **smoke tier only**: one `program.run()` per collection,
+  enough to prove the bindings execute on GPU. Sai owns full-scale and paper-length runs.
+- Do not collect, wait on, or report full-tier wall times. Benchmark defaults to smoke;
+  pass `--full` only when a human asks for full-tier numbers.
 - Before pushing to `main`, run `uv run ruff check .`, `uv run mypy src/protofuse`, and
   `uv run pytest`.
 

@@ -6,7 +6,7 @@
   "paper_source_path": "docs/CANDIDATE_WORKFLOWS.md",
   "topology": "multiobjective_search",
   "compile_device": "modal",
-  "total_elapsed_s": 0.043,
+  "total_elapsed_s": 0.023,
   "stages": [
     {
       "stage": "methodology_fixture",
@@ -22,7 +22,7 @@
     },
     {
       "stage": "finalize_collection",
-      "elapsed_s": 0.043
+      "elapsed_s": 0.023
     }
   ],
   "handoff_path": "proto_programs/generated/ppi-interface-specificity"

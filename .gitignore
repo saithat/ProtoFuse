@@ -26,6 +26,11 @@ data/models/*
 !data/visualizations/
 !data/visualizations/**
 
+# Raw benchmark invocations are run outputs; only the merged rollup markdown is tracked.
+workspaces/phillip/benchmark_runs/*
+!workspaces/phillip/benchmark_runs/.gitkeep
+workspaces/phillip/PIPELINE_BENCHMARKS.json
+
 # Proto model/tool caches belong outside Git.
 .proto/
 

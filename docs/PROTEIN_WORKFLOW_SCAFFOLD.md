@@ -55,7 +55,8 @@ Contract: [`docs/PROGRAM_COLLECTION.md`](PROGRAM_COLLECTION.md),
 
 | Storage | Writer | Committed? |
 | --- | --- | --- |
-| [`PIPELINE_BENCHMARKS.json`](../workspaces/phillip/PIPELINE_BENCHMARKS.json) | `scripts/benchmark_pipelines.py` | Yes — orchestrator wall times |
+| [`PIPELINE_BENCHMARKS.md`](../workspaces/phillip/PIPELINE_BENCHMARKS.md) | `scripts/benchmark_pipelines.py --write-markdown` | Yes — merged rollup of wall times |
+| `workspaces/phillip/benchmark_runs/run-*.json` | `scripts/benchmark_pipelines.py` | No — gitignored raw invocations |
 | `workspaces/phillip/TIMING_<id>.json` | `run_handoff_pipeline.py` | Optional — generation timing |
 | `data/analysis/<collection_id>/` | Sai CLI tracing/profiling | No — gitignored traces and profiles |
 | `data/models/` | Sai CLI training | No — gitignored surrogate artifacts |
@@ -64,9 +65,17 @@ After adding a workflow, extend `benchmark_pipelines.py` with preflight, handoff
 and Modal `execute_smoke` runs, then:
 
 ```bash
-uv run python scripts/benchmark_pipelines.py --skip-full
-uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU + handoff only
+uv run python scripts/benchmark_pipelines.py                      # smoke tier (default)
+uv run python scripts/benchmark_pipelines.py --skip-modal-exec    # CPU + handoff only
+uv run python scripts/benchmark_pipelines.py --write-markdown     # refresh the tracked rollup
 ```
+
+Phillip's bar is the **smoke tier**: one Modal `program.run()` per collection, proving the
+bindings execute on GPU. Full-tier and paper-length timings belong to Sai — `--full` opts
+into the minute-scale CPU loops and is not needed to validate a workflow.
+
+Each invocation writes its own `benchmark_runs/run-*.json`; the rollup merges them and keeps
+the newest result per pipeline/run/device, so partial runs never erase earlier timings.
 
 ## Per-workflow checklist
 

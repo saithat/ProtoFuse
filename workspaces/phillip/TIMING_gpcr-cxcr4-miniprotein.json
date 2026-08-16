@@ -6,11 +6,11 @@
   "paper_source_path": "data/papers/gpcr-miniprotein.txt",
   "topology": "multiobjective_search",
   "compile_device": "modal",
-  "total_elapsed_s": 0.035,
+  "total_elapsed_s": 0.026,
   "stages": [
     {
       "stage": "paper_ingest (paperclip:10.1038/s41586-026-10656-8)",
-      "elapsed_s": 18.424
+      "elapsed_s": 11.388
     },
     {
       "stage": "methodology_fixture",
@@ -22,11 +22,11 @@
     },
     {
       "stage": "generate_program_sources",
-      "elapsed_s": 0.002
+      "elapsed_s": 0.001
     },
     {
       "stage": "finalize_collection",
-      "elapsed_s": 0.035
+      "elapsed_s": 0.026
     }
   ],
   "handoff_path": "proto_programs/generated/gpcr-cxcr4-miniprotein",

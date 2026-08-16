@@ -5,9 +5,12 @@ programs automatically use them when compatible and safe.
 
 ## Pipeline timings
 
-Orchestrator wall times (local execute + Modal compile/execute attempts):
 [`workspaces/phillip/PIPELINE_BENCHMARKS.md`](../../../workspaces/phillip/PIPELINE_BENCHMARKS.md)
-· JSON: [`PIPELINE_BENCHMARKS.json`](../../../workspaces/phillip/PIPELINE_BENCHMARKS.json).
+· raw per-invocation JSON stays local under `workspaces/phillip/benchmark_runs/` (gitignored).
+
+Phillip publishes **smoke-tier** wall times only — proof that bindings execute on Modal, not
+performance data. Full-scale and paper-length timings are Sai's to produce; treat any full
+numbers in the table below as stale spot checks, not a baseline.
 
 Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored).
 

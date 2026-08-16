@@ -18,7 +18,7 @@
     },
     {
       "stage": "generate_program_sources",
-      "elapsed_s": 0.0
+      "elapsed_s": 0.001
     },
     {
       "stage": "finalize_collection",

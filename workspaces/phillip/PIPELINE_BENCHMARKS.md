@@ -1,8 +1,8 @@
 # Pipeline benchmarks (all Phillip workloads)
 
-**Recorded:** 2026-08-16T00:26:14.514729+00:00
-**Proto commit:** `cb00a5e16e1edda30d12e95139743495535675d5`
-**Host:** mac
+**Recorded:** 2026-08-16T05:42:13.145789+00:00
+**Proto commit:** `041a70d06fd2d7b6eddb1059c2971eb0ec805603`
+**Host:** PhilipThomasMac.local
 **Modal profile:** configured
 
 This is a timestamped run record, not the current feature matrix. A `skipped` row records
@@ -12,11 +12,17 @@ supports `custom-egfp-lung` preflight even though this snapshot did not record i
 Re-run:
 
 ```bash
-uv run python scripts/benchmark_pipelines.py
+uv run python scripts/benchmark_pipelines.py --write-markdown
 uv run python scripts/benchmark_pipelines.py --skip-modal-exec   # CPU only
+uv run python scripts/benchmark_pipelines.py --rollup-only --write-markdown
 ```
 
-Machine-readable record: [`PIPELINE_BENCHMARKS.json`](PIPELINE_BENCHMARKS.json).
+Scope: **smoke tier only** — one `program.run()` per collection, enough to prove
+bindings execute on GPU. Full-tier and paper-length timings are Sai's; absent
+full-tier rows are expected, not a gap (`--full` opts in).
+
+Rows are merged from per-invocation files in `benchmark_runs/` (newest wins per
+pipeline/run/device), so concurrent sessions do not overwrite each other. This summary merges 1 run file(s); raw runs are gitignored.
 
 Per-pipeline handoff timing notes:
 
@@ -49,26 +55,41 @@ Per-pipeline handoff timing notes:
 | `antibody-cdr-maturation` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
 | `antibody-cdr-maturation` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `antibody-cdr-maturation` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `antibody-cdr-maturation` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `freebindcraft-binder` | `preflight_smoke` | local | ok | 0.8 s | 50 aa smoke binder; build-only L0 |
-| `freebindcraft-binder` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `antibody-cdr-maturation` | `execute_smoke` | modal | failed | 1.3 s | ESM-2 + AbLang + ESMFold on Modal (smoke: CDR1, 30 steps) — TypeError: Constraint.__init__() got an unexpected keyword argument 'input_labels' |
+| `bioemu-ensemble-filter` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `bioemu-ensemble-filter` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `bioemu-ensemble-filter` | `execute_smoke` | modal | failed | 600.0 s | BioEmu ensemble RMSD + ESM-2 on Modal (smoke: 20 steps, 2 samples) — killed after 600s with no result |
+| `bioemu-ensemble-filter` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `bioemu-ensemble-filter` | `preflight_smoke` | local | ok | 0.1 s | 80 aa lysozyme smoke segment; build-only L0 |
 | `freebindcraft-binder` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
 | `freebindcraft-binder` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `freebindcraft-binder` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `symmetric-oligomer-ring` | `preflight_smoke` | local | ok | 0.0 s | 60 aa C3 monomer smoke; build-only L0 |
-| `symmetric-oligomer-ring` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
-| `symmetric-oligomer-ring` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `symmetric-oligomer-ring` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `symmetric-oligomer-ring` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `ppi-interface-specificity` | `preflight_smoke` | local | ok | 1.4 s | 65 aa binder seed; build-only L0 |
-| `ppi-interface-specificity` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
-| `ppi-interface-specificity` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `ppi-interface-specificity` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
-| `ppi-interface-specificity` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
-| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 19.8 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
+| `freebindcraft-binder` | `execute_smoke` | modal | failed | 600.0 s | FreeBindCraft + AF2 validation on Modal (smoke: 5 samples) — killed after 600s with no result |
+| `freebindcraft-binder` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `freebindcraft-binder` | `preflight_smoke` | local | ok | 0.3 s | 50 aa smoke binder; build-only L0 |
 | `gpcr-cxcr4-miniprotein` | `compile_local` | local | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
 | `gpcr-cxcr4-miniprotein` | `compile_modal` | modal | ok | 0.0 s | Full tier requires Modal GPU tools at program.run() time |
-| `gpcr-cxcr4-miniprotein` | `execute_smoke` | modal | skipped | — | --skip-modal-exec |
+| `gpcr-cxcr4-miniprotein` | `execute_smoke` | modal | failed | 25.7 s | RFdiffusion3 + ProteinMPNN + Boltz-2 on Modal — IndexError: list index out of range |
+| `gpcr-cxcr4-miniprotein` | `handoff_pipeline` | local | ok | 12.8 s | Paper ingest → compile (device=modal on plan) → generate → finalize |
+| `ligandmpnn-enzyme-redesign` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ligandmpnn-enzyme-redesign` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ligandmpnn-enzyme-redesign` | `execute_smoke` | modal | ok | 317.5 s | LigandMPNN active-site MCMC on Modal (smoke: 20 steps) |
+| `ligandmpnn-enzyme-redesign` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `ligandmpnn-enzyme-redesign` | `preflight_smoke` | local | ok | 0.1 s | 3HTB holo enzyme; build-only L0 |
+| `ppi-interface-specificity` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ppi-interface-specificity` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `ppi-interface-specificity` | `execute_smoke` | modal | failed | 12.3 s | Dual target/off-target scoring on Modal (smoke: 20 MCMC steps) —   See notes/storage.md for PROTO_MODEL_CACHE / PROTO_HOME rules. |
+| `ppi-interface-specificity` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `ppi-interface-specificity` | `preflight_smoke` | local | ok | 0.2 s | 65 aa binder seed; build-only L0 |
+| `rfdiffusion3-boltz2-binder` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `rfdiffusion3-boltz2-binder` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `rfdiffusion3-boltz2-binder` | `execute_smoke` | modal | failed | 47.9 s | RFdiffusion3 bootstrap + Boltz-2 cycling on Modal (smoke: 2 cycles) — IndexError: list index out of range |
+| `rfdiffusion3-boltz2-binder` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `rfdiffusion3-boltz2-binder` | `preflight_smoke` | local | ok | 0.1 s | 50 aa smoke binder; build-only L0 |
+| `symmetric-oligomer-ring` | `compile_local` | local | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `symmetric-oligomer-ring` | `compile_modal` | modal | ok | 0.0 s | GPU constraints require Modal at program.run() time |
+| `symmetric-oligomer-ring` | `execute_smoke` | modal | failed | 28.7 s | Symmetry + ESMFold composite on Modal (smoke: pool=100) — ValueError: structure-radius-gyration requires structure_tool='alphafold2_binder'. |
+| `symmetric-oligomer-ring` | `handoff_pipeline` | local | ok | 0.0 s | compile → generate → finalize via run_handoff_pipeline |
+| `symmetric-oligomer-ring` | `preflight_smoke` | local | ok | 0.0 s | 60 aa C3 monomer smoke; build-only L0 |
 
 ## Primary programs for Sai
 
