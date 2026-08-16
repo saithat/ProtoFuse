@@ -84,7 +84,7 @@
       "parameters": {"num_samples": 10, "num_results": 1},
       "evidence": [
         {
-          "quote": "26,000 designs generated with scaffold-guided RFdiffusion were screened using the biofloating approach.",
+          "quote": "25,714 designs generated with scaffold-guided RFdiffusion ... were screened using the biofloating approach.",
           "section": "Results",
           "page": null
         }
@@ -240,7 +240,7 @@
     "RFdiffusion3 + ProteinMPNN via rfdiffusion-mpnn-binder substitutes the paper's RFdiffusion v1.0 + partial diffusion loop.",
     "Boltz-2 structure-iptm and binding-strength constraints proxy AF2 initial-guess pAE/pLDDT and Rosetta ddG filters.",
     "CXCR4 chain A from PDB 4RWS represents the truncated epitope used for binder design.",
-    "Rejection sampling with num_samples=10 (full) / 2 (smoke) stands in for library-scale screening of 26,000 designs."
+    "Rejection sampling with num_samples=10 (full) / 2 (smoke) stands in for library-scale screening of 25,714 designs."
   ],
   "unknowns": [
     "MetaGen metaproteome scaffold library and Rosetta RifDock are not in Proto inventory.",
