@@ -114,6 +114,31 @@ PPI_INTERFACE_REGISTRY: dict[str, str] = {
     "interface contact loss": "proto_language.constraint.structure_interface_contact_constraint",
 }
 
+RFDIFFUSION3_BOLTZ2_REGISTRY: dict[str, str] = {
+    **GPCR_CXCR4_REGISTRY,
+    "ProteinMPNN inverse folding": "proto_language.generator.ProteinMPNNGenerator",
+    "ESM-2 naturalness": "proto_language.constraint.esm2_perplexity_constraint",
+    "protein globularity": "proto_language.constraint.protein_globularity_constraint",
+    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "cycling design refinement": "proto_language.optimizer.CyclingOptimizer",
+}
+
+LIGANDMPNN_ENZYME_REGISTRY: dict[str, str] = {
+    **PROTEIN_SHARED_REGISTRY,
+    "LigandMPNN active-site mutation": "proto_language.generator.MPNNMutationGenerator",
+    "MPNN sequence probability": "proto_language.constraint.mpnn_sequence_probability_constraint",
+    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+}
+
+BIOEMU_ENSEMBLE_REGISTRY: dict[str, str] = {
+    **PROTEIN_SHARED_REGISTRY,
+    "ESM-2 masked mutation": "proto_language.generator.ESM2Generator",
+    "structure ensemble RMSD": "proto_language.constraint.structure_ensemble_rmsd_constraint",
+    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+}
+
 FREEBINDCRAFT_REGISTRY: dict[str, str] = {
     "FreeBindCraft binder design": "proto_language.generator.FreeBindCraftGenerator",
     "structure ipTM filter": "proto_language.constraint.structure_iptm_constraint",
@@ -136,6 +161,9 @@ REGISTRY_BY_NAME: dict[str, dict[str, str]] = {
     "antibody-cdr-maturation": ANTIBODY_CDR_MATURATION_REGISTRY,
     "symmetric-oligomer-ring": SYMMETRIC_OLIGOMER_RING_REGISTRY,
     "ppi-interface-specificity": PPI_INTERFACE_REGISTRY,
+    "rfdiffusion3-boltz2-binder": RFDIFFUSION3_BOLTZ2_REGISTRY,
+    "ligandmpnn-enzyme-redesign": LIGANDMPNN_ENZYME_REGISTRY,
+    "bioemu-ensemble-filter": BIOEMU_ENSEMBLE_REGISTRY,
 }
 
 WorkloadTier = Literal["smoke", "full"]
@@ -391,6 +419,83 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                     "(30 steps, CDR1 only)."
                 ),
                 builder_call="build_antibody_cdr_maturation_program(params, region_pass=0)",
+            ),
+        ),
+    ),
+    "rfdiffusion3_boltz2_binder": WorkloadProfile(
+        workload_key="rfdiffusion3_boltz2_binder",
+        fixture_id="rfdiffusion3-boltz2-binder",
+        registry_name="rfdiffusion3-boltz2-binder",
+        builder_symbol="build_rfdiffusion3_boltz2_binder_program",
+        required_global_parameters=("workload", "target_pdb", "binder_length_aa", "num_steps"),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier RFdiffusion3+Boltz-2 cycling binder (70 aa, 10 cycles).\n\n"
+                    "Bootstrap via RFdiffusion3+MPNN, then ProteinMPNN redesign conditioned on\n"
+                    "Boltz-2 folds against CXCR4 chain A (PDB 4RWS)."
+                ),
+                builder_call="build_rfdiffusion3_boltz2_binder_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring="Smoke-tier RFdiffusion3+Boltz-2 cycling binder (50 aa, 2 cycles).",
+                builder_call="build_rfdiffusion3_boltz2_binder_program(params)",
+            ),
+        ),
+    ),
+    "ligandmpnn_enzyme_redesign": WorkloadProfile(
+        workload_key="ligandmpnn_enzyme_redesign",
+        fixture_id="ligandmpnn-enzyme-redesign",
+        registry_name="ligandmpnn-enzyme-redesign",
+        builder_symbol="build_ligandmpnn_enzyme_redesign_program",
+        required_global_parameters=("workload", "enzyme_pdb", "enzyme_chain", "active_site_positions"),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier LigandMPNN enzyme active-site MCMC (3HTB, 100 steps).\n\n"
+                    "Mutates ligand-aware active-site ordinals on a fixed holo backbone with\n"
+                    "LigandMPNN probability and ESMFold pLDDT gates."
+                ),
+                builder_call="build_ligandmpnn_enzyme_redesign_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring="Smoke-tier LigandMPNN enzyme redesign (20 MCMC steps).",
+                builder_call="build_ligandmpnn_enzyme_redesign_program(params)",
+            ),
+        ),
+    ),
+    "bioemu_ensemble_filter": WorkloadProfile(
+        workload_key="bioemu_ensemble_filter",
+        fixture_id="bioemu-ensemble-filter",
+        registry_name="bioemu-ensemble-filter",
+        builder_symbol="build_bioemu_ensemble_filter_program",
+        required_global_parameters=("workload", "segment_length_aa", "target_pdb"),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier BioEmu ensemble filter (129 aa lysozyme, 100 MCMC steps).\n\n"
+                    "ESM-2 proposals filtered by BioEmu ensemble RMSD vs lysozyme PDB 2LYZ\n"
+                    "and ESMFold developability."
+                ),
+                builder_call="build_bioemu_ensemble_filter_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier BioEmu ensemble filter (80 aa truncated lysozyme, 20 steps, 2 BioEmu samples)."
+                ),
+                builder_call="build_bioemu_ensemble_filter_program(params)",
             ),
         ),
     ),

@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "BioEmu conformational ensemble filtering",
+    "identifier": "bioemu-ensemble-filter-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "ESM-2 masked mutation",
+      "description": "Propose sequence variants for ensemble filtering.",
+      "parameters": {"temperature": 1.0},
+      "evidence": [
+        {
+          "quote": "Sample conformational ensembles and select sequences that populate desired structural states.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "structure ensemble RMSD",
+      "description": "BioEmu ensemble must remain close to an experimental target structure.",
+      "parameters": {"target_pdb": "2LYZ", "target_chain_id": "A", "num_samples": 8},
+      "evidence": [],
+      "metric": "ensemble_rmsd",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "structure pLDDT filter",
+      "description": "Require ESMFold confidence on accepted variants.",
+      "parameters": {"structure_tool": "esmfold", "min_plddt": 70.0},
+      "evidence": [],
+      "metric": "mean_plddt",
+      "direction": "maximize",
+      "weight": 0.5
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep sequence length fixed to the benchmark segment.",
+      "parameters": {},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "MCMC refinement",
+      "description": "Iteratively mutate and filter sequences by BioEmu ensemble similarity to a target fold.",
+      "parameters": {"num_steps": 100, "num_results": 1},
+      "evidence": [
+        {
+          "quote": "Topology: cycling — sample ensemble → score → mutate → resample.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "mcmc",
+      "stopping_criteria": {"num_steps": 100, "num_results": 1}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "BioEmu",
+      "version_or_checkpoint": null,
+      "provider": "BioEmu",
+      "purpose": "Conformational ensemble generation for RMSD filtering",
+      "evidence": []
+    },
+    {
+      "name": "ESM-2",
+      "version_or_checkpoint": "esm2_t33_650M_UR50D",
+      "provider": "Meta",
+      "purpose": "Sequence proposals between ensemble evaluations",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "bioemu_ensemble_filter",
+    "segment_length_aa": 129,
+    "target_pdb": "2LYZ",
+    "target_chain_id": "A",
+    "num_steps": 100,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 3,
+    "max_temperature": 1.0,
+    "bioemu_num_samples": 8,
+    "max_ensemble_rmsd": 4.0,
+    "min_plddt": 70.0,
+    "esm2_temperature": 1.0,
+    "seed_sequence_lysozyme": "KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINSRWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQAWIRGCRL"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "mutate_sequence",
+        "operation": "ESM-2 masked mutation proposal",
+        "inputs": ["seed_sequence"],
+        "outputs": ["candidate_sequence"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "sample_ensemble",
+        "operation": "BioEmu conformational ensemble generation",
+        "inputs": ["candidate_sequence"],
+        "outputs": ["ensemble_frames"],
+        "parameters": {"num_samples": 8},
+        "evidence": []
+      },
+      {
+        "id": "filter_ensemble",
+        "operation": "PyMOL RMSD filter against experimental structure",
+        "inputs": ["ensemble_frames", "target_structure"],
+        "outputs": ["accepted_sequence"],
+        "parameters": {},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "mutate_sequence", "target": "sample_ensemble", "artifact": "candidate_sequence"},
+      {"source": "sample_ensemble", "target": "filter_ensemble", "artifact": "ensemble_frames"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "ensemble RMSD gate",
+      "metric": "ensemble_rmsd",
+      "operator": "<=",
+      "value": 4.0,
+      "unit": "angstrom",
+      "applies_to": "BioEmu ensemble vs 2LYZ",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "MCMC stands in for explicit cycling because ESM-2 is a starting-sequence generator.",
+    "Lysozyme PDB 2LYZ chain A is the experimental ensemble target; smoke tier truncates the segment.",
+    "BioEmu sample count is reduced on smoke tier to control GPU cost."
+  ],
+  "unknowns": [
+    "Desired conformational state populations beyond a single experimental structure are not modeled.",
+    "Full 100-step / 8-sample BioEmu runs are expensive on Modal smoke tiers."
+  ]
+}

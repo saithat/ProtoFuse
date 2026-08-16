@@ -19,6 +19,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORD_JSON = REPO_ROOT / "workspaces/phillip/PIPELINE_BENCHMARKS.json"
 RECORD_MD = REPO_ROOT / "workspaces/phillip/PIPELINE_BENCHMARKS.md"
 
+
+def _load_repo_env() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv(REPO_ROOT / ".env")
+
 RunStatus = Literal["ok", "failed", "skipped"]
 
 
@@ -189,6 +195,8 @@ def run_compile(
 
 
 def run_design_program(collection_id: str, design_file: str) -> dict[str, Any]:
+    from protofuse.phillip.handoff_config import run_compiled_program
+
     path = REPO_ROOT / "proto_programs/generated" / collection_id / design_file
     spec = importlib.util.spec_from_file_location(f"{collection_id}_{design_file}", path)
     if spec is None or spec.loader is None:
@@ -196,7 +204,7 @@ def run_design_program(collection_id: str, design_file: str) -> dict[str, Any]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     program = module.build_program()
-    program.run()
+    run_compiled_program(program, fixture_id=collection_id)
     joined = program.constructs[0].joined_sequences
     lengths = [len(item.sequence) for item in joined]
     return {"design": design_file, "output_lengths": lengths, "num_results": len(joined)}
@@ -582,6 +590,7 @@ def render_markdown(data: dict[str, Any]) -> str:
 
 
 def main() -> int:
+    _load_repo_env()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--skip-full",
@@ -654,6 +663,33 @@ def main() -> int:
         preflight_length=65,
         preflight_notes="65 aa binder seed; build-only L0",
         execute_notes="Dual target/off-target scoring on Modal (smoke: 20 MCMC steps)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="rfdiffusion3-boltz2-binder",
+        registry_name="rfdiffusion3-boltz2-binder",
+        preflight_length=50,
+        preflight_notes="50 aa smoke binder; build-only L0",
+        execute_notes="RFdiffusion3 bootstrap + Boltz-2 cycling on Modal (smoke: 2 cycles)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="ligandmpnn-enzyme-redesign",
+        registry_name="ligandmpnn-enzyme-redesign",
+        preflight_length=163,
+        preflight_notes="3HTB holo enzyme; build-only L0",
+        execute_notes="LigandMPNN active-site MCMC on Modal (smoke: 20 steps)",
+        skip_modal_exec=args.skip_modal_exec,
+    )
+    benchmark_gpu_collection(
+        record,
+        fixture_id="bioemu-ensemble-filter",
+        registry_name="bioemu-ensemble-filter",
+        preflight_length=80,
+        preflight_notes="80 aa lysozyme smoke segment; build-only L0",
+        execute_notes="BioEmu ensemble RMSD + ESM-2 on Modal (smoke: 20 steps, 2 samples)",
         skip_modal_exec=args.skip_modal_exec,
     )
     benchmark_gpcr_handoff(record)

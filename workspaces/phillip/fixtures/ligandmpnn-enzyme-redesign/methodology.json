@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Ligand-aware enzyme active-site redesign",
+    "identifier": "ligandmpnn-enzyme-redesign-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "LigandMPNN active-site mutation",
+      "description": "Propose LigandMPNN-guided mutations within the enzyme active site on a fixed holo structure.",
+      "parameters": {
+        "enzyme_pdb": "3HTB",
+        "enzyme_chain": "A",
+        "active_site_positions": [62, 64, 91, 92, 94, 96, 119, 121]
+      },
+      "evidence": [
+        {
+          "quote": "Redesign residues around a bound ligand on a fixed backbone.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "MPNN sequence probability",
+      "description": "Favor LigandMPNN-high-probability active-site substitutions.",
+      "parameters": {"model": "ligandmpnn"},
+      "evidence": [],
+      "metric": "mpnn_probability",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "structure pLDDT filter",
+      "description": "Require ESMFold confidence after active-site mutations.",
+      "parameters": {"structure_tool": "esmfold", "min_plddt": 70.0},
+      "evidence": [],
+      "metric": "mean_plddt",
+      "direction": "maximize",
+      "weight": 0.75
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep enzyme length fixed to the holo structure.",
+      "parameters": {},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "MCMC refinement",
+      "description": "Region-local LigandMPNN mutations within the active site.",
+      "parameters": {"num_steps": 100, "num_results": 1},
+      "evidence": [
+        {
+          "quote": "Topology: cycling or region-local MCMC on active-site segment.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "mcmc",
+      "stopping_criteria": {"num_steps": 100, "num_results": 1}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "LigandMPNN",
+      "version_or_checkpoint": null,
+      "provider": "Dauparas et al.",
+      "purpose": "Ligand-aware inverse folding and scoring in the active site",
+      "evidence": []
+    },
+    {
+      "name": "ESMFold",
+      "version_or_checkpoint": null,
+      "provider": "Meta",
+      "purpose": "Fast developability check after mutations",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "ligandmpnn_enzyme_redesign",
+    "enzyme_pdb": "3HTB",
+    "enzyme_chain": "A",
+    "active_site_positions": [62, 64, 91, 92, 94, 96, 119, 121],
+    "num_steps": 100,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "mutations_per_step": 3,
+    "max_temperature": 1.0,
+    "min_plddt": 70.0,
+    "mpnn_temperature": 0.1
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "score_active_site",
+        "operation": "LigandMPNN score current sequence on holo structure",
+        "inputs": ["holo_structure", "enzyme_sequence"],
+        "outputs": ["mutation_probs"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "propose_mutations",
+        "operation": "Sample active-site substitutions",
+        "inputs": ["mutation_probs"],
+        "outputs": ["candidate_sequence"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "validate_fold",
+        "operation": "ESMFold developability gate",
+        "inputs": ["candidate_sequence"],
+        "outputs": ["accepted_sequence"],
+        "parameters": {"structure_tool": "esmfold"},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "score_active_site", "target": "propose_mutations", "artifact": "mutation_probs"},
+      {"source": "propose_mutations", "target": "validate_fold", "artifact": "candidate_sequence"}
+    ]
+  },
+  "selection_thresholds": [],
+  "experimental_measurements": [],
+  "assumptions": [
+    "Carbonic anhydrase II holo structure PDB 3HTB chain A is a compact ligand-aware benchmark.",
+    "Active-site positions are 1-indexed ordinals on chain A suitable for LigandMPNN ResidueSelection.",
+    "Metal3d scoring is omitted when the benchmark structure lacks a modeled metal cofactor."
+  ],
+  "unknowns": [
+    "Catalytic turnover and ligand affinity are not modeled.",
+    "Boltz-2 affinity scoring is deferred to keep smoke tier latency manageable."
+  ]
+}

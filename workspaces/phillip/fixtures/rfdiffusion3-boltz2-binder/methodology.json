@@ -1,0 +1,183 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "RFdiffusion3 + Boltz-2 iterative binder design",
+    "identifier": "rfdiffusion3-boltz2-binder-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "RFdiffusion MPNN binder design",
+      "description": "Cycle RFdiffusion3 backbone generation and ProteinMPNN sequence design against a fixed target, conditioned on Boltz-2 folds between cycles.",
+      "parameters": {
+        "target_pdb": "4RWS",
+        "target_chains": ["A"],
+        "hotspots": ["A94", "A259", "A284"]
+      },
+      "evidence": [
+        {
+          "quote": "Topology: cycling — RFdiffusion → MPNN → fold → score → repeat.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "structure ipTM filter",
+      "description": "Require predicted binder-target interface confidence above threshold.",
+      "parameters": {"structure_tool": "boltz2", "min_iptm": 0.5},
+      "evidence": [],
+      "metric": "iptm",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "Boltz2 binding strength",
+      "description": "Score predicted binding strength of the designed binder against the target.",
+      "parameters": {},
+      "evidence": [],
+      "metric": "binding_strength",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "ESM-2 naturalness",
+      "description": "Penalize unnatural binder sequences during cycling.",
+      "parameters": {"temperature": 1.0},
+      "evidence": [],
+      "metric": "esm2_perplexity",
+      "direction": "minimize",
+      "weight": 0.5
+    },
+    {
+      "name": "protein globularity",
+      "description": "Favor compact binder folds.",
+      "parameters": {"structure_tool": "boltz2", "max_globularity": 20.0},
+      "evidence": [],
+      "metric": "globularity",
+      "direction": "minimize",
+      "weight": 0.25
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep binder within the configured mini-protein length window.",
+      "parameters": {"min_length": 45, "max_length": 75},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "cycling design refinement",
+      "description": "Alternate Boltz-2 folding with ProteinMPNN redesign; cycle 1 bootstraps from RFdiffusion3+MPNN.",
+      "parameters": {"num_steps": 10, "num_results": 1},
+      "evidence": [
+        {
+          "quote": "Optimizer | cycling",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "cycling",
+      "stopping_criteria": {"num_steps": 10, "num_results": 1}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "RFdiffusion3",
+      "version_or_checkpoint": "2025",
+      "provider": "RosettaCommons / IPD",
+      "purpose": "Binder backbone generation on cycle bootstrap",
+      "evidence": []
+    },
+    {
+      "name": "ProteinMPNN",
+      "version_or_checkpoint": null,
+      "provider": "Dauparas et al.",
+      "purpose": "Inverse folding within each cycle",
+      "evidence": []
+    },
+    {
+      "name": "Boltz-2",
+      "version_or_checkpoint": null,
+      "provider": "Boltz",
+      "purpose": "Structure prediction and binding scoring between cycles",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "rfdiffusion3_boltz2_binder",
+    "target_pdb": "4RWS",
+    "target_chains": ["A"],
+    "hotspots": ["A94", "A259", "A284"],
+    "binder_length_aa": 70,
+    "min_binder_length_aa": 45,
+    "max_binder_length_aa": 75,
+    "num_steps": 10,
+    "num_results": 1,
+    "proposals_per_result": 1,
+    "min_iptm": 0.5,
+    "min_plddt": 70.0,
+    "max_globularity": 20.0,
+    "esm2_temperature": 1.0
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "bootstrap_backbone",
+        "operation": "RFdiffusion3 + MPNN initial binder against target",
+        "inputs": ["target_structure", "hotspot_residues"],
+        "outputs": ["binder_structure"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "fold_and_score",
+        "operation": "Boltz-2 fold binder-target complex and score ipTM / affinity",
+        "inputs": ["binder_sequence", "target_sequence"],
+        "outputs": ["scored_complex"],
+        "parameters": {"structure_tool": "boltz2"},
+        "evidence": []
+      },
+      {
+        "id": "mpnn_redesign",
+        "operation": "ProteinMPNN redesign binder chain from folded complex",
+        "inputs": ["scored_complex"],
+        "outputs": ["refined_binder"],
+        "parameters": {},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "bootstrap_backbone", "target": "fold_and_score", "artifact": "binder_structure"},
+      {"source": "fold_and_score", "target": "mpnn_redesign", "artifact": "scored_complex"},
+      {"source": "mpnn_redesign", "target": "fold_and_score", "artifact": "refined_binder"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "interface ipTM gate",
+      "metric": "iptm",
+      "operator": ">=",
+      "value": 0.5,
+      "unit": "score",
+      "applies_to": "designed binder-target complex",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "Cycle 1 bootstraps via RFdiffusion3+MPNN inside the cycling conditioning function; later cycles use Boltz-2 folds.",
+    "Shares CXCR4 chain A from PDB 4RWS with gpcr-cxcr4-miniprotein and freebindcraft-binder benchmarks.",
+    "Partial RFdiffusion diffusion is not modeled; cycling repeats MPNN refinement on Boltz-2-conditioned complexes."
+  ],
+  "unknowns": [
+    "True multi-cycle partial diffusion from the RFdiffusion3 paper is not reproduced.",
+    "Wet-lab binding validation is out of scope."
+  ]
+}

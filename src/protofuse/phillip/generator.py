@@ -16,12 +16,15 @@ ALLOWED_IMPORT_ROOTS = frozenset({"__future__", "proto_language", "protofuse"})
 ALLOWED_PROGRAM_BUILDER_SYMBOLS = frozenset(
     {
         "build_antibody_cdr_maturation_program",
+        "build_bioemu_ensemble_filter_program",
         "build_custom_egfp_program",
         "build_dnachisel_num1_program",
         "build_esm2_protein_maturation_program",
         "build_freebindcraft_binder_program",
         "build_gpcr_cxcr4_miniprotein_program",
+        "build_ligandmpnn_enzyme_redesign_program",
         "build_ppi_interface_specificity_program",
+        "build_rfdiffusion3_boltz2_binder_program",
         "build_symmetric_oligomer_ring_program",
         "load_fixture_spec",
         "resolve_workload_params",

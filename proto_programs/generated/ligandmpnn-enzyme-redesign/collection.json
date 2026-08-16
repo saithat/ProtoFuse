@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "ligandmpnn-enzyme-redesign",
+  "methodology_id": "ligandmpnn-enzyme-redesign-v1",
+  "proto_version": "cb00a5e16e1edda30d12e95139743495535675d5",
+  "registry_version": "1",
+  "seed_policy": "enzyme sequence from holo PDB 3HTB; active-site masking via ResidueSelection",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "5b1f5e9e37225872e7f0749e0c6857a80d97e604b50c43f5387b0baa00ec8703"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "742a57619c93a78bfc895eb073e2c4e985d4d4c456d33ef467a740bdae9bd507"
+    }
+  ]
+}

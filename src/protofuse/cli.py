@@ -18,6 +18,9 @@ def _load(path: Path) -> MethodologySpec:
 
 
 def main() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     parser = argparse.ArgumentParser(prog="protofuse")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("validate", "recommend", "compile"):
@@ -108,6 +111,28 @@ def main() -> None:
         help="preflight target length (defaults to fixture global_parameters)",
     )
     review_parser.add_argument("--json", action="store_true", help="emit machine-readable report")
+    paper_parser = subparsers.add_parser(
+        "paper",
+        help="pull up a fixture's paper (metadata, abstract, quote checks) for human review",
+    )
+    paper_parser.add_argument("fixture", choices=FIXTURE_CHOICES)
+    paper_parser.add_argument(
+        "--abstract-only",
+        action="store_true",
+        help="print only paper identity and abstract",
+    )
+    paper_parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="skip the DOI registry lookup and use local files only",
+    )
+    paper_parser.add_argument(
+        "--text",
+        type=Path,
+        default=None,
+        help="verify quotes against this text instead of the fixture's paper.source_path",
+    )
+    paper_parser.add_argument("--json", action="store_true", help="emit machine-readable report")
     extract_parser = subparsers.add_parser("extract")
     extract_parser.add_argument("paper", type=Path)
     extract_parser.add_argument("--out", type=Path, required=True)
@@ -181,6 +206,7 @@ def main() -> None:
         elif args.fixture == "gpcr-cxcr4-miniprotein":
             from time import perf_counter
 
+            from protofuse.phillip.handoff_config import run_compiled_program
             from protofuse.phillip.program_builders import (
                 build_gpcr_cxcr4_miniprotein_program,
                 load_fixture_spec,
@@ -191,7 +217,7 @@ def main() -> None:
             params = resolve_workload_params(spec, tier=args.tier)
             program = build_gpcr_cxcr4_miniprotein_program(params)
             start = perf_counter()
-            program.run()
+            run_compiled_program(program, fixture_id="gpcr-cxcr4-miniprotein")
             wall_ms = (perf_counter() - start) * 1000
         elif args.fixture == "freebindcraft-binder":
             from protofuse.phillip.program_builders import run_freebindcraft_binder
@@ -205,6 +231,18 @@ def main() -> None:
             from protofuse.phillip.program_builders import run_ppi_interface_specificity
 
             program, wall_ms = run_ppi_interface_specificity(tier=args.tier)
+        elif args.fixture == "rfdiffusion3-boltz2-binder":
+            from protofuse.phillip.program_builders import run_rfdiffusion3_boltz2_binder
+
+            program, wall_ms = run_rfdiffusion3_boltz2_binder(tier=args.tier)
+        elif args.fixture == "ligandmpnn-enzyme-redesign":
+            from protofuse.phillip.program_builders import run_ligandmpnn_enzyme_redesign
+
+            program, wall_ms = run_ligandmpnn_enzyme_redesign(tier=args.tier)
+        elif args.fixture == "bioemu-ensemble-filter":
+            from protofuse.phillip.program_builders import run_bioemu_ensemble_filter
+
+            program, wall_ms = run_bioemu_ensemble_filter(tier=args.tier)
         else:
             raise SystemExit(f"run not implemented for fixture={args.fixture}")
         sequence = program.constructs[0].joined_sequences[0].sequence
@@ -222,6 +260,20 @@ def main() -> None:
             f"({len(loaded.manifest.programs)} programs, "
             f"methodology={loaded.manifest.methodology_id})"
         )
+        return
+
+    if args.command == "paper":
+        from protofuse.phillip.paper_review import build_paper_review, format_review
+
+        paper_review = build_paper_review(
+            args.fixture,
+            offline=args.offline,
+            text_path=args.text,
+        )
+        if args.json:
+            print(json.dumps(paper_review.as_dict(), indent=2))
+        else:
+            print(format_review(paper_review, abstract_only=args.abstract_only))
         return
 
     if args.command == "review":

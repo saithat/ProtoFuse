@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "rfdiffusion3-boltz2-binder",
+  "methodology_id": "rfdiffusion3-boltz2-binder-v1",
+  "proto_version": "cb00a5e16e1edda30d12e95139743495535675d5",
+  "registry_version": "1",
+  "seed_policy": "RFdiffusion3 bootstrap then Boltz-2-conditioned ProteinMPNN cycles",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "ac6f600a2cbd7e8da7c0d6003536c04db33c7c8061cb7ae25fc744e357d7b411"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "b9572834183d3832d242c08239b857b67398e5b26ce474c91a76fb3119b706fc"
+    }
+  ]
+}

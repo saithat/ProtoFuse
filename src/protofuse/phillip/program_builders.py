@@ -16,12 +16,14 @@ from proto_language.constraint import (
     gap_gini_constraint,
     gc_content_constraint,
     max_homopolymer_constraint,
+    mpnn_sequence_probability_constraint,
     overall_protein_quality_constraint,
     protein_complexity_constraint,
     protein_globularity_constraint,
     protein_length_constraint,
     protein_symmetry_ring_constraint,
     structure_composite_constraint,
+    structure_ensemble_rmsd_constraint,
     structure_interface_contact_constraint,
     structure_iptm_constraint,
     structure_ipae_constraint,
@@ -38,6 +40,8 @@ from proto_language.generator import (
     FreeBindCraftGeneratorConfig,
     MPNNMutationGenerator,
     MPNNMutationGeneratorConfig,
+    ProteinMPNNGenerator,
+    ProteinMPNNGeneratorConfig,
     RandomNucleotideGenerator,
     RandomNucleotideGeneratorConfig,
     RandomProteinGenerator,
@@ -47,6 +51,8 @@ from proto_language.generator import (
 )
 from proto_language.generator.mpnn_mutation_generator import ResidueSelection as MPNNResidueSelection
 from proto_language.optimizer import (
+    CyclingOptimizer,
+    CyclingOptimizerConfig,
     MCMCOptimizer,
     MCMCOptimizerConfig,
     RejectionSamplingOptimizer,
@@ -62,6 +68,10 @@ from proto_tools.entities.structures.structure import Structure
 from proto_tools.transforms.masking import MaskingStrategy
 
 from protofuse.phillip.contracts import MethodologySpec
+from protofuse.phillip.cycling_builders import (
+    bioemu_constraint_config,
+    make_rfdiffusion_boltz_cycling_conditioning_fn,
+)
 from protofuse.phillip.custom_constraints import tissue_codon_constraint
 from protofuse.phillip.dnachisel_constraints import (
     codon_usage_constraint,
@@ -70,6 +80,7 @@ from protofuse.phillip.dnachisel_constraints import (
     reference_homology_constraint,
     sliding_window_gc_constraint,
 )
+from protofuse.phillip.handoff_config import program_run_device, run_compiled_program
 from protofuse.phillip.pool_optimizer import PoolOptimizerConfig, PoolOptimizerResult, run_pool_optimizer
 from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
 from protofuse.phillip.sequence_init import generate_filter_safe_sequence
@@ -124,6 +135,23 @@ PPI_INTERFACE_SMOKE_DEFAULTS: dict[str, int | str] = {
     "max_region_passes": 1,
     "esm2_checkpoint": "esm2_t6_8M_UR50D",
     "proposal_generator": "esm2",
+}
+
+RFDIFFUSION3_BOLTZ2_SMOKE_DEFAULTS: dict[str, int | float] = {
+    "binder_length_aa": 50,
+    "num_steps": 2,
+}
+
+LIGANDMPNN_ENZYME_SMOKE_DEFAULTS: dict[str, int | str] = {
+    "num_steps": 20,
+    "mutations_per_step": 2,
+    "esm2_checkpoint": "esm2_t6_8M_UR50D",
+}
+
+BIOEMU_ENSEMBLE_SMOKE_DEFAULTS: dict[str, int] = {
+    "segment_length_aa": 80,
+    "num_steps": 20,
+    "bioemu_num_samples": 2,
 }
 
 GFP_SEQUENCE = (
@@ -233,8 +261,21 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
             spec.global_parameters.get("include_reverse_complement", False)
         ),
         "proposal_generator": spec.global_parameters.get("proposal_generator", "mpnn"),
+        "enzyme_pdb": spec.global_parameters.get("enzyme_pdb", "3HTB"),
+        "enzyme_chain": spec.global_parameters.get("enzyme_chain", "A"),
+        "active_site_positions": list(spec.global_parameters.get("active_site_positions", [])),
+        "mpnn_temperature": float(spec.global_parameters.get("mpnn_temperature", 0.1)),
+        "target_chain_id": spec.global_parameters.get("target_chain_id", "A"),
+        "bioemu_num_samples": int(spec.global_parameters.get("bioemu_num_samples", 8)),
+        "max_ensemble_rmsd": float(spec.global_parameters.get("max_ensemble_rmsd", 4.0)),
     }
     if workload == "esm2_protein_maturation":
+        params["seed_sequence"] = _resolve_protein_seed_sequence(
+            spec,
+            tier=tier,
+            segment_length_aa=int(params["segment_length_aa"]),
+        )
+    if workload == "bioemu_ensemble_filter":
         params["seed_sequence"] = _resolve_protein_seed_sequence(
             spec,
             tier=tier,
@@ -260,6 +301,17 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
             params.update(SYMMETRIC_OLIGOMER_SMOKE_DEFAULTS)
         elif workload == "ppi_interface_specificity":
             params.update(PPI_INTERFACE_SMOKE_DEFAULTS)
+        elif workload == "rfdiffusion3_boltz2_binder":
+            params.update(RFDIFFUSION3_BOLTZ2_SMOKE_DEFAULTS)
+        elif workload == "ligandmpnn_enzyme_redesign":
+            params.update(LIGANDMPNN_ENZYME_SMOKE_DEFAULTS)
+        elif workload == "bioemu_ensemble_filter":
+            params.update(BIOEMU_ENSEMBLE_SMOKE_DEFAULTS)
+            params["seed_sequence"] = _resolve_protein_seed_sequence(
+                spec,
+                tier="smoke",
+                segment_length_aa=int(params["segment_length_aa"]),
+            )
         else:
             params.update(SMOKE_DEFAULTS)
     return params
@@ -729,7 +781,7 @@ def run_freebindcraft_binder(*, tier: WorkloadTier = "full") -> tuple[Program, f
     params = resolve_workload_params(spec, tier=tier)
     program = build_freebindcraft_binder_program(params)
     start = perf_counter()
-    program.run()
+    run_compiled_program(program, fixture_id="freebindcraft-binder")
     return program, (perf_counter() - start) * 1000
 
 
@@ -844,12 +896,13 @@ def run_esm2_protein_maturation(*, tier: WorkloadTier = "full") -> tuple[Program
                 inner_refinement=inner_refinement,
             ),
             config=config,
+            run_device=program_run_device("esm2-protein-maturation"),
         )
         return result.program, result.wall_time_ms
 
     program = build_esm2_protein_maturation_program(params, region_pass=0)
     start = perf_counter()
-    program.run()
+    run_compiled_program(program, fixture_id="esm2-protein-maturation")
     return program, (perf_counter() - start) * 1000
 
 
@@ -959,12 +1012,13 @@ def run_antibody_cdr_maturation(*, tier: WorkloadTier = "full") -> tuple[Program
                 region_pass=region_pass,
             ),
             config=config,
+            run_device=program_run_device("antibody-cdr-maturation"),
         )
         return result.program, result.wall_time_ms
 
     program = build_antibody_cdr_maturation_program(params, region_pass=0)
     start = perf_counter()
-    program.run()
+    run_compiled_program(program, fixture_id="antibody-cdr-maturation")
     return program, (perf_counter() - start) * 1000
 
 
@@ -1133,12 +1187,13 @@ def run_ppi_interface_specificity(*, tier: WorkloadTier = "full") -> tuple[Progr
                 region_pass=region_pass,
             ),
             config=config,
+            run_device=program_run_device("ppi-interface-specificity"),
         )
         return result.program, result.wall_time_ms
 
     program = build_ppi_interface_specificity_program(params, region_pass=0)
     start = perf_counter()
-    program.run()
+    run_compiled_program(program, fixture_id="ppi-interface-specificity")
     return program, (perf_counter() - start) * 1000
 
 
@@ -1253,5 +1308,244 @@ def run_symmetric_oligomer_ring(*, tier: WorkloadTier = "full") -> tuple[Program
     result = run_pool_optimizer(
         lambda: build_symmetric_oligomer_ring_program(params),
         config=pool_config,
+        run_device=program_run_device("symmetric-oligomer-ring"),
     )
     return result.program, result.wall_time_ms
+
+
+def build_rfdiffusion3_boltz2_binder_program(params: dict[str, Any]) -> Program:
+    """Cycling RFdiffusion3 bootstrap + ProteinMPNN redesign with Boltz-2 scoring."""
+
+    pdb_id = str(params["target_pdb"])
+    target_chains = [str(item) for item in params["target_chains"]]
+    hotspots = [str(item) for item in params["hotspots"]]
+    binder_length = int(params["binder_length_aa"])
+    target_sequence = _target_sequence_from_pdb(pdb_id, target_chains)
+    target_structure = _target_structure_from_pdb(pdb_id)
+
+    binder = Segment(length=binder_length, sequence_type="protein", label="binder")
+    target = Segment(sequence=target_sequence, sequence_type="protein", label="target")
+    construct = Construct([binder, target])
+
+    generator = ProteinMPNNGenerator(
+        ProteinMPNNGeneratorConfig(temperature=float(params.get("mpnn_temperature", 0.1)))
+    )
+    generator.assign(binder)
+
+    conditioning_fn = make_rfdiffusion_boltz_cycling_conditioning_fn(
+        target_sequence=target_sequence,
+        target_structure=target_structure,
+        target_chains=target_chains,
+        hotspots=hotspots,
+        binder_length=binder_length,
+    )
+    constraints = [
+        Constraint(
+            inputs=[binder, target],
+            function=structure_iptm_constraint,
+            function_config={"structure_tool": "boltz2"},
+            threshold=float(params["min_iptm"]),
+            label="iptm",
+        ),
+        Constraint(
+            inputs=[binder, target],
+            function=structure_plddt_constraint,
+            function_config={"structure_tool": "boltz2"},
+            threshold=float(params["min_plddt"]),
+            label="plddt",
+        ),
+        Constraint(
+            inputs=[binder],
+            function=protein_length_constraint,
+            function_config={
+                "min_length": int(params["min_binder_length_aa"]),
+                "max_length": int(params["max_binder_length_aa"]),
+            },
+            threshold=0.0,
+            label="length",
+        ),
+    ]
+    optimizer = CyclingOptimizer(
+        target_segment=binder,
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=CyclingOptimizerConfig(
+            num_steps=int(params["num_steps"]),
+            num_results=int(params["num_results"]),
+        ),
+        conditioning_fn=conditioning_fn,
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_rfdiffusion3_boltz2_binder(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    spec = load_fixture_spec("rfdiffusion3-boltz2-binder")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_rfdiffusion3_boltz2_binder_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="rfdiffusion3-boltz2-binder")
+    return program, (perf_counter() - start) * 1000
+
+
+def build_ligandmpnn_enzyme_redesign_program(params: dict[str, Any]) -> Program:
+    """LigandMPNN MCMC on an enzyme active site with ESMFold developability gating."""
+
+    enzyme_pdb = str(params["enzyme_pdb"])
+    enzyme_chain = str(params["enzyme_chain"])
+    enzyme_structure = _target_structure_from_pdb(enzyme_pdb)
+    enzyme_sequence = enzyme_structure.get_chain_sequence(
+        enzyme_chain,
+        remove_non_standard=True,
+    )
+    chain_length = len(enzyme_structure.get_chain_positions(enzyme_chain))
+    active_site_positions = [
+        int(item) for item in params["active_site_positions"] if int(item) <= chain_length
+    ]
+
+    enzyme = Segment(sequence=enzyme_sequence, sequence_type="protein", label="enzyme")
+    construct = Construct([enzyme])
+    structure_input = InverseFoldingStructureInput(
+        structure=enzyme_structure,
+        chains_to_redesign=[enzyme_chain],
+        fixed_positions={
+            enzyme_chain: [
+                position
+                for position in range(1, chain_length + 1)
+                if position not in active_site_positions
+            ]
+        },
+    )
+    generator = MPNNMutationGenerator(
+        MPNNMutationGeneratorConfig(
+            model="ligandmpnn",
+            structure_inputs=[structure_input],
+            output_chain_id=enzyme_chain,
+            num_mutations=int(params["mutations_per_step"]),
+            mutable_positions=MPNNResidueSelection(
+                chains={enzyme_chain: active_site_positions},
+            ),
+            replacement_temperature=float(params["mpnn_temperature"]),
+        )
+    )
+    generator.assign(enzyme)
+
+    enzyme_length = len(enzyme_sequence)
+    constraints = [
+        Constraint(
+            inputs=[enzyme],
+            function=mpnn_sequence_probability_constraint,
+            function_config={
+                "model": "ligandmpnn",
+                "structure_inputs": [structure_input],
+                "output_chain_id": enzyme_chain,
+            },
+            weight=1.0,
+            label="mpnn_probability",
+        ),
+        Constraint(
+            inputs=[enzyme],
+            function=structure_plddt_constraint,
+            function_config={"structure_tool": "esmfold"},
+            threshold=float(params["min_plddt"]),
+            label="structure_plddt",
+        ),
+        Constraint(
+            inputs=[enzyme],
+            function=protein_length_constraint,
+            function_config={"min_length": enzyme_length, "max_length": enzyme_length},
+            threshold=0.0,
+            label="protein_length",
+        ),
+    ]
+    optimizer = MCMCOptimizer(
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=MCMCOptimizerConfig(
+            num_results=int(params["num_results"]),
+            proposals_per_result=int(params["proposals_per_result"]),
+            num_steps=int(params["num_steps"]),
+            max_temperature=float(params["max_temperature"]),
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_ligandmpnn_enzyme_redesign(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    spec = load_fixture_spec("ligandmpnn-enzyme-redesign")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_ligandmpnn_enzyme_redesign_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="ligandmpnn-enzyme-redesign")
+    return program, (perf_counter() - start) * 1000
+
+
+def build_bioemu_ensemble_filter_program(params: dict[str, Any]) -> Program:
+    """ESM-2 MCMC with BioEmu ensemble RMSD filtering against an experimental structure."""
+
+    length = int(params["segment_length_aa"])
+    seed_sequence = str(params["seed_sequence"])[:length]
+    target_pdb = str(params["target_pdb"])
+    target_chain_id = str(params["target_chain_id"])
+    target_structure = _target_structure_from_pdb(target_pdb)
+
+    segment = Segment(sequence=seed_sequence, sequence_type="protein", label="candidate")
+    construct = Construct([segment])
+    generator = ESM2Generator(
+        ESM2GeneratorConfig(
+            masking_strategy=MaskingStrategy(num_mutations=int(params["mutations_per_step"])),
+            sampling_method="iterative_refinement",
+        )
+    )
+    generator.assign(segment)
+
+    constraints = [
+        Constraint(
+            inputs=[segment],
+            function=structure_ensemble_rmsd_constraint,
+            function_config=bioemu_constraint_config(
+                target_structure=target_structure,
+                target_chain_id=target_chain_id,
+                num_samples=int(params["bioemu_num_samples"]),
+                max_ensemble_rmsd=float(params["max_ensemble_rmsd"]),
+            ),
+            threshold=float(params["max_ensemble_rmsd"]),
+            label="ensemble_rmsd",
+        ),
+        Constraint(
+            inputs=[segment],
+            function=structure_plddt_constraint,
+            function_config={"structure_tool": "esmfold"},
+            threshold=float(params["min_plddt"]),
+            label="structure_plddt",
+        ),
+        Constraint(
+            inputs=[segment],
+            function=protein_length_constraint,
+            function_config={"min_length": length, "max_length": length},
+            threshold=0.0,
+            label="protein_length",
+        ),
+    ]
+    optimizer = MCMCOptimizer(
+        constructs=[construct],
+        generators=[generator],
+        constraints=constraints,
+        config=MCMCOptimizerConfig(
+            num_results=int(params["num_results"]),
+            proposals_per_result=int(params["proposals_per_result"]),
+            num_steps=int(params["num_steps"]),
+            max_temperature=float(params["max_temperature"]),
+        ),
+    )
+    return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
+
+
+def run_bioemu_ensemble_filter(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    spec = load_fixture_spec("bioemu-ensemble-filter")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_bioemu_ensemble_filter_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="bioemu-ensemble-filter")
+    return program, (perf_counter() - start) * 1000

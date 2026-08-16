@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "bioemu-ensemble-filter",
+  "methodology_id": "bioemu-ensemble-filter-v1",
+  "proto_version": "cb00a5e16e1edda30d12e95139743495535675d5",
+  "registry_version": "1",
+  "seed_policy": "lysozyme seed sequence; smoke truncates to 80 aa",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "1e668337f454a6233cca3ce84386824910ffee8117bfeecb136ed836c5983157"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "0d11f46345dbcb1794983dd011cee4c2aaf8a8cd7a4e1fdfe1d4d0a5bba2ed28"
+    }
+  ]
+}

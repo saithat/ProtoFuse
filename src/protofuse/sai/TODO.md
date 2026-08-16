@@ -23,6 +23,9 @@ Node-level profiles still go under `data/analysis/<collection_id>/` (gitignored)
 | `freebindcraft-binder` | `proto_programs/generated/freebindcraft-binder/` | **`design_001.py`** (70 aa) | FreeBindCraft rejection sampling. |
 | `symmetric-oligomer-ring` | `proto_programs/generated/symmetric-oligomer-ring/` | **`design_001.py`** (C6 pool) | Pool optimizer; protein scorer still DNA-heuristic. |
 | `ppi-interface-specificity` | `proto_programs/generated/ppi-interface-specificity/` | **`design_001.py`** (65 aa) | Dual target/off-target; AF3 specificity is protein-DNA proxy. |
+| `rfdiffusion3-boltz2-binder` | `proto_programs/generated/rfdiffusion3-boltz2-binder/` | **`design_001.py`** (70 aa) | RFdiffusion3 bootstrap + Boltz-2 cycling; shares 4RWS target. |
+| `ligandmpnn-enzyme-redesign` | `proto_programs/generated/ligandmpnn-enzyme-redesign/` | **`design_001.py`** (3HTB) | LigandMPNN active-site MCMC on holo enzyme. |
+| `bioemu-ensemble-filter` | `proto_programs/generated/bioemu-ensemble-filter/` | **`design_001.py`** (129 aa) | BioEmu ensemble RMSD vs 2LYZ; MCMC proxy for cycling. |
 
 Mechanical handoff gate: `uv run protofuse review <collection_id>` (checks hashes, source drift, PDB/hotspot binding, preflight). Paper-evidence failures on internal benchmark fixtures are expected until evidence quotes are added.
 
