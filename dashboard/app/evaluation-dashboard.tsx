@@ -251,8 +251,8 @@ export function EvaluationDashboard() {
         <div className="eyebrow"><FlaskConical size={15} /> evaluation readiness / current repository state</div>
         <div className="hero-grid">
           <div>
-            <h1>One narrow path is confirmed.<br /><span>Broad fusion is not.</span></h1>
-            <p className="lede">CUSTOM’s adaptive MFE path passed four fresh counterbalanced pairs at 9.72× net speedup, with identical candidate pools, exact selected outputs, and 100% top-10 recall. The joint LigandMPNN–ESMFold and scaled Evo2 surrogates failed their frozen audits, so those routes remain safely deferred rather than promoted.</p>
+            <h1>Current evidence is narrow.<br /><span>Conclusions remain workload-specific.</span></h1>
+            <p className="lede">A frozen adaptive MFE policy was evaluated in CUSTOM on four previously unopened, counterbalanced seed pairs. The observed net speedup was 9.72×, with matching candidate-pool hashes and complete top-10 recall. Separate frozen audits rejected the joint LigandMPNN–ESMFold and scaled Evo2 surrogates, so those workloads remain on the parent path.</p>
             <div className="hero-actions">
               <button className="primary-action" onClick={() => scrollTo("benchmarks")}>Inspect run evidence <ArrowRight size={16} /></button>
               <button className="text-action" onClick={() => scrollTo("eval-plan")}>See the eval contract</button>
@@ -260,12 +260,12 @@ export function EvaluationDashboard() {
           </div>
           <aside className="verdict-card">
             <div className="verdict-label">Current verdict</div>
-            <div className="verdict-value confirmed">NARROW PASS</div>
-            <p>CUSTOM MFE confirmation passed; cross-program approval did not</p>
+            <div className="verdict-value neutral">WORKLOAD-SPECIFIC</div>
+            <p>one confirmation cohort met its predeclared criteria</p>
             <div className="verdict-rule" />
-            <div className="verdict-detail"><Check size={15} /> 4 / 4 fresh CUSTOM pairs passed</div>
-            <div className="verdict-detail"><Check size={15} /> exact top-10 recovery</div>
-            <div className="verdict-detail warning"><CircleAlert size={15} /> 2 joint surrogate audits failed</div>
+            <div className="verdict-detail"><Check size={15} /> CUSTOM cohort: 4 / 4 pairs</div>
+            <div className="verdict-detail"><Check size={15} /> top-10 recall: 1.00</div>
+            <div className="verdict-detail warning"><CircleAlert size={15} /> 2 independent audits rejected</div>
           </aside>
         </div>
       </section>
@@ -274,31 +274,31 @@ export function EvaluationDashboard() {
         <article title="Net end-to-end speedup across the four fresh CUSTOM confirmation pairs.">
           <div className="metric-icon"><Gauge size={18} /></div>
           <div className="metric-value">9.72<span>×</span></div>
-          <div className="metric-name">CUSTOM confirmation speedup</div>
+          <div className="metric-name">net speedup · CUSTOM cohort</div>
         </article>
         <article title="Every fresh counterbalanced pair completed with identical ordered candidate-pool hashes and exact top-10 recovery.">
           <div className="metric-icon"><GitCompareArrows size={18} /></div>
           <div className="metric-value">4 <span>/ 4</span></div>
-          <div className="metric-name">fresh paired runs passed</div>
+          <div className="metric-name">previously unopened paired seeds</div>
         </article>
         <article title="3,844 of 4,000 CUSTOM candidates used sampled MFE; 156 routed to exact MFE through uncertainty, boundary, or tail recovery.">
           <div className="metric-icon"><ShieldCheck size={18} /></div>
           <div className="metric-value">96.1<span>%</span></div>
-          <div className="metric-name">selective surrogate coverage</div>
+          <div className="metric-name">surrogate coverage · confirmation</div>
         </article>
         <article title="The LigandMPNN–ESMFold and scaled Evo2 artifacts both failed their frozen external approval audits.">
           <div className="metric-icon"><Database size={18} /></div>
           <div className="metric-value">2</div>
-          <div className="metric-name">joint surrogate audits failed</div>
+          <div className="metric-name">independent surrogate audits rejected</div>
         </article>
       </section>
 
-      <section className="checkpoint-band" aria-label="Fresh confirmation result">
-        <div className="checkpoint-title"><ShieldCheck size={20} /><div><span>FRESH CONFIRMATION</span><strong>Adaptive CUSTOM MFE passed</strong></div></div>
+      <section className="checkpoint-band" aria-label="CUSTOM confirmation cohort">
+        <div className="checkpoint-title"><ShieldCheck size={20} /><div><span>CONFIRMATION COHORT</span><strong>CUSTOM adaptive MFE · seeds 200–203</strong></div></div>
         <div><span>Candidate pools</span><strong>4 / 4 identical</strong></div>
         <div><span>Top-10 recall</span><strong>1.00 mean · 1.00 minimum</strong></div>
         <div><span>Exact recovery</span><strong>156 routed candidates</strong></div>
-        <div><span>Promotion</span><strong>review gates remain</strong></div>
+        <div><span>Generalization</span><strong>not established</strong></div>
       </section>
 
       <SystemFlowExplainer />
@@ -317,12 +317,12 @@ export function EvaluationDashboard() {
             </article>
           ))}
         </div>
-        <div className="callout"><CircleAlert size={18} /><p><strong>Bottom line:</strong> the evidence now supports one narrow CUSTOM MFE result. LigandMPNN–ESMFold produced a useful exploratory timing pair but failed its approval audit; Evo2’s independent audit routed every proposal back to the parent, demonstrating fail-closed behavior rather than usable coverage.</p></div>
+        <div className="callout"><CircleAlert size={18} /><p><strong>Interpretation:</strong> the evidence supports one workload-specific CUSTOM MFE result. LigandMPNN–ESMFold produced an exploratory timing observation but did not meet its approval criteria; Evo2’s independent audit routed every proposal back to the parent, demonstrating fail-closed behavior with no usable surrogate coverage.</p></div>
       </section>
 
       <section className="section-shell split-section">
         <div className="section-heading">
-          <div><span className="section-index">02</span><h2>Evidence cohorts</h2></div>
+          <div><span className="section-index">02</span><h2>Protocol-separated cohorts</h2></div>
           <p>Development, frozen audit, and paired confirmation stay separate.</p>
         </div>
         <div className="trajectory-guide" aria-label="How optimizer trajectories become model splits">
@@ -346,13 +346,13 @@ export function EvaluationDashboard() {
         </div>
         <div className="trajectory-target">
           <div><span>APPROVAL RULE</span><strong>Freeze the model before external audit; freeze the policy before confirmation</strong></div>
-          <p>CUSTOM’s successful result followed this separation. LigandMPNN–ESMFold and Evo2 remain negative results because their independent audits missed the predeclared accuracy or coverage gates.</p>
+          <p>The CUSTOM evaluation followed this separation. LigandMPNN–ESMFold and Evo2 remain negative results because their independent audits did not meet the predeclared accuracy or coverage criteria.</p>
         </div>
         <div className="training-layout">
           <article className="method-card">
             <div className="card-kicker">CURRENT CONFIRMATION</div>
-            <h3>CUSTOM adaptive MFE</h3>
-            <p>Four previously unopened seeds produced 4,000 same-pool candidates and four counterbalanced full-versus-adaptive pairs. Every frozen confirmation gate passed.</p>
+            <h3>CUSTOM adaptive confirmation</h3>
+            <p>Four previously unopened seeds produced 4,000 same-pool candidates and four counterbalanced full-versus-adaptive pairs. All frozen confirmation criteria were satisfied.</p>
             <div className="method-flow">
               <span>4 fresh pairs</span><ArrowRight size={15} /><span>4,000 candidates</span><ArrowRight size={15} /><span>4 / 4 exact top ten</span>
             </div>
@@ -360,7 +360,7 @@ export function EvaluationDashboard() {
               <div><dt>Pairing unit</dt><dd>complete candidate pool</dd></div>
               <div><dt>Arm order</dt><dd>counterbalanced</dd></div>
               <div><dt>Net speedup</dt><dd>9.72×</dd></div>
-              <div><dt>Experiment status</dt><dd>fresh confirmation pass</dd></div>
+              <div><dt>Experiment status</dt><dd>criteria satisfied</dd></div>
             </dl>
           </article>
           <div className="cohort-table" role="table" aria-label="Held-out evaluation cohorts">
@@ -372,14 +372,14 @@ export function EvaluationDashboard() {
             ))}
           </div>
         </div>
-        <p className="split-warning"><strong>Confirmation is not promotion:</strong> the adaptive bundle remains an experimental result until the scientific-fairness and challenge-cohort review gates are closed. Failed LigandMPNN–ESMFold and Evo2 audits are retained as negative evidence, never reinterpreted as successful fusion.</p>
+        <p className="split-warning"><strong>Scope limitation:</strong> the adaptive bundle remains experimental until the scientific-fairness and challenge-cohort review gates are closed. The LigandMPNN–ESMFold and Evo2 audits are retained as negative evidence and do not support a cross-workload conclusion.</p>
       </section>
 
       <section className="section-shell" id="benchmarks">
         <div className="section-heading benchmark-heading">
-          <div><span className="section-index">03</span><h2>Full vs fused evidence</h2></div>
+          <div><span className="section-index">03</span><h2>Paired execution evidence</h2></div>
           <div className="filter-group" aria-label="Filter benchmark runs">
-            {(["all", "confirmed", "paired", "baseline", "missing"] as RunFilter[]).map((filter) => (
+            {(["all", "confirmation", "paired", "baseline", "missing"] as RunFilter[]).map((filter) => (
               <button key={filter} className={runFilter === filter ? "active" : ""} onClick={() => setRunFilter(filter)}>{filter}</button>
             ))}
           </div>
@@ -394,7 +394,7 @@ export function EvaluationDashboard() {
                 <span>{run.work}</span>
                 <span>{run.fullSeconds === null ? <em className="not-run">not reported</em> : <span className="timing"><Clock3 size={14} /> {formatTime(run.fullSeconds)}</span>}</span>
                 <span>{run.fusedSeconds === null ? <em className="not-run">{run.speedup === null ? "not run" : "not reported"}</em> : <span className="timing good"><Gauge size={14} /> {formatTime(run.fusedSeconds)}</span>}</span>
-                <span className={run.status === "confirmed" ? "error-good" : run.status === "paired" ? "error-mixed" : "error-missing"}>{run.objectiveError}</span>
+                <span className={run.status === "confirmation" ? "error-good" : run.status === "paired" ? "error-mixed" : "error-missing"}>{run.objectiveError}</span>
                 <ChevronDown size={17} className={expandedRun === run.id ? "rotate" : ""} />
               </button>
               {expandedRun === run.id && (
@@ -428,7 +428,7 @@ export function EvaluationDashboard() {
         </div>
       </section>
 
-      <footer><span>PROTOFUSE EVALUATION READOUT</span><span>Missing values are labeled, never treated as zero.</span></footer>
+      <footer><span>PROTOFUSE EVALUATION READOUT · 16 AUG 2026</span><span>Missing values are labeled, never treated as zero.</span></footer>
     </main>
   );
 }

@@ -3,7 +3,7 @@ import { EvaluationDashboard } from "./evaluation-dashboard";
 
 export const metadata: Metadata = {
   title: "ProtoFuse / Evaluation Readout",
-  description: "Confirmed CUSTOM MFE results, failed joint-surrogate audits, and current ProtoFuse benchmark evidence.",
+  description: "Current workload-specific evidence, protocol-separated cohorts, and independent ProtoFuse audit outcomes.",
 };
 
 export default function Home() {

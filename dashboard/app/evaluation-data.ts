@@ -1,4 +1,4 @@
-export type RunStatus = "confirmed" | "paired" | "baseline" | "missing";
+export type RunStatus = "confirmation" | "paired" | "baseline" | "missing";
 
 export type BenchmarkRun = {
   id: string;
@@ -26,9 +26,9 @@ export const benchmarks: BenchmarkRun[] = [
     fusedSeconds: null,
     speedup: 9.7171,
     objective: "Selective body-MFE with exact boundary and final-candidate recovery",
-    objectiveError: "4 / 4 exact top-10 sets · 100% mean and minimum recall",
-    status: "confirmed",
-    note: "The frozen top-20 plus tail-2 policy passed every fresh confirmation gate: identical candidate pools, exact selected MFE values, no failed arms, 96.1% surrogate coverage, and 156 exact routes. This confirms one narrow experimental path; it does not approve broad automatic fusion.",
+    objectiveError: "4 / 4 exact top-10 sets · 1.00 mean and minimum recall",
+    status: "confirmation",
+    note: "The frozen top-20 plus tail-2 policy satisfied every predeclared confirmation criterion: identical candidate pools, exact selected MFE values, no failed arms, 96.1% surrogate coverage, and 156 exact routes. The result is specific to this policy, workload, and four-seed cohort.",
   },
   {
     id: "custom-sampled-window",
@@ -41,7 +41,7 @@ export const benchmarks: BenchmarkRun[] = [
     objective: "Stride-8 sampled body-MFE with uncertainty fallback",
     objectiveError: "0.91 mean top-10 recall · 0.80 minimum",
     status: "paired",
-    note: "The frozen external audit passed at 99.075% coverage, 4.205% normalized accepted MAE, and 0.9835 accepted Spearman. The paired cohort avoided most MFE work, but approximate pool-wide ranking changed some top-10 members; the adaptive confirmation above is the stronger fidelity result.",
+    note: "The frozen external audit met its criteria at 99.075% coverage, 4.205% normalized accepted MAE, and 0.9835 accepted Spearman. The paired cohort avoided most MFE work, but approximate pool-wide ranking changed some top-10 members; the adaptive confirmation above provides the more conservative selection result.",
   },
   {
     id: "custom-exact-parallel",
@@ -127,7 +127,7 @@ export const traceRows = [
   { layer: "Paired run summaries", state: "available", detail: "CUSTOM has 24 full-pool paired runs across exact, sampled, and fresh adaptive cohorts; LigandMPNN + ESMFold adds two exploratory GPU pairs." },
   { layer: "Operational checkpoint", state: "available", detail: "Every completed MCMC step, cycling round, or rejection proposal batch is saved atomically with optimizer and RNG state." },
   { layer: "Eval-grade proposal traces", state: "available", detail: "Full-pool CUSTOM traces, ten LigandMPNN + ESMFold trajectories, and complete scaled Evo2 development and independent-audit trajectories exist locally." },
-  { layer: "Frozen external audits", state: "available", detail: "CUSTOM sampled MFE passed its four-group audit; the joint LigandMPNN and scaled Evo2 artifacts failed their independent audit gates." },
+  { layer: "Frozen external audits", state: "available", detail: "CUSTOM sampled MFE met its four-group criteria; the joint LigandMPNN and scaled Evo2 artifacts did not meet their independent audit criteria." },
   { layer: "Surrogate output + uncertainty", state: "partial", detail: "Paired reports aggregate predictions, coverage, routes, and fallbacks, but those records are not yet joined into one cross-workload proposal ledger." },
   { layer: "Route + defer reason", state: "available", detail: "The fresh CUSTOM confirmation recorded 3,844 surrogate routes and 156 exact routes; the Evo2 audit deferred all 192 proposals." },
   { layer: "Objective + paper provenance", state: "partial", detail: "CUSTOM establishes released-implementation parity, LigandMPNN is objective-matched, and Evo2 is explicitly a scaled rather than paper-length reproduction." },
