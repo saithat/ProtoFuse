@@ -535,7 +535,8 @@ def _alphafold2_binder_structure_config(
     return {
         "structure_tool": "alphafold2_binder",
         "alphafold2_binder_config": {
-            "target_pdb": _target_structure_from_pdb(pdb_id),
+            # This field takes PDB content, unlike the generator's Structure-or-content field.
+            "target_pdb": _target_structure_from_pdb(pdb_id).structure_pdb,
             "target_chains": target_chains,
             "binder_input_index": 0,
             "target_input_indices": [1],

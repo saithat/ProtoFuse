@@ -242,6 +242,46 @@ def _check_manifest(report: ReviewReport, collection_dir: Path, methodology_id: 
     )
 
 
+def _check_structure_binding(report: ReviewReport, spec: MethodologySpec) -> None:
+    """Resolve PDB coordinates and hotspot labels before GPU tools bind them."""
+
+    from protofuse.phillip.program_builders import (
+        _hotspot_residue_string,
+        _target_structure_from_pdb,
+    )
+
+    params = spec.global_parameters
+    pdb_id = params.get("target_pdb")
+    if not pdb_id:
+        report.add("structure_binding", "skip", "no target_pdb in global_parameters")
+        return
+
+    try:
+        structure = _target_structure_from_pdb(str(pdb_id))
+    except Exception as exc:  # noqa: BLE001 - reported as a failed check
+        report.add("structure_binding", "fail", f"{pdb_id}: {exc}")
+        return
+
+    hotspots = params.get("target_hotspots") or params.get("hotspots") or []
+    hotspot_residues = _hotspot_residue_string([str(item) for item in hotspots])
+    chains = params.get("target_chains") or ["A"]
+    detail = (
+        f"{pdb_id} resolved via RCSB ({len(structure.structure)} chars), "
+        f"chains={list(chains)}"
+    )
+    if hotspots:
+        detail += f", hotspots={list(hotspots)} -> {hotspot_residues!r}"
+    off_target = params.get("off_target_pdb")
+    if off_target:
+        try:
+            off_structure = _target_structure_from_pdb(str(off_target))
+        except Exception as exc:  # noqa: BLE001 - reported as a failed check
+            report.add("structure_binding", "fail", f"off_target {off_target}: {exc}")
+            return
+        detail += f"; off_target {off_target} ok ({len(off_structure.structure)} chars)"
+    report.add("structure_binding", "pass", detail)
+
+
 def _check_preflight(report: ReviewReport, fixture_id: str, target_length: int | None) -> None:
     import logging
 
@@ -320,6 +360,7 @@ def review_fixture(
 
     _check_sources(report, spec, plan, profile, collection_dir)
     _check_manifest(report, collection_dir, config.methodology_id)
+    _check_structure_binding(report, spec)
 
     if run_preflight_check:
         _check_preflight(report, fixture_id, preflight_length)

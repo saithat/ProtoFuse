@@ -37,6 +37,7 @@ uv run protofuse generate <fixture-id>
 
 # Validate
 uv run protofuse collection validate <fixture-id>
+uv run protofuse review <fixture-id>   # mechanical gate incl. PDB/hotspot binding
 ```
 
 Handoff metadata (`methodology_id`, `seed_policy`, `compile_device`) lives in
