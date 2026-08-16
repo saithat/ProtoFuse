@@ -1,23 +1,23 @@
 {
   "schema_version": "1.0",
   "collection_id": "custom-egfp-lung",
-  "methodology_id": "custom-egfp-v1",
-  "proto_version": "edf64afbcf84cc7c5e4e1404418c8ef1f16c34ce",
+  "methodology_id": "custom-egfp-v2",
+  "proto_version": "f183febdfd365ed211d4d3ea63d6d3e28b85443e",
   "registry_version": "1",
-  "seed_policy": "caller supplied; pool uses stochastic MCMC init per member",
+  "seed_policy": "caller supplied; one derived NumPy seed drives the released CUSTOM pool",
   "reviewed": true,
   "programs": [
     {
       "program_id": "design-001",
       "path": "design_001.py",
       "entrypoint": "build_program",
-      "sha256": "1a4f4a47e363874afd61c47a01dd58b145f826b7cddcbf3202b119305adf7696"
+      "sha256": "de59e4c523c41234a20d4fbe0c309309d8212f13694bc5e1c0466a3964514f95"
     },
     {
       "program_id": "design-002",
       "path": "design_002.py",
       "entrypoint": "build_program",
-      "sha256": "78d4daf4c34716962c9031a78e818f7b10769ddec39ea54266d69ef4f1bd7dc5"
+      "sha256": "bd60d7787f5823ddd44a15f4f32ffd56f717dc042878ff4bc00e1fb956d4e984"
     }
   ]
 }

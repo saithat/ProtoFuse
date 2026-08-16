@@ -17,13 +17,24 @@ from protofuse.sai.transform import transform_with_artifact
 
 Arm = Literal["full", "fused"]
 EnergyKind = Literal["finite", "positive_infinity", "negative_infinity", "nan"]
-RunStatus = Literal["ok", "arm_failed", "output_length_mismatch", "non_finite_energy"]
+RunStatus = Literal[
+    "ok",
+    "arm_failed",
+    "candidate_pool_mismatch",
+    "output_length_mismatch",
+    "non_finite_energy",
+]
 
 
 @dataclass(frozen=True)
 class ProgramOutputs:
     sequences: tuple[str, ...]
     energies: tuple[float, ...]
+    result_metadata: tuple[dict[str, Any], ...] = ()
+    energy_comparable: bool = True
+    energy_comparison_reason: str | None = None
+    candidate_pool_sha256: str | None = None
+    candidate_pool_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +67,8 @@ class PairedRun:
     fused_error_type: str | None
     full_sequences: tuple[str, ...]
     fused_sequences: tuple[str, ...]
+    full_result_metadata: tuple[dict[str, Any], ...]
+    fused_result_metadata: tuple[dict[str, Any], ...]
     identical_sequences: bool
     sequence_agreement: float | None
     top_k_recall: float | None
@@ -63,6 +76,13 @@ class PairedRun:
     fused_energies: tuple[float | None, ...]
     full_energy_kinds: tuple[EnergyKind, ...]
     fused_energy_kinds: tuple[EnergyKind, ...]
+    energy_comparable: bool
+    energy_comparison_reason: str | None
+    full_candidate_pool_sha256: str | None
+    fused_candidate_pool_sha256: str | None
+    full_candidate_pool_size: int | None
+    fused_candidate_pool_size: int | None
+    candidate_pool_identical: bool | None
     result_availability_agreement: float | None
     finite_energy_differences: tuple[float, ...]
     maximum_energy_difference: float | None
@@ -71,6 +91,10 @@ class PairedRun:
     best_energy_regret: float | None
     surrogate_routes: int
     full_model_routes: int
+    initial_stage_parent_item_evaluations_bypassed: int
+    mandatory_final_validation_parent_item_evaluations: int
+    net_parent_item_evaluations_avoided: int
+    # Backward-compatible alias for initial-stage bypasses only.
     parent_item_evaluations_avoided: int
     parent_item_evaluations_from_fallback: int
     routing_reasons: dict[str, int]
@@ -78,6 +102,9 @@ class PairedRun:
     surrogate_seconds: float
     gate_seconds: float
     fallback_parent_seconds: float
+    exact_parallel_routes: int
+    initial_stage_parent_item_evaluations_parallelized: int
+    exact_parallel_parent_seconds: float
 
 
 @dataclass(frozen=True)
@@ -92,7 +119,10 @@ class PairedEvaluation:
         return {
             "schema_version": "2.0",
             "protocol": {
-                "comparison": "same program, seed, stopping rule, and device",
+                "comparison": (
+                    "same program, seed, ordered candidate pool when available, "
+                    "stopping rule, and device"
+                ),
                 "measured_scope": "Program.run including routing, fallback, and final validation",
                 "arm_order": "counterbalanced full/fused by seed position",
                 "cold_start_in_primary_timing": False,
@@ -128,8 +158,36 @@ def evaluate_paired(
     warmup: bool = True,
     warmup_seed: int | None = None,
     offline_surrogate_metrics: Mapping[str, Any] | None = None,
+    on_progress: Callable[[PairedEvaluation], None] | None = None,
 ) -> PairedEvaluation:
     """Run the only timed experiment path; warmup never enters primary timing."""
+
+    return evaluate_paired_transform(
+        build_program,
+        lambda program: transform_with_artifact(program, artifact),
+        optimizer_index=int(artifact.manifest.optimizer_index),
+        seeds=seeds,
+        device=device,
+        warmup=warmup,
+        warmup_seed=warmup_seed,
+        offline_surrogate_metrics=offline_surrogate_metrics,
+        on_progress=on_progress,
+    )
+
+
+def evaluate_paired_transform(
+    build_program: Callable[[], Program],
+    transform_program: Callable[[Program], Program],
+    *,
+    optimizer_index: int,
+    seeds: Sequence[int],
+    device: Literal["modal"] | None = None,
+    warmup: bool = True,
+    warmup_seed: int | None = None,
+    offline_surrogate_metrics: Mapping[str, Any] | None = None,
+    on_progress: Callable[[PairedEvaluation], None] | None = None,
+) -> PairedEvaluation:
+    """Evaluate any exact-matching FusionBundle with the canonical paired protocol."""
 
     resolved_seeds = tuple(seeds)
     if not resolved_seeds:
@@ -139,11 +197,17 @@ def evaluate_paired(
     if warmup:
         resolved_warmup_seed = warmup_seed if warmup_seed is not None else max(resolved_seeds) + 1
         full = build_program()
-        fused = transform_with_artifact(build_program(), artifact)
+        fused = transform_program(build_program())
         apply_program_seed(full, resolved_warmup_seed)
         apply_program_seed(fused, resolved_warmup_seed)
         warmup_order: tuple[Arm, Arm] = ("full", "fused")
-        warmup_runs = _run_arms(full, fused, warmup_order, device)
+        warmup_runs = _run_arms(
+            full,
+            fused,
+            warmup_order,
+            device,
+            optimizer_index=optimizer_index,
+        )
         warmup_report = WarmupReport(
             seed=resolved_warmup_seed,
             order=warmup_order,
@@ -153,17 +217,23 @@ def evaluate_paired(
             fused_error_type=warmup_runs["fused"].error_type,
         )
 
-    runs = tuple(
-        _paired_run(
-            build_program,
-            artifact,
-            seed=seed,
-            order=("full", "fused") if index % 2 == 0 else ("fused", "full"),
-            device=device,
+    runs: list[PairedRun] = []
+    for index, seed in enumerate(resolved_seeds):
+        runs.append(
+            _paired_run(
+                build_program,
+                transform_program,
+                optimizer_index=optimizer_index,
+                seed=seed,
+                order=("full", "fused") if index % 2 == 0 else ("fused", "full"),
+                device=device,
+            )
         )
-        for index, seed in enumerate(resolved_seeds)
-    )
-    return PairedEvaluation(runs, warmup_report, offline_surrogate_metrics)
+        if on_progress is not None:
+            on_progress(
+                PairedEvaluation(tuple(runs), warmup_report, offline_surrogate_metrics)
+            )
+    return PairedEvaluation(tuple(runs), warmup_report, offline_surrogate_metrics)
 
 
 def apply_program_seed(program: Program, seed: int) -> None:
@@ -178,22 +248,50 @@ def apply_program_seed(program: Program, seed: int) -> None:
         optimizer.seed = derived
 
 
-def _outputs(program: Program) -> ProgramOutputs:
-    sequences = tuple(
-        sequence.sequence
+def _outputs(program: Program, *, optimizer_index: int) -> ProgramOutputs:
+    results = tuple(
+        sequence
         for construct in program.constructs
         for sequence in construct.joined_sequences
     )
-    return ProgramOutputs(sequences, tuple(float(value) for value in program.energy_scores))
+    pool_relative = any(
+        bool(getattr(optimizer, "pool_relative_objective", False))
+        for optimizer in program.optimizers
+    )
+    optimizer = program.optimizers[optimizer_index]
+    return ProgramOutputs(
+        tuple(sequence.sequence for sequence in results),
+        tuple(float(value) for value in program.energy_scores),
+        result_metadata=tuple(sequence.metadata for sequence in results),
+        energy_comparable=not pool_relative,
+        energy_comparison_reason=(
+            "The paper objective is normalized over the complete candidate pool; "
+            "ProtoFuse final validation scores only retained candidates. Use top-k recall and "
+            "raw per-objective metrics."
+            if pool_relative
+            else None
+        ),
+        candidate_pool_sha256=getattr(optimizer, "candidate_pool_sha256", None),
+        candidate_pool_size=getattr(optimizer, "candidate_pool_size", None),
+    )
 
 
-def _execute(program: Program, device: Literal["modal"] | None) -> ArmExecution:
+def _execute(
+    program: Program,
+    device: Literal["modal"] | None,
+    *,
+    optimizer_index: int,
+) -> ArmExecution:
     started = perf_counter()
     try:
         program.run(device=device)
     except Exception as error:  # noqa: BLE001 - experiment must retain failures by arm
         return ArmExecution(perf_counter() - started, None, type(error).__name__)
-    return ArmExecution(perf_counter() - started, _outputs(program), None)
+    return ArmExecution(
+        perf_counter() - started,
+        _outputs(program, optimizer_index=optimizer_index),
+        None,
+    )
 
 
 def classify_proto_energy(value: float) -> EnergyKind:
@@ -232,6 +330,10 @@ def _routing_metrics(program: Program) -> dict[str, Any]:
     objective_count = 0
     avoided_parent_evaluations = 0
     fallback_parent_evaluations = 0
+    exact_parallel_routes = 0
+    parallelized_parent_evaluations = 0
+    exact_parallel_seconds = 0.0
+    exact_parent_fallback_seconds = 0.0
     for evaluator in getattr(program, "_protofuse_evaluators", ()):
         routes.update(evaluator.routing_counts)
         reasons.update(evaluator.routing_reasons)
@@ -240,16 +342,47 @@ def _routing_metrics(program: Program) -> dict[str, Any]:
         objective_count += group_objectives
         avoided_parent_evaluations += evaluator.routing_counts["surrogate"] * group_objectives
         fallback_parent_evaluations += evaluator.routing_counts["full_model"] * group_objectives
+    for evaluator in getattr(program, "_protofuse_exact_evaluators", ()):
+        reasons.update(evaluator.routing_reasons)
+        group_objectives = len(evaluator.objectives)
+        objective_count += group_objectives
+        parallel_routes = int(evaluator.routing_counts["parallel"])
+        parent_routes = int(evaluator.routing_counts["parent"])
+        exact_parallel_routes += parallel_routes
+        parallelized_parent_evaluations += parallel_routes * group_objectives
+        fallback_parent_evaluations += parent_routes * group_objectives
+        routes["full_model"] += parent_routes
+        exact_parallel_seconds += float(evaluator.timing_seconds["parallel"])
+        exact_parent_fallback_seconds += float(evaluator.timing_seconds["parent"])
+    final_validation_parent_evaluations = sum(
+        int(counter["parent_item_evaluations"])
+        for counter in getattr(program, "_protofuse_validation_work", ())
+    )
     return {
         "surrogate_routes": routes["surrogate"],
         "full_model_routes": routes["full_model"],
+        "initial_stage_parent_item_evaluations_bypassed": avoided_parent_evaluations,
+        "mandatory_final_validation_parent_item_evaluations": (
+            final_validation_parent_evaluations
+        ),
+        "net_parent_item_evaluations_avoided": (
+            avoided_parent_evaluations - final_validation_parent_evaluations
+        ),
+        # Retained for schema-2 consumers; this never included final validation.
         "parent_item_evaluations_avoided": avoided_parent_evaluations,
         "parent_item_evaluations_from_fallback": fallback_parent_evaluations,
         "routing_reasons": dict(sorted(reasons.items())),
         "target_objectives": objective_count,
         "surrogate_seconds": timings["surrogate"],
         "gate_seconds": timings["gate"],
-        "fallback_parent_seconds": timings["full_model"],
+        "fallback_parent_seconds": (
+            float(timings["full_model"]) + exact_parent_fallback_seconds
+        ),
+        "exact_parallel_routes": exact_parallel_routes,
+        "initial_stage_parent_item_evaluations_parallelized": (
+            parallelized_parent_evaluations
+        ),
+        "exact_parallel_parent_seconds": exact_parallel_seconds,
     }
 
 
@@ -258,27 +391,38 @@ def _run_arms(
     fused: Program,
     order: tuple[Arm, Arm],
     device: Literal["modal"] | None,
+    *,
+    optimizer_index: int,
 ) -> dict[Arm, ArmExecution]:
     programs = {"full": full, "fused": fused}
     results: dict[Arm, ArmExecution] = {}
     for arm in order:
-        results[arm] = _execute(programs[arm], device)
+        results[arm] = _execute(
+            programs[arm], device, optimizer_index=optimizer_index
+        )
     return results
 
 
 def _paired_run(
     build_program: Callable[[], Program],
-    artifact: Any,
+    transform_program: Callable[[Program], Program],
     *,
+    optimizer_index: int,
     seed: int,
     order: tuple[Arm, Arm],
     device: Literal["modal"] | None,
 ) -> PairedRun:
     full = build_program()
-    fused = transform_with_artifact(build_program(), artifact)
+    fused = transform_program(build_program())
     apply_program_seed(full, seed)
     apply_program_seed(fused, seed)
-    executions = _run_arms(full, fused, order, device)
+    executions = _run_arms(
+        full,
+        fused,
+        order,
+        device,
+        optimizer_index=optimizer_index,
+    )
     full_run = executions["full"]
     fused_run = executions["fused"]
     routing = _routing_metrics(fused)
@@ -287,16 +431,36 @@ def _paired_run(
     fused_outputs = fused_run.outputs or ProgramOutputs((), ())
     full_kinds = tuple(classify_proto_energy(value) for value in full_outputs.energies)
     fused_kinds = tuple(classify_proto_energy(value) for value in fused_outputs.energies)
-    differences = tuple(
-        abs(left - right)
-        for left, right in zip(full_outputs.energies, fused_outputs.energies, strict=False)
-        if math.isfinite(left) and math.isfinite(right)
+    energy_comparable = full_outputs.energy_comparable and fused_outputs.energy_comparable
+    energy_comparison_reason = (
+        full_outputs.energy_comparison_reason or fused_outputs.energy_comparison_reason
+    )
+    candidate_pool_identical = (
+        full_outputs.candidate_pool_sha256 == fused_outputs.candidate_pool_sha256
+        and full_outputs.candidate_pool_size == fused_outputs.candidate_pool_size
+        if full_outputs.candidate_pool_sha256 is not None
+        and fused_outputs.candidate_pool_sha256 is not None
+        and full_outputs.candidate_pool_size is not None
+        and fused_outputs.candidate_pool_size is not None
+        else None
+    )
+    candidate_pool_required = not energy_comparable
+    differences = (
+        tuple(
+            abs(left - right)
+            for left, right in zip(full_outputs.energies, fused_outputs.energies, strict=False)
+            if math.isfinite(left) and math.isfinite(right)
+        )
+        if energy_comparable
+        else ()
     )
     finite_full = tuple(value for value in full_outputs.energies if math.isfinite(value))
     finite_fused = tuple(value for value in fused_outputs.energies if math.isfinite(value))
 
     if full_run.error_type is not None or fused_run.error_type is not None:
         status: RunStatus = "arm_failed"
+    elif candidate_pool_required and candidate_pool_identical is not True:
+        status = "candidate_pool_mismatch"
     elif len(full_outputs.energies) != len(fused_outputs.energies):
         status = "output_length_mismatch"
     elif any(kind != "finite" for kind in (*full_kinds, *fused_kinds)):
@@ -306,10 +470,15 @@ def _paired_run(
         status = "ok"
 
     speedup = None
-    if full_run.error_type is None and fused_run.error_type is None and fused_run.seconds > 0:
+    if (
+        full_run.error_type is None
+        and fused_run.error_type is None
+        and (not candidate_pool_required or candidate_pool_identical is True)
+        and fused_run.seconds > 0
+    ):
         speedup = full_run.seconds / fused_run.seconds
-    best_full = min(finite_full, default=None)
-    best_fused = min(finite_fused, default=None)
+    best_full = min(finite_full, default=None) if energy_comparable else None
+    best_fused = min(finite_fused, default=None) if energy_comparable else None
     regret = best_fused - best_full if best_full is not None and best_fused is not None else None
     availability_full = tuple(kind == "finite" for kind in full_kinds)
     availability_fused = tuple(kind == "finite" for kind in fused_kinds)
@@ -325,6 +494,8 @@ def _paired_run(
         fused_error_type=fused_run.error_type,
         full_sequences=full_outputs.sequences,
         fused_sequences=fused_outputs.sequences,
+        full_result_metadata=full_outputs.result_metadata,
+        fused_result_metadata=fused_outputs.result_metadata,
         identical_sequences=full_outputs.sequences == fused_outputs.sequences,
         sequence_agreement=_agreement(full_outputs.sequences, fused_outputs.sequences),
         top_k_recall=_top_k_recall(full_outputs.sequences, fused_outputs.sequences),
@@ -332,6 +503,13 @@ def _paired_run(
         fused_energies=_json_energies(fused_outputs.energies),
         full_energy_kinds=full_kinds,
         fused_energy_kinds=fused_kinds,
+        energy_comparable=energy_comparable,
+        energy_comparison_reason=energy_comparison_reason,
+        full_candidate_pool_sha256=full_outputs.candidate_pool_sha256,
+        fused_candidate_pool_sha256=fused_outputs.candidate_pool_sha256,
+        full_candidate_pool_size=full_outputs.candidate_pool_size,
+        fused_candidate_pool_size=fused_outputs.candidate_pool_size,
+        candidate_pool_identical=candidate_pool_identical,
         result_availability_agreement=_agreement(availability_full, availability_fused),
         finite_energy_differences=differences,
         maximum_energy_difference=max(differences, default=None),

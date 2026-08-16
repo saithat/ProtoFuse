@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from protofuse.phillip import compile_proto_plan, recommend_topologies
 from protofuse.phillip.contracts import MethodologySpec
@@ -23,11 +24,23 @@ def _load(path: Path) -> MethodologySpec:
     return MethodologySpec.model_validate_json(path.read_text())
 
 
+def _write_text_atomic(path: Path, payload: str) -> None:
+    """Replace a result file only after its complete contents reach disk."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
 def _run_fixture(
     fixture_id: str,
     *,
     tier: RunTier,
-) -> tuple[Program, float, dict[str, int | float] | None]:
+) -> tuple[Program, float, dict[str, Any] | None]:
     """Run one reviewed fixture through its standard workload entry point."""
 
     from protofuse.phillip.program_builders import (
@@ -35,7 +48,7 @@ def _run_fixture(
         run_antibody_cdr_maturation,
         run_bioemu_ensemble_filter,
         run_boltz2_state_sweep,
-        run_custom_egfp_lung_report,
+        run_custom_egfp_lung,
         run_dnachisel_num1,
         run_esm2_protein_maturation,
         run_evo2_regulatory_design,
@@ -46,22 +59,15 @@ def _run_fixture(
         run_rfdiffusion3_af3_ppi,
         run_rfdiffusion3_boltz2_binder,
         run_symmetric_oligomer_ring,
+        summarize_custom_egfp_program,
     )
-
-    if fixture_id == "custom-egfp-lung":
-        result = run_custom_egfp_lung_report(tier=tier)
-        summary = {
-            "pool": result.n_pool,
-            "passed_filter": result.candidates_passed_filter,
-            "best_tissue_score": result.best.tissue_score,
-        }
-        return result.program, result.wall_time_ms, summary
 
     runners: dict[str, Callable[..., tuple[Program, float]]] = {
         "af3-boltz2-state-sweep": run_af3_boltz2_state_sweep,
         "antibody-cdr-maturation": run_antibody_cdr_maturation,
         "bioemu-ensemble-filter": run_bioemu_ensemble_filter,
         "boltz2-state-sweep": run_boltz2_state_sweep,
+        "custom-egfp-lung": run_custom_egfp_lung,
         "dnachisel-num1": run_dnachisel_num1,
         "esm2-protein-maturation": run_esm2_protein_maturation,
         "evo2-enformer-borzoi": run_evo2_regulatory_design,
@@ -78,7 +84,8 @@ def _run_fixture(
     except KeyError as exc:
         raise ValueError(f"run not implemented for fixture={fixture_id}") from exc
     program, wall_ms = runner(tier=tier)
-    return program, wall_ms, None
+    summary = summarize_custom_egfp_program(program) if fixture_id == "custom-egfp-lung" else None
+    return program, wall_ms, summary
 
 
 def main() -> None:
@@ -150,6 +157,18 @@ def main() -> None:
         "--no-checkpoint",
         action="store_true",
         help="disable automatic save, resume, and structured event logging for this run",
+    )
+    custom_parity_parser = subparsers.add_parser(
+        "custom-reference-parity",
+        help="compare one full CUSTOM pool with the pinned released implementation",
+    )
+    custom_parity_parser.add_argument("--seed", type=int, required=True)
+    custom_parity_parser.add_argument("--tier", choices=("full",), default="full")
+    custom_parity_parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="atomically write the parity JSON artifact instead of printing it",
     )
     collection_parser = subparsers.add_parser(
         "collection",
@@ -230,6 +249,43 @@ def main() -> None:
         default=None,
         help="write the complete JSON report instead of printing it",
     )
+    fusion_audit = fusion_sub.add_parser(
+        "audit",
+        help="audit a frozen linear artifact on disjoint held-out parent traces",
+    )
+    fusion_audit.add_argument("artifact", type=Path)
+    fusion_audit.add_argument("--trace", type=Path, action="append", required=True)
+    fusion_audit.add_argument("--out", type=Path, required=True)
+    fusion_audit.add_argument("--max-normalized-mae", type=float, default=0.05)
+    fusion_audit.add_argument("--min-spearman", type=float, default=0.90)
+    fusion_audit.add_argument("--min-coverage", type=float, default=0.30)
+    fusion_audit.add_argument("--min-groups", type=int, default=4)
+    fusion_audit.add_argument("--allow-unreviewed", action="store_true")
+    custom_mfe_audit = fusion_sub.add_parser(
+        "audit-custom-mfe-sampled",
+        help="audit the frozen sampled-window CUSTOM MFE candidate",
+    )
+    custom_mfe_audit.add_argument("--trace", type=Path, action="append", required=True)
+    custom_mfe_audit.add_argument("--development-report", type=Path, required=True)
+    custom_mfe_audit.add_argument("--workers", type=int, default=8)
+    custom_mfe_audit.add_argument("--out", type=Path, required=True)
+    custom_mfe_evaluate = fusion_sub.add_parser(
+        "evaluate-custom-mfe",
+        help="pair Proto with an exact-parallel or frozen sampled-window MFE bundle",
+    )
+    custom_mfe_evaluate.add_argument("collection", type=Path)
+    custom_mfe_evaluate.add_argument("program_id")
+    custom_mfe_evaluate.add_argument(
+        "--mode",
+        choices=("exact-parallel", "sampled-window"),
+        required=True,
+    )
+    custom_mfe_evaluate.add_argument("--seed", type=int, action="append", required=True)
+    custom_mfe_evaluate.add_argument("--workers", type=int, default=8)
+    custom_mfe_evaluate.add_argument("--audit-report", type=Path, default=None)
+    custom_mfe_evaluate.add_argument("--allow-unreviewed", action="store_true")
+    custom_mfe_evaluate.add_argument("--no-warmup", action="store_true")
+    custom_mfe_evaluate.add_argument("--out", type=Path, required=True)
     generate_parser = subparsers.add_parser(
         "generate",
         help="generate design_*.py programs from a reviewed fixture methodology",
@@ -354,6 +410,20 @@ def main() -> None:
         print(sequence[:120] + ("..." if len(sequence) > 120 else ""))
         return
 
+    if args.command == "custom-reference-parity":
+        from protofuse.phillip.program_builders import run_custom_reference_parity
+
+        parity_report = run_custom_reference_parity(seed=args.seed, tier=args.tier)
+        payload = json.dumps(parity_report, indent=2, allow_nan=False) + "\n"
+        if args.out is None:
+            print(payload, end="")
+        else:
+            _write_text_atomic(args.out, payload)
+            print(f"parity={args.out}")
+        if not parity_report["passed"]:
+            raise SystemExit(1)
+        return
+
     if args.command == "collection":
         from protofuse.program_collection import load_collection
 
@@ -400,7 +470,7 @@ def main() -> None:
 
     if args.command == "fusion":
         from protofuse.sai.analyzer import load_reviewed_program
-        from protofuse.sai.artifacts import load_fusion_artifact
+        from protofuse.sai.artifacts import file_sha256, load_fusion_artifact
 
         if args.fusion_command == "validate":
             artifact = load_fusion_artifact(
@@ -494,12 +564,232 @@ def main() -> None:
             )
             return
 
+        if args.fusion_command == "audit":
+            from protofuse.sai.audit import audit_frozen_fusion
+
+            audit_report = audit_frozen_fusion(
+                args.artifact,
+                tuple(args.trace),
+                max_normalized_mae=args.max_normalized_mae,
+                min_spearman=args.min_spearman,
+                min_coverage=args.min_coverage,
+                min_groups=args.min_groups,
+                require_reviewed=not args.allow_unreviewed,
+            )
+            _write_text_atomic(
+                args.out,
+                json.dumps(audit_report, indent=2, allow_nan=False) + "\n",
+            )
+            print(f"audit={args.out}")
+            if not audit_report["passed"]:
+                raise SystemExit(1)
+            return
+
+        if args.fusion_command == "audit-custom-mfe-sampled":
+            from protofuse.sai.custom_mfe_audit import audit_sampled_custom_mfe
+            from protofuse.sai.exact_custom import (
+                FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL,
+            )
+
+            development = json.loads(args.development_report.read_text())
+            split = development["dataset"]["split"]
+            development_groups = tuple(
+                group
+                for key in ("train_groups", "calibration_groups", "audit_groups")
+                for group in split[key]
+            )
+            audit_report = audit_sampled_custom_mfe(
+                tuple(args.trace),
+                development_trace_sha256=tuple(split["trace_sha256"]),
+                development_groups=development_groups,
+                uncertainty_threshold=(
+                    FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL
+                ),
+                workers=args.workers,
+            )
+            _write_text_atomic(
+                args.out,
+                json.dumps(audit_report, indent=2, allow_nan=False) + "\n",
+            )
+            print(f"audit={args.out}")
+            if not audit_report["passed"]:
+                raise SystemExit(1)
+            return
+
+        if args.fusion_command == "evaluate-custom-mfe":
+            from protofuse.sai.evaluation import evaluate_paired_transform
+            from protofuse.sai.exact_custom import (
+                FROZEN_CUSTOM_MFE_INTERCEPT_KCAL_MOL,
+                FROZEN_CUSTOM_MFE_SLOPE,
+                FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL,
+                FROZEN_CUSTOM_MFE_WINDOW_STRIDE,
+            )
+            from protofuse.sai.optimizer import optimize_program
+            from protofuse.sai.registry import FusionRegistry
+            from protofuse.sai.transform import (
+                build_exact_custom_mfe_bundle,
+                build_sampled_custom_mfe_bundle,
+            )
+
+            if not args.allow_unreviewed:
+                raise ValueError(
+                    "CUSTOM MFE development bundles require --allow-unreviewed"
+                )
+            reference = load_reviewed_program(
+                args.collection,
+                program_id=args.program_id,
+            )
+            offline_metrics = None
+            audit_report_sha256 = None
+            if args.mode == "sampled-window":
+                if args.audit_report is None:
+                    raise ValueError("sampled-window evaluation requires --audit-report")
+                external_audit = json.loads(args.audit_report.read_text())
+                frozen_spec = external_audit.get("frozen_spec")
+                audit_provenance = external_audit.get("provenance")
+                audit_checks = external_audit.get("checks")
+                heldout_group_count = (
+                    audit_provenance.get("heldout_group_count")
+                    if isinstance(audit_provenance, dict)
+                    else None
+                )
+                if (
+                    external_audit.get("schema_version") != "1.0"
+                    or external_audit.get("status") != "pass"
+                    or external_audit.get("passed") is not True
+                    or not isinstance(audit_checks, dict)
+                    or not audit_checks
+                    or not all(value is True for value in audit_checks.values())
+                    or isinstance(heldout_group_count, bool)
+                    or not isinstance(heldout_group_count, int)
+                    or heldout_group_count < 4
+                    or not isinstance(frozen_spec, dict)
+                    or frozen_spec.get("window_stride")
+                    != FROZEN_CUSTOM_MFE_WINDOW_STRIDE
+                    or frozen_spec.get("calibration_intercept_kcal_mol")
+                    != FROZEN_CUSTOM_MFE_INTERCEPT_KCAL_MOL
+                    or frozen_spec.get("calibration_slope") != FROZEN_CUSTOM_MFE_SLOPE
+                    or frozen_spec.get("uncertainty_threshold_kcal_mol")
+                    != FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL
+                ):
+                    raise ValueError("sampled-window external audit is missing, failed, or stale")
+                audit_report_sha256 = file_sha256(args.audit_report)
+                bundle = build_sampled_custom_mfe_bundle(
+                    reference.program,
+                    workers=args.workers,
+                    window_stride=FROZEN_CUSTOM_MFE_WINDOW_STRIDE,
+                    intercept=FROZEN_CUSTOM_MFE_INTERCEPT_KCAL_MOL,
+                    slope=FROZEN_CUSTOM_MFE_SLOPE,
+                    uncertainty_threshold=(
+                        FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL
+                    ),
+                )
+                audit_metrics = external_audit["metrics"]
+                offline_metrics = {
+                    "audit_mae": [audit_metrics["accepted_mae_kcal_mol"]],
+                    "audit_rank_correlation": [audit_metrics["accepted_spearman"]],
+                    "audit_selective_coverage": external_audit["samples"]["coverage"],
+                    "audit_accepted_mae": [audit_metrics["accepted_mae_kcal_mol"]],
+                    "audit_accepted_mae_q95_q05_fraction": [
+                        audit_metrics["accepted_mae_q95_q05_fraction"]
+                    ],
+                }
+            else:
+                bundle = build_exact_custom_mfe_bundle(
+                    reference.program,
+                    workers=args.workers,
+                )
+
+            def transform_program(program: Program) -> Program:
+                registry: FusionRegistry[Program] = FusionRegistry()
+                registry.register(bundle)
+                optimized = optimize_program(program, registry)
+                if optimized.applied_fusions != (bundle.qualified_id,):
+                    raise RuntimeError(
+                        f"CUSTOM MFE bundle was not applied: {optimized.diagnostics}"
+                    )
+                return optimized.program
+
+            provenance = {
+                "collection_id": reference.collection.manifest.collection_id,
+                "methodology_id": reference.collection.manifest.methodology_id,
+                "program_id": reference.entry.program_id,
+                "program_source_sha256": reference.entry.sha256,
+                "fusion_id": bundle.fusion_id,
+                "fusion_version": bundle.version,
+                "reviewed": False,
+                "workers": args.workers,
+                "uncertainty_threshold_kcal_mol": (
+                    FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL
+                    if args.mode == "sampled-window"
+                    else None
+                ),
+                "audit_report_sha256": audit_report_sha256,
+                "seeds": tuple(args.seed),
+            }
+
+            def serialized(evaluation: Any) -> str:
+                report = evaluation.as_dict()
+                report["provenance"] = provenance
+                return json.dumps(report, indent=2, allow_nan=False) + "\n"
+
+            def persist_progress(evaluation: Any) -> None:
+                _write_text_atomic(args.out, serialized(evaluation))
+
+            evaluation = evaluate_paired_transform(
+                lambda: load_reviewed_program(
+                    args.collection,
+                    program_id=args.program_id,
+                ).program,
+                transform_program,
+                optimizer_index=0,
+                seeds=args.seed,
+                warmup=not args.no_warmup,
+                offline_surrogate_metrics=offline_metrics,
+                on_progress=persist_progress,
+            )
+            _write_text_atomic(args.out, serialized(evaluation))
+            print(f"evaluation={args.out}")
+            return
+
         from protofuse.sai.evaluation import evaluate_paired
 
         artifact = load_fusion_artifact(
             args.artifact,
             require_reviewed=not args.allow_unreviewed,
         )
+        benchmark_program = load_reviewed_program(
+            args.collection,
+            program_id=args.program_id,
+        )
+        offline_metrics = (
+            json.loads((artifact.root / "metrics.json").read_text())
+            if (artifact.root / "metrics.json").is_file()
+            else None
+        )
+        provenance = {
+            "collection_id": benchmark_program.collection.manifest.collection_id,
+            "methodology_id": benchmark_program.collection.manifest.methodology_id,
+            "program_id": benchmark_program.entry.program_id,
+            "program_source_sha256": benchmark_program.entry.sha256,
+            "artifact_manifest_sha256": file_sha256(artifact.root / "manifest.json"),
+            "fusion_id": artifact.manifest.fusion_id,
+            "fusion_version": artifact.manifest.version,
+            "model_sha256": artifact.manifest.model_sha256,
+            "training_trace_sha256": artifact.manifest.training_trace_sha256,
+            "split_manifest_sha256": artifact.manifest.split_manifest_sha256,
+            "device": args.device,
+            "seeds": tuple(args.seed),
+        }
+
+        def serialized(evaluation: Any) -> str:
+            report = evaluation.as_dict()
+            report["provenance"] = provenance
+            return json.dumps(report, indent=2, allow_nan=False) + "\n"
+
+        def persist_progress(evaluation: Any) -> None:
+            if args.out is not None:
+                _write_text_atomic(args.out, serialized(evaluation))
 
         def build_program() -> Program:
             return load_reviewed_program(
@@ -513,18 +803,14 @@ def main() -> None:
             seeds=args.seed,
             device="modal" if args.device == "modal" else None,
             warmup=not args.no_warmup,
-            offline_surrogate_metrics=(
-                json.loads((artifact.root / "metrics.json").read_text())
-                if (artifact.root / "metrics.json").is_file()
-                else None
-            ),
+            offline_surrogate_metrics=offline_metrics,
+            on_progress=persist_progress,
         )
-        payload = json.dumps(evaluation.as_dict(), indent=2) + "\n"
+        payload = serialized(evaluation)
         if args.out is None:
             print(payload, end="")
         else:
-            args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(payload)
+            _write_text_atomic(args.out, payload)
             print(f"evaluation={args.out}")
         return
 

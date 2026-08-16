@@ -1,6 +1,6 @@
 """Full-tier Evo 2 regulatory design for the EVO2 Morse pattern.
 
-Generate 128-bp chunks with Evo 2 and retain separate Enformer and four-replicate Borzoi pattern losses; the paper ranks their 0.5/0.5 mean.
+Generate 128-bp chunks with Evo 2 in hash-verified mm39 context and retain the exact Enformer and four-replicate Borzoi L1 sums; the paper ranks their 0.5/0.5 mean.
 """
 
 from __future__ import annotations

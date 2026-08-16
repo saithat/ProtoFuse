@@ -1,47 +1,317 @@
 {
   "schema_version": "1.0",
   "collection_id": "af3-boltz2-state-sweep",
-  "methodology_id": "af3-boltz2-state-sweep-v1",
-  "proto_version": "7aaca3698da21d8f2ef9a18d235d27f44be51bee",
+  "methodology_id": "af3-boltz2-state-sweep-v3",
+  "proto_version": "f183febdfd365ed211d4d3ea63d6d3e28b85443e",
   "registry_version": "1",
-  "seed_policy": "paper uses five independent seeds without listing values; prototype uses implementation seeds 0 through 4, paired identically across full/fused arms",
+  "seed_policy": "paper reports five seeds without values; the target-level protocol slice uses implementation seeds 0 through 4 across ten beta settings and five draws per setting, paired identically across full/fused arms",
   "reviewed": false,
   "programs": [
     {
       "program_id": "design-001",
       "path": "design_001.py",
       "entrypoint": "build_program",
-      "sha256": "c12ed544a0e0f139f5abe4cd7d579c5bb138d9f1bbee0b18becac360064ce165"
+      "sha256": "5a322077c4133672027e9794c89878198a149d13a9e9d6a90d0cea131c5226bb"
     },
     {
       "program_id": "design-002",
       "path": "design_002.py",
       "entrypoint": "build_program",
-      "sha256": "27db3375b8fb06acb9458ffecc56675c88b0fa0dfa47750a73307e47c25e265f"
+      "sha256": "be6c938ddc87b0e25df8e2e1059e6838a21706e1072396a4a83b05aef0112db7"
     },
     {
       "program_id": "design-003",
       "path": "design_003.py",
       "entrypoint": "build_program",
-      "sha256": "68f376d543e1ad7c025b17e7b9ef3e34a8f7ca1586a237eab4721926d9e64eba"
+      "sha256": "bb3a879001eb4498cbc5ef4689b43941310eea7390354df7c4852c5a904208d3"
     },
     {
       "program_id": "design-004",
       "path": "design_004.py",
       "entrypoint": "build_program",
-      "sha256": "e09e0cc36ff601364ee3662a38e4e62f670aa8ffecaf054b067848645eff9a2b"
+      "sha256": "c1f0dbe18d0e24dc80e2d2c5b70cda260869d99559e4d74fdf9f143948346775"
     },
     {
       "program_id": "design-005",
       "path": "design_005.py",
       "entrypoint": "build_program",
-      "sha256": "419496f7208a61e1ada088126cd9df3115cdbca6828c08f58cc70e0ccd4a6b8b"
+      "sha256": "16af28e3e06b77cdc9e87b785a90d6a3a0295e3030b789b10ce578564086666e"
     },
     {
       "program_id": "design-006",
       "path": "design_006.py",
       "entrypoint": "build_program",
-      "sha256": "35c050d6ae18e667985763a950390614bd9f5bf93b0f84bc349f04d4b5241615"
+      "sha256": "9d0f38a201c68800e5be481bda837c2b96421f3cc5f812667f6e53ed73f5e1d3"
+    },
+    {
+      "program_id": "design-007",
+      "path": "design_007.py",
+      "entrypoint": "build_program",
+      "sha256": "165cfce8430137fba0b9aad4f0bac157eb75eed4b2f74176e7fae7788476f110"
+    },
+    {
+      "program_id": "design-008",
+      "path": "design_008.py",
+      "entrypoint": "build_program",
+      "sha256": "b88fb6cbfc1fe2cc3fe6804cfe379bf71036ed454b1ac265fcebb250ca7920f6"
+    },
+    {
+      "program_id": "design-009",
+      "path": "design_009.py",
+      "entrypoint": "build_program",
+      "sha256": "30b07b0b98e4d296178262346ae3a4fbd20efa241e9c0be03d842e6599deccce"
+    },
+    {
+      "program_id": "design-010",
+      "path": "design_010.py",
+      "entrypoint": "build_program",
+      "sha256": "8a1d77b56c62669497917368e85906cdbb5ebfc7bb83014e51bd68d88becafc9"
+    },
+    {
+      "program_id": "design-011",
+      "path": "design_011.py",
+      "entrypoint": "build_program",
+      "sha256": "02d0ffac67642f4bb72c4e9ae6a1255414ee20f732cfe63aa9cf0a79c00c52eb"
+    },
+    {
+      "program_id": "design-012",
+      "path": "design_012.py",
+      "entrypoint": "build_program",
+      "sha256": "24601c48f42e52bb43d5cb2fd0aa6954e73c2ce6c501eb684682d541f718caab"
+    },
+    {
+      "program_id": "design-013",
+      "path": "design_013.py",
+      "entrypoint": "build_program",
+      "sha256": "5f833133599b661fa21198a2582e6aa3e8bf0ac5521b20eb94b08c8042171e25"
+    },
+    {
+      "program_id": "design-014",
+      "path": "design_014.py",
+      "entrypoint": "build_program",
+      "sha256": "653c327217a4f5a2dc79718c372c92febcd069aa5c367219762880ac067249d2"
+    },
+    {
+      "program_id": "design-015",
+      "path": "design_015.py",
+      "entrypoint": "build_program",
+      "sha256": "8b8de3123410b3089c89f8d6cf019fb7379f5867f1b610685d34d1ef1e0f17b5"
+    },
+    {
+      "program_id": "design-016",
+      "path": "design_016.py",
+      "entrypoint": "build_program",
+      "sha256": "fc84137d208ab4605794151df9e77518c25b45a0ed8a39dcca631b05e0be42a3"
+    },
+    {
+      "program_id": "design-017",
+      "path": "design_017.py",
+      "entrypoint": "build_program",
+      "sha256": "c926c612281b3c89c600b5fd8d9253aa35d21ab902dbc3d0ba277881bbc4f59f"
+    },
+    {
+      "program_id": "design-018",
+      "path": "design_018.py",
+      "entrypoint": "build_program",
+      "sha256": "a8a7b95ec9bb945a6230cfb2dc69a310095611102f5edc2b1b7232f86921ee75"
+    },
+    {
+      "program_id": "design-019",
+      "path": "design_019.py",
+      "entrypoint": "build_program",
+      "sha256": "ae5a0802841d861f8820be93dbc30650a83607019adca8a87565e6c25d289d86"
+    },
+    {
+      "program_id": "design-020",
+      "path": "design_020.py",
+      "entrypoint": "build_program",
+      "sha256": "cdc2508d00784de1abff5aae302080a97931118b8de9911ba4e7deaa9210f8a8"
+    },
+    {
+      "program_id": "design-021",
+      "path": "design_021.py",
+      "entrypoint": "build_program",
+      "sha256": "c706e49e3d39b6c9b1c58137bc5d51c2bbad28b2ef6100e22f69ea7b29663b17"
+    },
+    {
+      "program_id": "design-022",
+      "path": "design_022.py",
+      "entrypoint": "build_program",
+      "sha256": "449eb6aa0c7d56abb693a6f2ae2e973701eae1f57531f99684691a9f8b709376"
+    },
+    {
+      "program_id": "design-023",
+      "path": "design_023.py",
+      "entrypoint": "build_program",
+      "sha256": "45c652fffb9b42db9c22261caad14284a1df6ff93b4e5a0d1dd243b28dd41820"
+    },
+    {
+      "program_id": "design-024",
+      "path": "design_024.py",
+      "entrypoint": "build_program",
+      "sha256": "7bebfffd2bc30be3f55befbbb9c3a6bc1cad161caed5da6e999d23ea4c2f7c3c"
+    },
+    {
+      "program_id": "design-025",
+      "path": "design_025.py",
+      "entrypoint": "build_program",
+      "sha256": "2bdbf5a1967c4db4f6c99b06012ef12a9bc1623739dcacad6c833edf3305cf60"
+    },
+    {
+      "program_id": "design-026",
+      "path": "design_026.py",
+      "entrypoint": "build_program",
+      "sha256": "51bdafca53168560badbdffa05d517343729829a5e5a77ad42ec94d55cbc752b"
+    },
+    {
+      "program_id": "design-027",
+      "path": "design_027.py",
+      "entrypoint": "build_program",
+      "sha256": "ea776f69ad835dc100152b7105027646891b818ef203d97b639e4c74981deac2"
+    },
+    {
+      "program_id": "design-028",
+      "path": "design_028.py",
+      "entrypoint": "build_program",
+      "sha256": "8282d207e00b8156986dc3d9aa79e68f1d58c99fbfe4ba42e927cd76208f8056"
+    },
+    {
+      "program_id": "design-029",
+      "path": "design_029.py",
+      "entrypoint": "build_program",
+      "sha256": "6a6e18dd5ac01135c96551c21f2531180c3755efdca4acc41b566c2866de0e39"
+    },
+    {
+      "program_id": "design-030",
+      "path": "design_030.py",
+      "entrypoint": "build_program",
+      "sha256": "1426ac0a066f08964c6c0c3a7a19ec790097c2cebade9d26f95d22377b8e6cf9"
+    },
+    {
+      "program_id": "design-031",
+      "path": "design_031.py",
+      "entrypoint": "build_program",
+      "sha256": "c431864c084c886b8793e846db67eeea27294f47e0538dbf3f5e6f475a83e6fc"
+    },
+    {
+      "program_id": "design-032",
+      "path": "design_032.py",
+      "entrypoint": "build_program",
+      "sha256": "a2f0abeb242892dcfa90adf2f7b6deaea1349f5e3181b9de0bc3915af85e24f2"
+    },
+    {
+      "program_id": "design-033",
+      "path": "design_033.py",
+      "entrypoint": "build_program",
+      "sha256": "7c5dfd6b8a228707d751e38dc6a78ff5054aeca379d3a05f90867726eb8bc671"
+    },
+    {
+      "program_id": "design-034",
+      "path": "design_034.py",
+      "entrypoint": "build_program",
+      "sha256": "dec224a005a95f3b56a99f1bd9a43f96801c6b71db5c2fb40992efe08c2543bd"
+    },
+    {
+      "program_id": "design-035",
+      "path": "design_035.py",
+      "entrypoint": "build_program",
+      "sha256": "adb6cca6f313fd25f18500cee1e1de59cd1548547f8ad0fdfae88aee9936bdf9"
+    },
+    {
+      "program_id": "design-036",
+      "path": "design_036.py",
+      "entrypoint": "build_program",
+      "sha256": "4111f9445c3e0f64a37d12d79ac5688fa6a93b054aefe3fde46580c1475219ad"
+    },
+    {
+      "program_id": "design-037",
+      "path": "design_037.py",
+      "entrypoint": "build_program",
+      "sha256": "73e0087f6d6bc690ef6c8c386b99a4939e2bcbe1ba438540be0bb4397922f2b8"
+    },
+    {
+      "program_id": "design-038",
+      "path": "design_038.py",
+      "entrypoint": "build_program",
+      "sha256": "53032ec2b4ea4969e4a899b9b8e268dfe19a4361c8f36dae8abc3b84660fc69c"
+    },
+    {
+      "program_id": "design-039",
+      "path": "design_039.py",
+      "entrypoint": "build_program",
+      "sha256": "dfc27f55afc566210838e4615ac0f85a28c3a587d4786d2d448b7b5b53e8f29e"
+    },
+    {
+      "program_id": "design-040",
+      "path": "design_040.py",
+      "entrypoint": "build_program",
+      "sha256": "6bec259ff835c45c68e5c9fcfb91ae939a11d09d28116e7e13c476d3a67df253"
+    },
+    {
+      "program_id": "design-041",
+      "path": "design_041.py",
+      "entrypoint": "build_program",
+      "sha256": "f7e5e65d96eab051addbc474f72dd71b1d3dc519ef06da751efb969997bcb430"
+    },
+    {
+      "program_id": "design-042",
+      "path": "design_042.py",
+      "entrypoint": "build_program",
+      "sha256": "bc6d2cbc5936361a71b0083ba924f32eb214b5b20e60b52e7195b83d0ba26823"
+    },
+    {
+      "program_id": "design-043",
+      "path": "design_043.py",
+      "entrypoint": "build_program",
+      "sha256": "fe10f38e73c6539877052bfdd487146c4fb8a05951938d5b66d7e0ac79ebab4a"
+    },
+    {
+      "program_id": "design-044",
+      "path": "design_044.py",
+      "entrypoint": "build_program",
+      "sha256": "be33e362dc0345c0ec9d40ae1e297571470a879cb5ae45fa24f7b8de31029c72"
+    },
+    {
+      "program_id": "design-045",
+      "path": "design_045.py",
+      "entrypoint": "build_program",
+      "sha256": "56331a468160c92ecc0b55d9721d0fd87650c13ea615b8a315f10db756229f5b"
+    },
+    {
+      "program_id": "design-046",
+      "path": "design_046.py",
+      "entrypoint": "build_program",
+      "sha256": "b1c4e0e18fbb4f42b6eefaa8d0ca445b81fd3628a807098d4d1e2c2e1bc31a32"
+    },
+    {
+      "program_id": "design-047",
+      "path": "design_047.py",
+      "entrypoint": "build_program",
+      "sha256": "ddedfe7aa5d2a60fddebab3919eb5b1181e537c2d88b75660a9428a11c9d4864"
+    },
+    {
+      "program_id": "design-048",
+      "path": "design_048.py",
+      "entrypoint": "build_program",
+      "sha256": "42dfdc43af03c4ae4213375002b0850b788a5d5d2b0fd38fc930a30a6ca82c8a"
+    },
+    {
+      "program_id": "design-049",
+      "path": "design_049.py",
+      "entrypoint": "build_program",
+      "sha256": "5a34bd21afd49bc378bad58a9a438292e4e611adbc4b29cc66bfe93d6fe4a446"
+    },
+    {
+      "program_id": "design-050",
+      "path": "design_050.py",
+      "entrypoint": "build_program",
+      "sha256": "2bf7133731af2224f6c7ce4665507653888574b47c238bfd89d2c83ca93c67e6"
+    },
+    {
+      "program_id": "design-051",
+      "path": "design_051.py",
+      "entrypoint": "build_program",
+      "sha256": "71509c09a890a5569c904d217126377c84c5b88e403ee5758ed3debc1c985718"
     }
   ]
 }

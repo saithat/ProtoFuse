@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
@@ -271,6 +272,29 @@ def _rank_correlations(actual: np.ndarray, predicted: np.ndarray) -> list[float 
     return correlations
 
 
+def _q95_q05_ranges(values: np.ndarray) -> np.ndarray:
+    """Return robust per-output ranges used to make unlike objectives comparable."""
+
+    return np.asarray(
+        np.quantile(values, 0.95, axis=0) - np.quantile(values, 0.05, axis=0),
+        dtype=np.float64,
+    )
+
+
+def _normalized_mae(
+    actual: np.ndarray,
+    predicted: np.ndarray,
+    ranges: np.ndarray,
+) -> list[float | None]:
+    if len(actual) == 0:
+        return [None] * int(predicted.shape[1])
+    mae = np.abs(actual - predicted).mean(axis=0)
+    return [
+        float(error / span) if math.isfinite(float(span)) and span > 0.0 else None
+        for error, span in zip(mae, ranges, strict=True)
+    ]
+
+
 def train_linear_ensemble(
     samples: tuple[TeacherSample, ...],
     *,
@@ -358,6 +382,10 @@ def train_linear_ensemble(
         & (audit_uncertainty <= uncertainty_threshold)
     )
     accepted_error = audit_error[audit_accepted]
+    audit_actual = y[audit_mask]
+    audit_ranges = _q95_q05_ranges(audit_actual)
+    accepted_actual = audit_actual[audit_accepted]
+    accepted_prediction = audit_prediction[audit_accepted]
     metrics = {
         "calibration_mae": calibration_error.mean(axis=0).tolist(),
         "calibration_rmse": np.sqrt(
@@ -368,13 +396,21 @@ def train_linear_ensemble(
         "audit_rmse": np.sqrt(np.mean(np.square(audit_error), axis=0)).tolist(),
         "audit_max_error": audit_error.max(axis=0).tolist(),
         "audit_rank_correlation": _rank_correlations(
-            y[audit_mask], audit_prediction
+            audit_actual, audit_prediction
         ),
+        "audit_score_q05": np.quantile(audit_actual, 0.05, axis=0).tolist(),
+        "audit_score_q95": np.quantile(audit_actual, 0.95, axis=0).tolist(),
+        "audit_score_q95_q05_range": audit_ranges.tolist(),
         "audit_support_coverage": float(np.mean(audit_support <= support_threshold)),
         "audit_uncertainty_coverage": float(np.mean(audit_uncertainty <= uncertainty_threshold)),
         "audit_selective_coverage": float(np.mean(audit_accepted)),
         "audit_accepted_mae": (
             accepted_error.mean(axis=0).tolist() if len(accepted_error) else None
+        ),
+        "audit_accepted_mae_q95_q05_fraction": _normalized_mae(
+            accepted_actual,
+            accepted_prediction,
+            audit_ranges,
         ),
         "audit_accepted_max_error": (
             accepted_error.max(axis=0).tolist() if len(accepted_error) else None

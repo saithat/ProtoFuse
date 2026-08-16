@@ -19,6 +19,7 @@ from protofuse.sai.evaluation import ProgramOutputs, classify_proto_energy, eval
 from protofuse.sai.model import LinearEnsembleModel, SequenceFeatureSchema
 from protofuse.sai.profiling import profile_traces
 from protofuse.sai.registry import FusionRegistry
+from protofuse.sai.router import SurrogatePrediction
 from protofuse.sai.signatures import program_signature, step_group_signature
 from protofuse.sai.tracing import JsonlTraceWriter, TraceRow, trace_program_constraints
 from protofuse.sai.training import (
@@ -29,7 +30,7 @@ from protofuse.sai.training import (
 from protofuse.sai.transform import FusionCompatibilityError, transform_with_artifact
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CUSTOM_COLLECTION = REPO_ROOT / "proto_programs/generated/custom-egfp-lung"
+DNACHISEL_COLLECTION = REPO_ROOT / "proto_programs/generated/dnachisel-num1"
 
 
 def objective_low(
@@ -128,8 +129,8 @@ def write_artifact(
 
 
 def test_reviewed_analyzer_builds_real_program_and_signature_is_stable() -> None:
-    first = load_reviewed_program(CUSTOM_COLLECTION, program_id="design-002")
-    second = load_reviewed_program(CUSTOM_COLLECTION, program_id="design-002")
+    first = load_reviewed_program(DNACHISEL_COLLECTION, program_id="design-002")
+    second = load_reviewed_program(DNACHISEL_COLLECTION, program_id="design-002")
 
     assert first.entry.path == "design_002.py"
     assert first.signature.sha256 == second.signature.sha256
@@ -292,18 +293,25 @@ def test_trace_training_and_unreviewed_packaging_are_reproducible(tmp_path: Path
     assert packaged.manifest.reviewed is False
     assert result.split.train_samples == 1
     assert result.metrics["audit_rank_correlation"] == [None, None]
+    assert result.metrics["audit_score_q95_q05_range"] == [0.0, 0.0]
+    assert result.metrics["audit_accepted_mae_q95_q05_fraction"] == [None, None]
     assert (packaged.root / "split.json").is_file()
     assert (packaged.root / "metrics.json").is_file()
 
 
 def test_paired_evaluation_excludes_warmup_and_reports_complete_metrics(tmp_path: Path) -> None:
     artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+    progress_counts: list[int] = []
 
     evaluation = evaluate_paired(
         build_constant_program,
         artifact,
         seeds=(11, 12),
-        offline_surrogate_metrics={"audit_mae": [0.0, 0.0]},
+        offline_surrogate_metrics={
+            "audit_mae": [0.0, 0.0],
+            "audit_accepted_mae_q95_q05_fraction": [0.04, 0.03],
+        },
+        on_progress=lambda partial: progress_counts.append(len(partial.runs)),
     )
     payload = evaluation.as_dict()
 
@@ -316,12 +324,151 @@ def test_paired_evaluation_excludes_warmup_and_reports_complete_metrics(tmp_path
     assert payload["protocol"]["cold_start_in_primary_timing"] is False
     assert payload["metrics"]["reliability"]["fully_valid_accuracy_runs"] == 2
     assert payload["metrics"]["routing"]["surrogate_coverage"] == pytest.approx(1.0)
+    assert (
+        payload["metrics"]["routing"][
+            "initial_stage_target_parent_item_evaluations_bypassed"
+        ]
+        == 4
+    )
+    assert (
+        payload["metrics"]["routing"]["mandatory_final_validation_parent_item_evaluations"]
+        == 4
+    )
+    assert payload["metrics"]["routing"]["net_parent_item_evaluations_avoided"] == 0
+    # Kept only as an explicitly scoped alias for pre-existing report consumers.
     assert payload["metrics"]["routing"]["target_parent_item_evaluations_avoided"] == 4
+    assert "initial routing stage only" in payload["metrics"]["routing"][
+        "target_parent_item_evaluations_avoided_scope"
+    ]
     assert payload["metrics"]["routing"]["deferral_reasons"] == {
         "calibrated_in_domain": 2
     }
-    assert payload["offline_surrogate_metrics"] == {"audit_mae": [0.0, 0.0]}
+    full_metadata = payload["runs"][0]["full_result_metadata"][0]
+    assert full_metadata["segments"]["target"]["constraints"]["low"]["data"] == {
+        "teacher": "low"
+    }
+    assert payload["metrics"]["accuracy"]["accepted_mae_q95_q05_fraction"] == [0.04, 0.03]
+    assert payload["offline_surrogate_metrics"] == {
+        "audit_mae": [0.0, 0.0],
+        "audit_accepted_mae_q95_q05_fraction": [0.04, 0.03],
+    }
+    assert progress_counts == [1, 2]
     json.dumps(payload, allow_nan=False)
+
+
+def test_paired_evaluation_subtracts_final_validation_from_parent_work(
+    tmp_path: Path,
+) -> None:
+    artifact = write_artifact(
+        tmp_path / "reviewed",
+        reviewed=True,
+        support_threshold=0.0,
+    )
+
+    payload = evaluate_paired(
+        build_constant_program,
+        artifact,
+        seeds=(11,),
+        warmup=False,
+    ).as_dict()
+    run = payload["runs"][0]
+    routing = payload["metrics"]["routing"]
+
+    assert run["initial_stage_parent_item_evaluations_bypassed"] == 0
+    assert run["parent_item_evaluations_from_fallback"] == 2
+    assert run["mandatory_final_validation_parent_item_evaluations"] == 2
+    assert run["net_parent_item_evaluations_avoided"] == -2
+    assert routing["initial_stage_target_parent_item_evaluations_bypassed"] == 0
+    assert routing["target_parent_item_evaluations_from_fallback"] == 2
+    assert routing["mandatory_final_validation_parent_item_evaluations"] == 2
+    assert routing["net_parent_item_evaluations_avoided"] == -2
+
+
+def test_paired_evaluation_does_not_compare_pool_relative_energies(tmp_path: Path) -> None:
+    artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+
+    def build_pool_relative_program() -> Program:
+        program = build_constant_program()
+        program.optimizers[0].pool_relative_objective = True
+        program.optimizers[0].candidate_pool_sha256 = "a" * 64
+        program.optimizers[0].candidate_pool_size = 1
+        return program
+
+    payload = evaluate_paired(
+        build_pool_relative_program,
+        artifact,
+        seeds=(11,),
+        warmup=False,
+    ).as_dict()
+    run = payload["runs"][0]
+
+    assert run["energy_comparable"] is False
+    assert run["candidate_pool_identical"] is True
+    assert run["full_candidate_pool_sha256"] == "a" * 64
+    assert run["full_candidate_pool_size"] == 1
+    assert run["finite_energy_differences"] == ()
+    assert run["best_energy_regret"] is None
+    assert run["top_k_recall"] == pytest.approx(1.0)
+    assert payload["metrics"]["accuracy"]["energy_comparable_runs"] == 0
+    assert payload["metrics"]["accuracy"]["final_energy_mae"] is None
+
+
+def test_paired_evaluation_rejects_mismatched_pool_relative_candidates(
+    tmp_path: Path,
+) -> None:
+    artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+    builds = 0
+
+    def build_mismatched_pool_program() -> Program:
+        nonlocal builds
+        program = build_constant_program()
+        program.optimizers[0].pool_relative_objective = True
+        program.optimizers[0].candidate_pool_sha256 = ("a" if builds == 0 else "b") * 64
+        program.optimizers[0].candidate_pool_size = 1
+        builds += 1
+        return program
+
+    payload = evaluate_paired(
+        build_mismatched_pool_program,
+        artifact,
+        seeds=(11,),
+        warmup=False,
+    ).as_dict()
+
+    assert payload["runs"][0]["status"] == "candidate_pool_mismatch"
+    assert payload["runs"][0]["candidate_pool_identical"] is False
+    assert payload["runs"][0]["speedup"] is None
+    assert payload["metrics"]["reliability"]["candidate_pool_mismatches"] == 1
+
+
+def test_fusion_gate_defers_non_finite_support_and_uncertainty(tmp_path: Path) -> None:
+    artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+    fused = transform_with_artifact(build_constant_program(), artifact)
+    evaluator = cast(Any, fused)._protofuse_evaluators[0]
+
+    invalid_support = evaluator._gate(
+        (),
+        SurrogatePrediction(
+            (),
+            {"values": (0.25, 0.75), "uncertainties": (0.0, 0.0), "support_score": float("nan")},
+        ),
+    )
+    invalid_uncertainty = evaluator._gate(
+        (),
+        SurrogatePrediction(
+            (),
+            {"values": (0.25, 0.75), "uncertainties": (0.0, float("nan")), "support_score": 0.0},
+        ),
+    )
+
+    assert (invalid_support.use_surrogate, invalid_support.reason) == (
+        False,
+        "invalid_support_score",
+    )
+    assert (invalid_uncertainty.use_surrogate, invalid_uncertainty.reason) == (
+        False,
+        "invalid_uncertainty",
+    )
 
 
 def test_proto_energy_classification_matches_proto_sentinels() -> None:
@@ -338,8 +485,10 @@ def test_paired_evaluation_reports_non_finite_final_energy(
     artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
     original_outputs = evaluation_module._outputs
 
-    def non_finite_outputs(program: Program) -> ProgramOutputs:
-        outputs = original_outputs(program)
+    def non_finite_outputs(
+        program: Program, *, optimizer_index: int
+    ) -> ProgramOutputs:
+        outputs = original_outputs(program, optimizer_index=optimizer_index)
         return ProgramOutputs(outputs.sequences, (float("inf"),))
 
     monkeypatch.setattr(evaluation_module, "_outputs", non_finite_outputs)

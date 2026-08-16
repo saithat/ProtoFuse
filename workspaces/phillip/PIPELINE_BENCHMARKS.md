@@ -100,7 +100,7 @@ rule; use each generated module's docstring as the authority.
 | Collection | Profile this | Skip |
 | --- | --- | --- |
 | `dnachisel-num1` | `design_001.py` (936 bp full outer loop) | `design_002.py` smoke |
-| `custom-egfp-lung` | `design_001.py` (720 bp full pool) | `design_002.py` smoke |
+| `custom-egfp-lung` | `design_001.py` (717 bp, 1,000-candidate full pool) | `design_002.py` diagnostic |
 | `esm2-protein-maturation` | `design_001.py` (129 aa lysozyme, 200 steps) | `design_002.py` smoke |
 | `antibody-cdr-maturation` | `design_001.py` (121 aa, 3 CDR passes) | `design_002.py` smoke |
 | `freebindcraft-binder` | `design_001.py` (70 aa, 50 samples) | `design_002.py` smoke |

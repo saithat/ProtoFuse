@@ -6,7 +6,7 @@ import copy
 import functools
 import math
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from time import perf_counter
@@ -17,6 +17,11 @@ from proto_language.core import Sequence as ProtoSequence
 from proto_language.core.optimizer import derive_seeds
 from proto_language.optimizer import RejectionSamplingOptimizer, RejectionSamplingOptimizerConfig
 
+from protofuse.sai.exact_custom import (
+    FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL,
+    ExactCustomMfeEvaluator,
+    SampledCustomMfeEvaluator,
+)
 from protofuse.sai.model import LinearEnsembleModel, LinearEnsemblePredictor
 from protofuse.sai.registry import FusionBundle
 from protofuse.sai.router import (
@@ -34,6 +39,31 @@ class FusionCompatibilityError(ValueError):
 
 InputItem = tuple[ProtoSequence, ...]
 ObjectiveOutputs = tuple[ConstraintOutput, ...]
+
+
+def linear_gate_decision(
+    model: LinearEnsembleModel,
+    *,
+    values: Sequence[float],
+    uncertainties: Sequence[float],
+    support_score: object,
+) -> GateDecision:
+    """Apply the runtime's exact frozen-model acceptance gate."""
+
+    if isinstance(support_score, bool) or not isinstance(support_score, (int, float)):
+        return GateDecision(False, "invalid_support_score")
+    resolved_support = float(support_score)
+    if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
+        return GateDecision(False, "prediction_out_of_range")
+    if not math.isfinite(resolved_support):
+        return GateDecision(False, "invalid_support_score")
+    if any(not math.isfinite(value) for value in uncertainties):
+        return GateDecision(False, "invalid_uncertainty")
+    if resolved_support > model.support_threshold:
+        return GateDecision(False, "out_of_domain")
+    if max(uncertainties, default=0.0) > model.uncertainty_threshold:
+        return GateDecision(False, "uncertain")
+    return GateDecision(True, "calibrated_in_domain")
 
 
 def _structure_key(sequence: ProtoSequence) -> str | None:
@@ -129,18 +159,12 @@ class _ConstraintGroupEvaluator:
             values = cast(tuple[float, ...], prediction.metadata["values"])
             uncertainties = cast(tuple[float, ...], prediction.metadata["uncertainties"])
             support_value = prediction.metadata["support_score"]
-            if isinstance(support_value, bool) or not isinstance(support_value, (int, float)):
-                return GateDecision(False, "invalid_support_score")
-            support_score = float(support_value)
-            if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
-                return GateDecision(False, "prediction_out_of_range")
-            if support_score > self.model.support_threshold:
-                return GateDecision(False, "out_of_domain")
-            # One unreliable output defers the whole objective group, avoiding a mixed vector of
-            # surrogate and parent scores for the same proposal.
-            if max(uncertainties, default=0.0) > self.model.uncertainty_threshold:
-                return GateDecision(False, "uncertain")
-            return GateDecision(True, "calibrated_in_domain")
+            return linear_gate_decision(
+                self.model,
+                values=values,
+                uncertainties=uncertainties,
+                support_score=support_value,
+            )
         finally:
             self.timing_seconds["gate"] += perf_counter() - started
 
@@ -253,6 +277,34 @@ class _RoutedConstraint(Constraint):
         self._parent._set_program_seed(seed)
 
 
+class _CustomMfeParallelConstraint(Constraint):
+    """Retain the original constraint contract while changing only its executor."""
+
+    def __init__(self, *, parent: Constraint, evaluator: Any) -> None:
+        original_function = parent.function
+        if original_function is None:
+            raise FusionCompatibilityError("CUSTOM MFE target is missing its parent function")
+
+        @functools.wraps(original_function)
+        def parallel_function(input_sequences: list[InputItem], config: Any) -> Any:
+            return evaluator.evaluate(input_sequences, config)
+
+        if bool(getattr(original_function, "_constraint_allow_raw_scores", False)):
+            cast(Any, parallel_function)._constraint_allow_raw_scores = True
+        super().__init__(
+            inputs=parent.inputs,
+            function=parallel_function,
+            function_config=copy.deepcopy(parent.function_config),
+            label=parent.label,
+            weight=parent.weight,
+        )
+        self._parent = parent
+
+    def _set_program_seed(self, seed: int | None) -> None:
+        super()._set_program_seed(seed)
+        self._parent._set_program_seed(seed)
+
+
 class _ValidationConstraint(Constraint):
     """Reproduce the original optimizer's child seed in the validation stage."""
 
@@ -262,6 +314,7 @@ class _ValidationConstraint(Constraint):
         *,
         source_optimizer: Any,
         constraint_index: int,
+        work_counter: Counter[str],
     ) -> None:
         original_function = constraint.function
         if original_function is None:
@@ -271,6 +324,7 @@ class _ValidationConstraint(Constraint):
 
         @functools.wraps(original_function)
         def validation_function(input_sequences: list[InputItem], config: Any) -> Any:
+            work_counter["parent_item_evaluations"] += len(input_sequences)
             return original_function(input_sequences, config=config)
 
         if bool(getattr(original_function, "_constraint_allow_raw_scores", False)):
@@ -307,6 +361,7 @@ def _clone_constraint(
     *,
     source_optimizer: Any,
     constraint_index: int,
+    work_counter: Counter[str],
 ) -> Constraint:
     """Clone a constraint while retaining the cloned program's segment identities."""
 
@@ -318,6 +373,7 @@ def _clone_constraint(
         constraint,
         source_optimizer=source_optimizer,
         constraint_index=constraint_index,
+        work_counter=work_counter,
     )
 
 
@@ -347,6 +403,39 @@ def _reject_output_dependencies(
                         f"constraint {constraint.label!r} in optimizer {later_index} requires "
                         "structure/logits produced by the target group"
                     )
+
+
+def _append_final_validation(
+    program: Program,
+    *,
+    optimizer_index: int,
+    source_optimizer: Any,
+) -> Counter[str]:
+    result_count = int(source_optimizer.num_results or program.num_results)
+    validation_work = Counter[str]()
+    validation_constraints = [
+        _clone_constraint(
+            constraint,
+            source_optimizer=source_optimizer,
+            constraint_index=index,
+            work_counter=validation_work,
+        )
+        for index, constraint in enumerate(source_optimizer.constraints)
+    ]
+    validation = RejectionSamplingOptimizer(
+        constructs=source_optimizer.constructs,
+        generators=[],
+        constraints=validation_constraints,
+        config=RejectionSamplingOptimizerConfig(
+            num_samples=result_count,
+            num_results=result_count,
+            proposal_source="existing_results",
+            proposal_batch_size=result_count,
+            seed=source_optimizer.seed,
+        ),
+    )
+    program.optimizers.insert(optimizer_index + 1, validation)
+    return validation_work
 
 
 def transform_with_artifact(program: Program, artifact: Any) -> Program:
@@ -406,34 +495,165 @@ def transform_with_artifact(program: Program, artifact: Any) -> Program:
         for constraint in optimizer.constraints
     ]
 
-    result_count = int(optimizer.num_results or cloned.num_results)
-    validation_constraints = [
-        _clone_constraint(
-            constraint,
-            source_optimizer=optimizer,
-            constraint_index=index,
-        )
-        for index, constraint in enumerate(optimizer.constraints)
-    ]
-    validation = RejectionSamplingOptimizer(
-        constructs=optimizer.constructs,
-        generators=[],
-        constraints=validation_constraints,
-        config=RejectionSamplingOptimizerConfig(
-            num_samples=result_count,
-            num_results=result_count,
-            proposal_source="existing_results",
-            proposal_batch_size=result_count,
-            seed=optimizer.seed,
-        ),
+    validation_work = _append_final_validation(
+        cloned,
+        optimizer_index=manifest.optimizer_index,
+        source_optimizer=optimizer,
     )
 
     optimizer.constraints = new_constraints
-    cloned.optimizers.insert(manifest.optimizer_index + 1, validation)
     dynamic_program = cast(Any, cloned)
     dynamic_program._protofuse_evaluators = [evaluator]
+    dynamic_program._protofuse_validation_work = [validation_work]
     cloned._validate_program()
     return cloned
+
+
+def _transform_custom_mfe_executor(
+    program: Program,
+    *,
+    expected_signature_sha256: str,
+    evaluator_factory: Callable[[Any, Any], Any],
+    sampled: bool,
+) -> Program:
+    labels = ("custom_mfe",)
+    actual = step_group_signature(
+        program,
+        optimizer_index=0,
+        constraint_labels=labels,
+    )
+    if actual.sha256 != expected_signature_sha256:
+        raise FusionCompatibilityError("program group signature does not match CUSTOM MFE bundle")
+
+    cloned = copy.deepcopy(program)
+    optimizer = cloned.optimizers[0]
+    by_label = {constraint.label: constraint for constraint in optimizer.constraints}
+    target = by_label[labels[0]]
+    if not target.supports_discrete or target.threshold is not None:
+        raise FusionCompatibilityError("CUSTOM MFE fusion requires a discrete scoring constraint")
+    _reject_output_dependencies(cloned, 0, (target,))
+    if target.function is None:
+        raise FusionCompatibilityError("CUSTOM MFE target is missing its parent function")
+
+    evaluator = evaluator_factory(target.function, target.function_config)
+    replacement = _CustomMfeParallelConstraint(parent=target, evaluator=evaluator)
+    validation_work = Counter[str]()
+    if sampled:
+        validation_work = _append_final_validation(
+            cloned,
+            optimizer_index=0,
+            source_optimizer=optimizer,
+        )
+    optimizer.constraints = [
+        replacement if constraint is target else constraint
+        for constraint in optimizer.constraints
+    ]
+    dynamic_program = cast(Any, cloned)
+    if sampled:
+        dynamic_program._protofuse_evaluators = [evaluator]
+    else:
+        dynamic_program._protofuse_exact_evaluators = [evaluator]
+    dynamic_program._protofuse_validation_work = [validation_work]
+    cloned._validate_program()
+    return cloned
+
+
+def build_exact_custom_mfe_bundle(
+    reference_program: Program,
+    *,
+    workers: int = 8,
+) -> FusionBundle[Program]:
+    """Build the bit-identical ordered-process CUSTOM MFE bundle."""
+
+    signature = step_group_signature(
+        reference_program,
+        optimizer_index=0,
+        constraint_labels=("custom_mfe",),
+    )
+
+    def matches(program: Program) -> bool:
+        try:
+            actual = step_group_signature(
+                program,
+                optimizer_index=0,
+                constraint_labels=("custom_mfe",),
+            )
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return actual.sha256 == signature.sha256
+
+    def apply(program: Program) -> Program:
+        return _transform_custom_mfe_executor(
+            program,
+            expected_signature_sha256=signature.sha256,
+            evaluator_factory=lambda function, config: ExactCustomMfeEvaluator(
+                function,
+                config,
+                workers,
+            ),
+            sampled=False,
+        )
+
+    return FusionBundle(
+        fusion_id="custom-mfe-exact-parallel",
+        version=f"workers-{workers}",
+        matches=matches,
+        apply=apply,
+    )
+
+
+def build_sampled_custom_mfe_bundle(
+    reference_program: Program,
+    *,
+    workers: int,
+    window_stride: int,
+    intercept: float,
+    slope: float,
+    uncertainty_threshold: float = (
+        FROZEN_CUSTOM_MFE_UNCERTAINTY_THRESHOLD_KCAL_MOL
+    ),
+) -> FusionBundle[Program]:
+    """Build a frozen fixed-stride CUSTOM MFE approximation bundle."""
+
+    signature = step_group_signature(
+        reference_program,
+        optimizer_index=0,
+        constraint_labels=("custom_mfe",),
+    )
+
+    def matches(program: Program) -> bool:
+        try:
+            actual = step_group_signature(
+                program,
+                optimizer_index=0,
+                constraint_labels=("custom_mfe",),
+            )
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return actual.sha256 == signature.sha256
+
+    def apply(program: Program) -> Program:
+        return _transform_custom_mfe_executor(
+            program,
+            expected_signature_sha256=signature.sha256,
+            evaluator_factory=lambda function, config: SampledCustomMfeEvaluator(
+                function,
+                config,
+                workers,
+                window_stride=window_stride,
+                intercept=intercept,
+                slope=slope,
+                uncertainty_threshold=uncertainty_threshold,
+            ),
+            sampled=True,
+        )
+
+    return FusionBundle(
+        fusion_id="custom-mfe-sampled-window",
+        version=f"stride-{window_stride}-uncertainty-q99-v1",
+        matches=matches,
+        apply=apply,
+    )
 
 
 def build_artifact_bundle(artifact: Any) -> FusionBundle[object]:

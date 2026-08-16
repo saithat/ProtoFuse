@@ -1,6 +1,6 @@
 """Full-tier RFdiffusion3 PPI benchmark target.
 
-Generate 400 backbones, sample four ProteinMPNN sequences per backbone, and retain separate ProteinMPNN probability, AlphaFold3 ipTM-proxy, and AlphaFold3 mean-PAE-proxy scores. Paper binder-pTM and minimum interchain pAE endpoints remain separate benchmark measurements.
+Generate 400 backbones, sample four ProteinMPNN sequences per backbone, use the paper's exact target crop, atom hotspots, and binder origin, then retain ProteinMPNN probability plus the conjunctive AlphaFold3 paper gate with binder-pTM, minimum interchain PAE, and target-aligned binder RMSD.
 """
 
 from __future__ import annotations

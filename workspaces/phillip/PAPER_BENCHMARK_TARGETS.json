@@ -121,19 +121,19 @@
         "chunk_bp": 128,
         "iterations": 156,
         "retained_prompts_K_prime": 2,
-        "chunks_per_retained_prompt_K": 42,
-        "candidate_chunks_per_iteration": 84,
+        "chunks_per_retained_prompt_K": {"ARC": 15, "all_other_mouse_designs": 42},
+        "candidate_chunks_per_iteration": {"ARC": 30, "all_other_mouse_designs": 84},
         "temperature": 1.0,
         "top_k": 4,
         "left_prompt_bp": 40960,
         "left_prompt_reference": "mm39 chrX:52,051,929-52,123,468 upstream context"
       },
       "derived_compute_budget": {
-        "evo2_chunk_proposals": 13104,
-        "enformer_evaluations": 13104,
-        "borzoi_replicate_evaluations": 52416,
-        "total_predictor_forward_passes_excluding_evo2": 65520,
-        "derivation": "156 iterations * 84 candidates; each candidate uses one Enformer and four Borzoi replicates",
+        "evo2_chunk_proposals": {"ARC": 4680, "all_other_mouse_designs": 13104},
+        "enformer_evaluations": {"ARC": 4680, "all_other_mouse_designs": 13104},
+        "borzoi_replicate_evaluations": {"ARC": 18720, "all_other_mouse_designs": 52416},
+        "total_predictor_forward_passes_excluding_evo2": {"ARC": 23400, "all_other_mouse_designs": 65520},
+        "derivation": "156 iterations * 30 ARC candidates or 84 other candidates; each candidate uses one Enformer and four Borzoi replicates",
         "paper_reported_directly": false
       },
       "predictor_shapes": {
@@ -171,9 +171,9 @@
     },
     {
       "workflow_id": "af3-boltz2-state-sweep",
-      "status": "cross_model_joint_surrogate_extension_of_paper_workflow",
+      "status": "reduced_unscaled_diagnostic_not_paper_comparable",
       "paper": {
-        "title": "Steering Conformational Sampling in Boltz-2 via Pair Representation Scaling",
+        "title": "Biasing Conformational Sampling in AlphaFold 3 and Boltz-2 via Pair Representation Scaling",
         "doi": "10.64898/2026.01.23.701250",
         "paperclip_uri": "paperclip://papers/bio_9d4cb9096c31"
       },
@@ -185,40 +185,29 @@
       ],
       "paper_ensemble_metrics": {
         "best_minimum_tm_score": "min(max_i TM(pred_i, ref_1), max_i TM(pred_i, ref_2))",
-        "dual_state_coverage": "max_i TM(pred_i, ref_1) > 0.8 and max_i TM(pred_i, ref_2) > 0.8",
-        "fill_ratio": {"projection": "line between reference states in 2D TM-score plane", "bins": 100, "weighting": "symmetric parabolic endpoint"}
+        "per_state_success_rate": "fraction of reference states with a model within 2 angstrom C-alpha RMSD",
+        "worst_case_minimum_rmsd": "larger of the two minimum C-alpha RMSDs to the references",
+        "fill_ratio": {"projection": "line between reference states in 2D TM-score plane", "bins": 100}
       },
       "paper_compute_budget_per_target": {
-        "vanilla_boltz2": 50,
-        "msa_subsampling_masking_grid": 500,
-        "msa_clustering_k10": 500,
-        "boltz_sample_uniform": 500,
-        "boltz_sample_laplacian": 500,
-        "alphafold3_server": 5,
-        "default_seed_count": 5,
-        "diffusion_samples_per_seed": 10,
+        "models_per_sampling_method": 250,
+        "allocation": "split across seeds, settings, and diffusion samples as listed in paper Table 1",
         "beta_grid": [-0.75, -0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6, 0.75]
       },
-      "paper_baselines": [
-        {"metric": "targets_with_best_minimum_tm_improvement_at_least_0.05", "value": 18, "unit": "targets", "percent": 31.0},
-        {"metric": "targets_with_best_minimum_tm_decrease_at_least_0.05", "value": 1, "unit": "target", "percent": 1.7},
-        {"metric": "mfsd2a_best_minimum_tm_vanilla", "value": 0.58},
-        {"metric": "mfsd2a_best_minimum_tm_boltz_sample", "value": 0.79},
-        {"metric": "mfsd2a_delta", "value": 0.21},
-        {"metric": "p40131_delta", "value": 0.18}
-      ],
+      "paper_benchmark_targets": 86,
+      "paper_reference_states_per_target": 2,
       "seed_policy": {
-        "paper_seed_count": 5,
-        "paper_seed_values": null,
+        "paper_allocation": "method-specific Table 1 split across seeds, settings, and samples",
         "proto_implementation_seeds": [0, 1, 2, 3, 4],
+        "proto_draws_per_seed": 10,
         "comparable": false
       },
-      "extension_boundary": "The paper evaluates AlphaFold3 as an external baseline. ProtoFuse adds simultaneous AF3 and Boltz-2 state scores solely to test joint surrogates.",
+      "extension_boundary": "The current paper applies pair representation scaling to both AlphaFold 3 and Boltz-2. ProtoFuse currently scores both models without that intervention, so it is only an unscaled wiring diagnostic.",
       "comparability_blockers": [
-        "expose Boltz-2 pair-representation scaling beta in proto-tools",
-        "replace 4AKE/1AKE diagnostic with paper target pairs",
-        "aggregate all draws into best-minimum TM-score, dual-state coverage, and fill ratio",
-        "recover the paper's five seed values if available"
+        "expose pair-representation scaling beta for both AlphaFold 3 and Boltz-2 in proto-tools",
+        "encode the full 86-protein benchmark rather than one adenylate-kinase diagnostic",
+        "match the paper's 250-model Table 1 allocation",
+        "aggregate all draws into per-state success, worst-case minimum RMSD, best-minimum TM-score, and fill ratio"
       ]
     }
   ]

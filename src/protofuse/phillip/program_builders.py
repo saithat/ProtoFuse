@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
@@ -13,8 +14,6 @@ from proto_language.constraint import (
     af3_offtarget_iptm_specificity_constraint,
     balanced_aa_constraint,
     boltz_binding_strength_constraint,
-    borzoi_chromatin_accessibility_morse_constraint,
-    enformer_chromatin_accessibility_morse_constraint,
     esm2_perplexity_constraint,
     gap_gini_constraint,
     gc_content_constraint,
@@ -34,9 +33,8 @@ from proto_language.constraint import (
     structure_plddt_constraint,
     structure_radius_gyration_constraint,
     structure_rmsd_constraint,
-    structure_tmscore_constraint,
 )
-from proto_language.core import Constraint, Construct, Program, Segment
+from proto_language.core import Constraint, Construct, InputSlot, Program, Segment
 from proto_language.generator import (
     ESM2Generator,
     ESM2GeneratorConfig,
@@ -66,6 +64,7 @@ from proto_language.optimizer import (
     RejectionSamplingOptimizerConfig,
 )
 from proto_tools import (
+    AlphaFold3Config,
     InverseFoldingStructureInput,
     PdbFetchFastaInput,
     ProteinMPNNSampleConfig,
@@ -82,7 +81,20 @@ from proto_tools.tools.masked_models.esm2.esm2_sample import ESM2_MODEL_CHECKPOI
 from proto_tools.transforms.masking import MaskingStrategy
 
 from protofuse.phillip.contracts import MethodologySpec
-from protofuse.phillip.custom_constraints import tissue_codon_constraint
+from protofuse.phillip.custom_constraints import (
+    CUSTOM_METRIC_FIELDS,
+    CUSTOM_METRIC_LABELS,
+    CustomMetricConfig,
+    CustomPaperPoolOptimizer,
+    CustomTissueCodonGenerator,
+    CustomTissueCodonGeneratorConfig,
+    custom_cai_constraint,
+    custom_cpb_constraint,
+    custom_enc_constraint,
+    custom_mfe_constraint,
+    custom_mfe_init_constraint,
+    ordered_pool_sha256,
+)
 from protofuse.phillip.cycling_builders import (
     bioemu_constraint_config,
     make_rfdiffusion_boltz_cycling_conditioning_fn,
@@ -94,13 +106,30 @@ from protofuse.phillip.dnachisel_constraints import (
     reference_homology_constraint,
     sliding_window_gc_constraint,
 )
+from protofuse.phillip.evo2_paper_constraints import (
+    evo2_paper_borzoi_l1_constraint,
+    evo2_paper_enformer_l1_constraint,
+)
+from protofuse.phillip.genome_context import resolve_evo2_genomic_context
 from protofuse.phillip.handoff_config import program_run_device, run_compiled_program
+from protofuse.phillip.pair_scaling_contract import (
+    PairScaledStateTMScoreConfig,
+    pair_scaled_state_tmscore_constraint,
+)
 from protofuse.phillip.pool_optimizer import (
     PoolOptimizerConfig,
-    PoolOptimizerResult,
     run_pool_optimizer,
 )
 from protofuse.phillip.region_solver import RegionSolverConfig, run_region_local_program
+from protofuse.phillip.rfd3_paper import (
+    RFD3AF3PaperSuccessConfig,
+    RFD3PaperBinderGenerator,
+    RFD3PaperBinderGeneratorConfig,
+    crop_target_structure,
+    paper_binder_origin,
+    rfd3_af3_paper_success_constraint,
+    target_sequence_from_cropped_structure,
+)
 from protofuse.phillip.sequence_init import generate_filter_safe_sequence
 from protofuse.phillip.state_sweep_generators import (
     FixedSequenceSweepGenerator,
@@ -118,8 +147,7 @@ SMOKE_DEFAULTS: dict[str, int] = {
 }
 
 CUSTOM_SMOKE_DEFAULTS: dict[str, int] = {
-    "segment_length_bp": 720,
-    "num_steps": 20,
+    "segment_length_bp": 717,
     "n_pool": 30,
 }
 
@@ -199,7 +227,8 @@ AF3_BOLTZ2_STATE_SMOKE_DEFAULTS: dict[str, int | str | bool] = {
 }
 
 EVO2_REGULATORY_SMOKE_DEFAULTS: dict[str, int] = {
-    "segment_length_bp": 512,
+    "segment_length_bp": 128,
+    "evo2_generator_prompt_bp": 4096,
     "num_results": 1,
     "proposals_per_result": 2,
 }
@@ -346,10 +375,13 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         ),
         "subsample_msa": bool(spec.global_parameters.get("subsample_msa", True)),
         "max_msa_seqs": int(spec.global_parameters.get("max_msa_seqs", 512)),
+        "sampling_steps": int(spec.global_parameters.get("sampling_steps", 200)),
         "diffusion_samples": int(spec.global_parameters.get("diffusion_samples", 1)),
         "step_scale": float(spec.global_parameters.get("step_scale", 1.5)),
         "recycling_steps": int(spec.global_parameters.get("recycling_steps", 3)),
         "boltz2_seed": spec.global_parameters.get("boltz2_seed"),
+        "pair_scaling_betas": list(spec.global_parameters.get("pair_scaling_betas", [])),
+        "evaluation_seeds": list(spec.global_parameters.get("evaluation_seeds", [])),
         "benchmark_targets": list(spec.global_parameters.get("benchmark_targets", [])),
         "generation_seed": int(spec.global_parameters.get("generation_seed", 0)),
         "diffusion_batch_size": int(spec.global_parameters.get("diffusion_batch_size", 8)),
@@ -369,16 +401,20 @@ def resolve_workload_params(spec: MethodologySpec, *, tier: WorkloadTier) -> dic
         "af3_num_diffusion_samples": int(
             spec.global_parameters.get("af3_num_diffusion_samples", 1)
         ),
-        "evo2_prompt_sequence": str(spec.global_parameters.get("evo2_prompt_sequence", "ACGT")),
+        "evo2_genomic_context": dict(spec.global_parameters.get("evo2_genomic_context", {})),
         "evo2_model_checkpoint": str(
             spec.global_parameters.get("evo2_model_checkpoint", "evo2_7b")
+        ),
+        "evo2_generator_prompt_bp": int(
+            dict(spec.global_parameters.get("evo2_genomic_context", {})).get(
+                "generator_prompt_bp", 40_960
+            )
         ),
         "evo2_temperature": float(spec.global_parameters.get("evo2_temperature", 1.0)),
         "evo2_top_k": int(spec.global_parameters.get("evo2_top_k", 4)),
         "beam_length": int(spec.global_parameters.get("beam_length", 128)),
         "enformer_output_tracks": list(spec.global_parameters.get("enformer_output_tracks", [11])),
         "borzoi_output_tracks": list(spec.global_parameters.get("borzoi_output_tracks", [741])),
-        "right_context_sequence": str(spec.global_parameters.get("right_context_sequence", "A")),
     }
     if tier == "smoke":
         params.update(_SMOKE_DEFAULTS_BY_WORKLOAD.get(str(workload), SMOKE_DEFAULTS))
@@ -565,72 +601,285 @@ def run_dnachisel_num1(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
 
 
 def build_custom_egfp_program(params: dict[str, Any]) -> Program:
-    """Single pool-member MCMC program for CUSTOM eGFP lung optimization."""
+    """Complete released CUSTOM eGFP-to-lung pool generation and ranking workflow."""
 
-    segment = Segment(length=int(params["segment_length_bp"]), sequence_type="dna")
+    protein_sequence = str(params["protein_sequence"])
+    coding_length = len(protein_sequence) * 3
+    declared_length = int(params["segment_length_bp"])
+    if declared_length != coding_length:
+        raise ValueError(
+            f"CUSTOM eGFP coding length is {coding_length} bp, got {declared_length}"
+        )
+
+    segment = Segment(length=coding_length, sequence_type="dna", label="egfp_cds")
     construct = Construct([segment])
-    generator = RandomNucleotideGenerator(
-        RandomNucleotideGeneratorConfig(
-            masking_strategy=MaskingStrategy(num_mutations=int(params["mutations_per_step"])),
+    n_pool = int(params["n_pool"])
+    top_k = int(params["top_k"])
+    target_tissue_value = str(params["target_tissue"]).title()
+    if target_tissue_value != "Lung":
+        raise ValueError("The reviewed CUSTOM reproduction currently supports target_tissue='Lung'")
+    target_tissue = cast(Literal["Lung"], target_tissue_value)
+    generator = CustomTissueCodonGenerator(
+        CustomTissueCodonGeneratorConfig(
+            prompts=[protein_sequence],
+            target_tissue=target_tissue,
+            degree=float(params.get("degree", 0.5)),
+            batch_size=n_pool,
         )
     )
     generator.assign(segment)
+    metric_config = CustomMetricConfig(target_tissue=target_tissue)
     constraints = [
         Constraint(
             inputs=[segment],
-            function=tissue_codon_constraint,
-            function_config={"target_tissue": params.get("target_tissue", "lung")},
+            function=custom_mfe_constraint,
+            function_config=metric_config,
             weight=1.0,
-            label="tissue_codon_lung",
+            label=CUSTOM_METRIC_LABELS[0],
         ),
         Constraint(
             inputs=[segment],
-            function=gc_content_constraint,
-            function_config={
-                "min_gc": float(params.get("min_gc", 45)),
-                "max_gc": float(params.get("max_gc", 55)),
-            },
-            weight=0.5,
-            label="gc_target",
+            function=custom_mfe_init_constraint,
+            function_config=metric_config,
+            weight=1.0,
+            label=CUSTOM_METRIC_LABELS[1],
+        ),
+        Constraint(
+            inputs=[segment],
+            function=custom_cai_constraint,
+            function_config=metric_config,
+            weight=1.0,
+            label=CUSTOM_METRIC_LABELS[2],
+        ),
+        Constraint(
+            inputs=[segment],
+            function=custom_cpb_constraint,
+            function_config=metric_config,
+            weight=1.0,
+            label=CUSTOM_METRIC_LABELS[3],
+        ),
+        Constraint(
+            inputs=[segment],
+            function=custom_enc_constraint,
+            function_config=metric_config,
+            weight=1.0,
+            label=CUSTOM_METRIC_LABELS[4],
         ),
         Constraint(
             inputs=[segment],
             function=max_homopolymer_constraint,
-            function_config={"max_length": int(params.get("homopolymer_max", 6))},
+            function_config={"max_length": int(params["homopolymer_max"]) - 1},
             threshold=0.0,
-            label="homopolymer",
+            label="homopolymer_filter",
         ),
     ]
-    optimizer = MCMCOptimizer(
+    optimizer = CustomPaperPoolOptimizer(
         constructs=[construct],
         generators=[generator],
         constraints=constraints,
-        config=MCMCOptimizerConfig(
-            num_results=1,
-            proposals_per_result=int(params["proposals_per_result"]),
-            num_steps=int(params["num_steps"]),
-            max_temperature=float(params["max_temperature"]),
+        config=RejectionSamplingOptimizerConfig(
+            num_samples=n_pool,
+            num_results=top_k,
+            proposal_batch_size=n_pool,
+            tracking_interval=n_pool,
         ),
     )
-    return Program(optimizers=[optimizer], num_results=1)
+    return Program(optimizers=[optimizer], num_results=top_k)
 
 
-def run_custom_egfp_lung(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
-    """Run CUSTOM pool optimization; full tier targets ~1-2 minute wall time."""
+def run_custom_reference_parity(
+    *,
+    seed: int,
+    tier: WorkloadTier = "full",
+) -> dict[str, Any]:
+    """Compare one generated CUSTOM pool against the pinned released implementation."""
+
+    if tier != "full":
+        raise ValueError("CUSTOM reference parity is a full-tier result, not a smoke diagnostic")
+    if seed < 0:
+        raise ValueError(f"seed must be non-negative, got {seed}")
+
+    from custom import TissueOptimizer  # type: ignore[import-untyped]
 
     spec = load_fixture_spec("custom-egfp-lung")
     params = resolve_workload_params(spec, tier=tier)
-    pool_config = PoolOptimizerConfig(
-        n_pool=int(params.get("n_pool", 500)),
-        top_k=int(params.get("top_k", 10)),
-        homopolymer_max=int(params.get("homopolymer_max", 7)),
+    top_k = int(params["top_k"])
+    expected_pool_size = int(params["n_pool"])
+    built = build_custom_egfp_program(params)
+    program = Program(optimizers=built.optimizers, num_results=top_k, seed=seed)
+    program.run()
+
+    optimizer = program.optimizers[0]
+    if not isinstance(optimizer, CustomPaperPoolOptimizer):
+        raise TypeError("expected a CustomPaperPoolOptimizer")
+    generator = optimizer.generators[0]
+    proposals = optimizer.segments[0].proposal_sequences
+    pool = [sequence.sequence for sequence in proposals]
+
+    metric_columns = dict(
+        zip(CUSTOM_METRIC_LABELS, ("MFE", "MFEini", "CAI", "CPB", "ENC"), strict=True)
     )
-    result = run_pool_optimizer(
-        lambda: build_custom_egfp_program(params),
-        config=pool_config,
-        target_gc=float(params.get("target_gc", 50.0)),
+    proto_metrics = {
+        column: [
+            float(sequence.metadata["constraints"][label]["data"][CUSTOM_METRIC_FIELDS[label]])
+            for sequence in proposals
+        ]
+        for label, column in metric_columns.items()
+    }
+
+    reference = TissueOptimizer(
+        str(params["target_tissue"]),
+        n_pool=len(pool),
+        degree=float(params.get("degree", 0.5)),
+        prob_original=0.0,
     )
-    return result.program, result.wall_time_ms
+    reference.pool = list(pool)
+    reference_metrics = {
+        column: [float(value) for value in getattr(reference, column)()]
+        for column in metric_columns.values()
+    }
+    # Reuse the released metric results so select_best validates ranking/filter semantics
+    # without recomputing the expensive MFE columns a third time.
+    for column, values in reference_metrics.items():
+        setattr(reference, column, lambda values=values: values)
+
+    homopolymer_cutoff = int(params["homopolymer_max"])
+    expected = reference.select_best(
+        by={
+            "MFE": "min",
+            "MFEini": "max",
+            "CAI": "max",
+            "CPB": "max",
+            "ENC": "min",
+        },
+        homopolymers=homopolymer_cutoff,
+        top=top_k,
+    )
+    expected_top_k = [str(sequence) for sequence in expected["Sequence"]]
+    proto_top_k = [sequence.sequence for sequence in optimizer.segments[0].result_sequences]
+
+    proto_filter = [
+        int(
+            sequence.metadata["constraints"]["homopolymer_filter"]["data"][
+                "max_homopolymer_length"
+            ]
+        )
+        < homopolymer_cutoff
+        for sequence in proposals
+    ]
+    patterns = tuple(base * homopolymer_cutoff for base in "ATCG")
+    reference_filter = [not any(pattern in sequence for pattern in patterns) for sequence in pool]
+    filter_matches = [
+        proto == released
+        for proto, released in zip(proto_filter, reference_filter, strict=True)
+    ]
+
+    metric_atol = 1e-9
+    metric_rtol = 1e-9
+    max_abs_delta = {
+        column: max(
+            (abs(proto - released) for proto, released in zip(
+                proto_metrics[column],
+                reference_metrics[column],
+                strict=True,
+            )),
+            default=0.0,
+        )
+        for column in metric_columns.values()
+    }
+    metric_agreement = {
+        column: all(
+            math.isclose(proto, released, rel_tol=metric_rtol, abs_tol=metric_atol)
+            for proto, released in zip(
+                proto_metrics[column],
+                reference_metrics[column],
+                strict=True,
+            )
+        )
+        for column in metric_columns.values()
+    }
+    filter_agreement = all(filter_matches)
+    ordered_top_k_identity = proto_top_k == expected_top_k
+    pool_size_matches = len(pool) == expected_pool_size
+    generator_seed = getattr(generator, "last_seed", None)
+    passed = (
+        pool_size_matches
+        and isinstance(generator_seed, int)
+        and all(metric_agreement.values())
+        and filter_agreement
+        and ordered_top_k_identity
+    )
+
+    return {
+        "status": "pass" if passed else "fail",
+        "passed": passed,
+        "reference_package": "custom-optimizer==0.0.1",
+        "tier": tier,
+        "seed": seed,
+        "derived_generator_seed": generator_seed,
+        "pool_sha256": ordered_pool_sha256(pool),
+        "pool_size": len(pool),
+        "expected_pool_size": expected_pool_size,
+        "top_k": top_k,
+        "per_metric_max_abs_delta": max_abs_delta,
+        "metric_agreement": metric_agreement,
+        "filter_agreement": filter_agreement,
+        "filter_disagreement_count": len(filter_matches) - sum(filter_matches),
+        "ordered_top_k_identity": ordered_top_k_identity,
+        "tolerances": {
+            "raw_metric_atol": metric_atol,
+            "raw_metric_rtol": metric_rtol,
+            "filter_agreement_required": True,
+            "ordered_top_k_identity_required": True,
+        },
+    }
+
+
+def summarize_custom_egfp_program(program: Program) -> dict[str, Any]:
+    """Return paper-comparable raw metrics for a completed CUSTOM program."""
+
+    optimizer = program.optimizers[0]
+    if not isinstance(optimizer, CustomPaperPoolOptimizer):
+        raise TypeError("expected a CustomPaperPoolOptimizer")
+    score_by_sequence = optimizer.paper_score_by_sequence
+    result_sequences = program.constructs[0].segments[0].result_sequences
+    rows: list[dict[str, Any]] = []
+    for sequence in result_sequences:
+        constraint_data = sequence.metadata["constraints"]
+        row: dict[str, Any] = {
+            "sequence": sequence.sequence,
+            "paper_score": score_by_sequence[sequence.sequence],
+        }
+        for label, field in CUSTOM_METRIC_FIELDS.items():
+            row[field] = float(constraint_data[label]["data"][field])
+        rows.append(row)
+    rows.sort(key=lambda row: float(row["paper_score"]), reverse=True)
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+
+    passed_filter, pool_size = optimizer._last_filter_pass_counts["homopolymer_filter"]
+    generator = optimizer.generators[0]
+    return {
+        "comparison": "released CUSTOM metric definitions via Proto",
+        "pool_size": pool_size,
+        "passed_homopolymer_filter": passed_filter,
+        "selected": len(rows),
+        "target_tissue": "Lung",
+        "generator_seed": getattr(generator, "last_seed", None),
+        "pool_sha256": optimizer.candidate_pool_sha256,
+        "ranking": rows,
+    }
+
+
+def run_custom_egfp_lung(*, tier: WorkloadTier = "full") -> tuple[Program, float]:
+    """Run the paper-scale CUSTOM eGFP-to-lung reproduction."""
+
+    spec = load_fixture_spec("custom-egfp-lung")
+    params = resolve_workload_params(spec, tier=tier)
+    program = build_custom_egfp_program(params)
+    start = perf_counter()
+    run_compiled_program(program, fixture_id="custom-egfp-lung")
+    return program, (perf_counter() - start) * 1000
 
 
 def _hotspot_residue_string(hotspots: list[str]) -> str | None:
@@ -1059,7 +1308,10 @@ def build_antibody_cdr_maturation_program(
         ),
         Constraint(
             inputs=[antibody, reference],
-            input_labels=["Query Sequence", "Reference Sequence"],
+            input_slots=[
+                InputSlot(label="Query Sequence"),
+                InputSlot(label="Reference Sequence"),
+            ],
             function=gap_gini_constraint,
             function_config={
                 "max_gap_gini": float(params["max_gap_gini"]),
@@ -1287,23 +1539,6 @@ def run_ppi_interface_specificity(*, tier: WorkloadTier = "full") -> tuple[Progr
     start = perf_counter()
     run_compiled_program(program, fixture_id="ppi-interface-specificity")
     return program, (perf_counter() - start) * 1000
-
-
-def run_custom_egfp_lung_report(*, tier: WorkloadTier = "full") -> PoolOptimizerResult:
-    """Run CUSTOM pool optimization and return the full pool report."""
-
-    spec = load_fixture_spec("custom-egfp-lung")
-    params = resolve_workload_params(spec, tier=tier)
-    pool_config = PoolOptimizerConfig(
-        n_pool=int(params.get("n_pool", 500)),
-        top_k=int(params.get("top_k", 10)),
-        homopolymer_max=int(params.get("homopolymer_max", 7)),
-    )
-    return run_pool_optimizer(
-        lambda: build_custom_egfp_program(params),
-        config=pool_config,
-        target_gc=float(params.get("target_gc", 50.0)),
-    )
 
 
 def build_symmetric_oligomer_ring_program(params: dict[str, Any]) -> Program:
@@ -1756,22 +1991,39 @@ def build_rfdiffusion3_af3_ppi_program(
     target_spec = dict(targets[target_index])
     pdb_id = str(target_spec["pdb_id"])
     target_chains = [str(item) for item in target_spec["target_chains"]]
-    hotspots = [str(item) for item in target_spec["hotspots"]]
+    atom_hotspots = {
+        str(residue): [str(atom) for atom in atoms]
+        for residue, atoms in dict(target_spec["atom_hotspots"]).items()
+    }
     binder_length = int(target_spec["prototype_binder_length_aa"])
+    minimum_length, maximum_length = (
+        int(value) for value in target_spec["paper_binder_length_range_aa"]
+    )
+    if not minimum_length <= binder_length <= maximum_length:
+        raise ValueError(
+            f"prototype binder length {binder_length} is outside paper range "
+            f"{minimum_length}-{maximum_length}"
+        )
 
-    target_structure = _target_structure_from_pdb(pdb_id)
-    target_sequence = _target_sequence_from_pdb(pdb_id, target_chains)
+    target_structure = crop_target_structure(
+        _target_structure_from_pdb(pdb_id),
+        str(target_spec["residue_span"]),
+    )
+    target_sequence = target_sequence_from_cropped_structure(target_structure, target_chains)
+    binder_origin = paper_binder_origin(target_structure, atom_hotspots)
+    target_contig = str(target_spec["residue_span"]).replace("/", ",")
+    full_contig = f"{target_contig},/0,{binder_length}"
     binder = Segment(length=binder_length, sequence_type="protein", label="binder")
     target = Segment(sequence=target_sequence, sequence_type="protein", label="target")
     construct = Construct([binder, target])
 
     generation_seed = int(params["generation_seed"])
-    generator = RFdiffusionMPNNBinderGenerator(
-        RFdiffusionMPNNBinderGeneratorConfig(
+    generator = RFD3PaperBinderGenerator(
+        RFD3PaperBinderGeneratorConfig(
             target_structure=target_structure,
-            target_chains=target_chains,
-            hotspots=hotspots,
-            inverse_folding="proteinmpnn",
+            target_contig=full_contig,
+            atom_hotspots=atom_hotspots,
+            binder_origin=binder_origin,
             rfdiffusion3_config=RFdiffusion3Config(
                 diffusion_batch_size=int(params["diffusion_batch_size"]),
                 num_timesteps=int(params["rfdiffusion3_num_timesteps"]),
@@ -1787,14 +2039,13 @@ def build_rfdiffusion3_af3_ppi_program(
     )
     generator.assign(binder)
 
-    af3_config = {
-        "structure_tool": "alphafold3",
-        "alphafold3_config": {
-            "seeds": [int(params["af3_seed"])],
-            "num_diffusion_samples": int(params["af3_num_diffusion_samples"]),
-            "include_pae_matrix": True,
-        },
-    }
+    af3_success_config = RFD3AF3PaperSuccessConfig(
+        alphafold3_config=AlphaFold3Config(
+            seeds=[int(params["af3_seed"])],
+            num_diffusion_samples=int(params["af3_num_diffusion_samples"]),
+            include_pae_matrix=True,
+        ),
+    )
     constraints = [
         Constraint(
             inputs=[binder],
@@ -1811,17 +2062,10 @@ def build_rfdiffusion3_af3_ppi_program(
         ),
         Constraint(
             inputs=[binder, target],
-            function=structure_iptm_constraint,
-            function_config=af3_config,
-            weight=1.0,
-            label="af3_iptm_proxy",
-        ),
-        Constraint(
-            inputs=[binder, target],
-            function=structure_pae_constraint,
-            function_config=af3_config,
-            weight=1.0,
-            label="af3_mean_pae_proxy",
+            function=rfd3_af3_paper_success_constraint,
+            function_config=af3_success_config,
+            threshold=0.0,
+            label="af3_paper_success",
         ),
         Constraint(
             inputs=[binder],
@@ -1844,22 +2088,23 @@ def build_rfdiffusion3_af3_ppi_program(
     return Program(optimizers=[optimizer], num_results=int(params["num_results"]))
 
 
-def _af3_state_sweep_structure_config(params: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "structure_tool": "alphafold3",
-        "alphafold3_config": {
-            "seeds": [int(params["af3_seed"])],
-            "num_diffusion_samples": int(params["af3_num_diffusion_samples"]),
-        },
-    }
-
-
 def build_af3_boltz2_state_sweep_program(
     params: dict[str, Any],
     *,
     seed: int = 0,
+    beta: float = -0.75,
+    models: tuple[Literal["alphafold3", "boltz2"], ...] = ("alphafold3", "boltz2"),
 ) -> Program:
-    """Cross-model state-recovery diagnostic for separate AF3 and Boltz-2 surrogates."""
+    """One fail-closed seed/beta slice of the paper's cross-model scaling sweep."""
+
+    registered_betas = [float(value) for value in params["pair_scaling_betas"]]
+    if beta not in registered_betas:
+        raise ValueError(f"pair-scaling beta {beta} is not in the registered paper sweep")
+    registered_seeds = [int(value) for value in params["evaluation_seeds"]]
+    if seed not in registered_seeds:
+        raise ValueError(f"pair-scaling seed {seed} is not in the registered implementation set")
+    if not models or len(set(models)) != len(models):
+        raise ValueError("pair-scaling models must be nonempty and unique")
 
     sequence = _resolve_state_sweep_sequence(params)
     segment = Segment(sequence=sequence, sequence_type="protein", label="target")
@@ -1867,29 +2112,50 @@ def build_af3_boltz2_state_sweep_program(
     generator = FixedSequenceSweepGenerator(FixedSequenceSweepGeneratorConfig())
     generator.assign(segment)
 
-    model_params = {**params, "af3_seed": seed, "boltz2_seed": seed}
-    af3_config = _af3_state_sweep_structure_config(model_params)
-    boltz2_config = _boltz2_sweep_structure_config(model_params)
     dominant = _target_structure_from_pdb(str(params["dominant_state_pdb"]))
     alternative = _target_structure_from_pdb(str(params["alternative_state_pdb"]))
 
     constraints = []
-    for model_name, tool_config in (("af3", af3_config), ("boltz2", boltz2_config)):
+    for model_name in models:
         constraints.extend(
             [
                 Constraint(
                     inputs=[segment],
-                    function=structure_tmscore_constraint,
-                    function_config={**tool_config, "target_structure": dominant},
+                    function=pair_scaled_state_tmscore_constraint,
+                    function_config=PairScaledStateTMScoreConfig(
+                        model=cast(Any, model_name),
+                        beta=beta,
+                        seed=seed,
+                        recycling_steps=int(params["recycling_steps"]),
+                        sampling_steps=int(params["sampling_steps"]),
+                        diffusion_samples=int(params["diffusion_samples"]),
+                        step_scale=float(params["step_scale"]),
+                        max_msa_seqs=int(params["max_msa_seqs"]),
+                        subsample_msa=bool(params["subsample_msa"]),
+                        target_structure=dominant,
+                        reference_state="dominant",
+                    ),
                     weight=1.0,
-                    label=f"{model_name}_one_minus_tm_dominant",
+                    label=f"{model_name}_scaled_one_minus_tm_dominant",
                 ),
                 Constraint(
                     inputs=[segment],
-                    function=structure_tmscore_constraint,
-                    function_config={**tool_config, "target_structure": alternative},
+                    function=pair_scaled_state_tmscore_constraint,
+                    function_config=PairScaledStateTMScoreConfig(
+                        model=cast(Any, model_name),
+                        beta=beta,
+                        seed=seed,
+                        recycling_steps=int(params["recycling_steps"]),
+                        sampling_steps=int(params["sampling_steps"]),
+                        diffusion_samples=int(params["diffusion_samples"]),
+                        step_scale=float(params["step_scale"]),
+                        max_msa_seqs=int(params["max_msa_seqs"]),
+                        subsample_msa=bool(params["subsample_msa"]),
+                        target_structure=alternative,
+                        reference_state="alternative",
+                    ),
                     weight=1.0,
-                    label=f"{model_name}_one_minus_tm_alternative",
+                    label=f"{model_name}_scaled_one_minus_tm_alternative",
                 ),
             ]
         )
@@ -1920,18 +2186,27 @@ def build_evo2_regulatory_design_program(
     *,
     morse_pattern: str,
     dot_bp: int,
+    proposals_per_result: int | None = None,
 ) -> Program:
     """Evo 2 beam search with separate Enformer and Borzoi accessibility objectives."""
 
-    prompt = str(params["evo2_prompt_sequence"])
-    left_context = Segment(sequence=prompt, sequence_type="dna", label="Left Flank")
+    left_flank, prompt, right_flank = resolve_evo2_genomic_context(
+        dict(params["evo2_genomic_context"])
+    )
+    prompt_bp = int(params["evo2_generator_prompt_bp"])
+    if not 0 < prompt_bp <= len(prompt):
+        raise ValueError(
+            f"Evo 2 prompt length must be in [1, {len(prompt)}], got {prompt_bp}"
+        )
+    prompt = prompt[-prompt_bp:]
+    left_context = Segment(sequence=left_flank, sequence_type="dna", label="Left Flank")
     target = Segment(
         length=int(params["segment_length_bp"]),
         sequence_type="dna",
         label="Target",
     )
     right_context = Segment(
-        sequence=str(params["right_context_sequence"]),
+        sequence=right_flank,
         sequence_type="dna",
         label="Right Flank",
     )
@@ -1958,29 +2233,27 @@ def build_evo2_regulatory_design_program(
         "intra_symbol_gap_bp": dot_bp,
         "inter_letter_gap_bp": dot_bp * 3,
         "pattern_start_bp": 0,
-        "pattern_normalization": "global_max",
     }
     constraints = [
         Constraint(
             inputs=[left_context, target, right_context],
-            function=enformer_chromatin_accessibility_morse_constraint,
+            function=evo2_paper_enformer_l1_constraint,
             function_config={
                 **pattern_config,
                 "enformer_output_tracks": params["enformer_output_tracks"],
             },
             weight=0.5,
-            label="enformer_pattern_mae_proxy",
+            label="enformer_pattern_l1_sum",
         ),
         Constraint(
             inputs=[left_context, target, right_context],
-            function=borzoi_chromatin_accessibility_morse_constraint,
+            function=evo2_paper_borzoi_l1_constraint,
             function_config={
                 **pattern_config,
                 "borzoi_output_tracks": params["borzoi_output_tracks"],
-                "borzoi_ensemble_reduce_method": "lcb",
             },
             weight=0.5,
-            label="borzoi_pattern_mae_proxy",
+            label="borzoi_pattern_l1_sum",
         ),
     ]
     optimizer = BeamSearchOptimizer(
@@ -1992,7 +2265,11 @@ def build_evo2_regulatory_design_program(
             prompt=prompt,
             beam_length=int(params["beam_length"]),
             num_results=int(params["num_results"]),
-            proposals_per_result=int(params["proposals_per_result"]),
+            proposals_per_result=(
+                int(params["proposals_per_result"])
+                if proposals_per_result is None
+                else proposals_per_result
+            ),
             score_by="last",
             prepend_prompt=False,
             use_kv_caching=True,
@@ -2018,7 +2295,12 @@ def run_af3_boltz2_state_sweep(*, tier: WorkloadTier = "full") -> tuple[Program,
 
     spec = load_fixture_spec("af3-boltz2-state-sweep")
     params = resolve_workload_params(spec, tier=tier)
-    program = build_af3_boltz2_state_sweep_program(params, seed=0)
+    program = build_af3_boltz2_state_sweep_program(
+        params,
+        seed=0,
+        beta=-0.15 if tier == "smoke" else -0.75,
+        models=("boltz2",) if tier == "smoke" else ("alphafold3", "boltz2"),
+    )
     start = perf_counter()
     run_compiled_program(program, fixture_id="af3-boltz2-state-sweep")
     return program, (perf_counter() - start) * 1000
@@ -2029,10 +2311,12 @@ def run_evo2_regulatory_design(*, tier: WorkloadTier = "full") -> tuple[Program,
 
     spec = load_fixture_spec("evo2-enformer-borzoi")
     params = resolve_workload_params(spec, tier=tier)
+    morse_pattern = "." if tier == "smoke" else ". ...- --- ..---"
+    dot_bp = 128 if tier == "smoke" else 384
     program = build_evo2_regulatory_design_program(
         params,
-        morse_pattern=". ...- --- ..---",
-        dot_bp=384,
+        morse_pattern=morse_pattern,
+        dot_bp=dot_bp,
     )
     start = perf_counter()
     run_compiled_program(program, fixture_id="evo2-enformer-borzoi")

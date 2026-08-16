@@ -200,7 +200,9 @@ def load_paper_profile(
         abstract = None
 
     manifest = manifest if manifest is not None else load_figure_manifest()
-    figure_candidates, approved_figure_id = _figure_candidates_from_manifest(collection_id, manifest)
+    figure_candidates, approved_figure_id = _figure_candidates_from_manifest(
+        collection_id, manifest
+    )
 
     return PaperProfile(
         collection_id=collection_id,

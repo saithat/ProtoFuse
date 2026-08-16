@@ -25,6 +25,7 @@ from protofuse.phillip.program_builders import (
     build_antibody_cdr_maturation_program,
     build_bioemu_ensemble_filter_program,
     build_boltz2_state_sweep_program,
+    build_custom_egfp_program,
     build_dnachisel_num1_program,
     build_esm2_protein_maturation_program,
     build_evo2_regulatory_design_program,
@@ -52,13 +53,14 @@ PREFLIGHT_MCMC_DEFAULTS: dict[str, Any] = {
     "mutations_per_step": 3,
 }
 
-DNA_PREFLIGHT_WORKLOADS = frozenset({"num1_gene", "custom_egfp_pool"})
+DNA_PREFLIGHT_WORKLOADS = frozenset({"num1_gene"})
 BUILD_ONLY_PREFLIGHT_WORKLOADS = frozenset(
     {
         "af3_boltz2_state_sweep",
         "antibody_cdr_maturation",
         "bioemu_ensemble_filter",
         "boltz2_state_sweep",
+        "custom_egfp_pool",
         "esm2_protein_maturation",
         "evo2_regulatory_design",
         "freebindcraft_binder",
@@ -370,15 +372,31 @@ def run_preflight(
     if quiet:
         logging.disable(logging.CRITICAL)
 
+    if target_length is not None and target_length <= 0:
+        raise ValueError(f"target_length must be positive, got {target_length}")
+
     spec = load_fixture_spec(fixture_id)
     workload = spec.global_parameters.get("workload")
     if workload in BUILD_ONLY_PREFLIGHT_WORKLOADS:
-        params = resolve_workload_params(spec, tier="smoke")
-        if workload == "esm2_protein_maturation":
-            length = target_length or int(spec.global_parameters.get("segment_length_aa", 80))
-            if target_length is not None:
-                params["segment_length_aa"] = target_length
-                params["seed_sequence"] = str(params["seed_sequence"])[:target_length]
+        # Build-only preflight checks the fixture's real binding without paying for
+        # model or paper-scale objective execution.
+        params = resolve_workload_params(spec, tier="full")
+        if workload == "custom_egfp_pool":
+            length = target_length or int(params["segment_length_bp"])
+            params["segment_length_bp"] = length
+            program = build_custom_egfp_program(params)
+            built_length = program.constructs[0].segments[0].sequence_length
+        elif workload == "esm2_protein_maturation":
+            length = target_length or int(params["segment_length_aa"])
+            protein_seed = str(params["seed_sequence"])
+            if len(protein_seed) < length:
+                raise ValueError(
+                    "cannot build esm2_protein_maturation at "
+                    f"target_length={length}: full-tier seed has only "
+                    f"{len(protein_seed)} residues"
+                )
+            params["segment_length_aa"] = length
+            params["seed_sequence"] = protein_seed[:length]
             program = build_esm2_protein_maturation_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
         elif workload == "antibody_cdr_maturation":
@@ -387,6 +405,7 @@ def run_preflight(
             built_length = program.constructs[0].segments[0].sequence_length
         elif workload == "freebindcraft_binder":
             length = target_length or int(params["binder_length_aa"])
+            params["binder_length_aa"] = length
             program = build_freebindcraft_binder_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
         elif workload == "gpcr_cxcr4_binder":
@@ -414,9 +433,18 @@ def run_preflight(
             built_length = program.constructs[0].segments[0].sequence_length
             length = target_length or built_length
         elif workload == "bioemu_ensemble_filter":
+            length = target_length or int(params["segment_length_aa"])
+            protein_seed = str(params["seed_sequence"])
+            if len(protein_seed) < length:
+                raise ValueError(
+                    "cannot build bioemu_ensemble_filter at "
+                    f"target_length={length}: full-tier seed has only "
+                    f"{len(protein_seed)} residues"
+                )
+            params["segment_length_aa"] = length
+            params["seed_sequence"] = protein_seed[:length]
             program = build_bioemu_ensemble_filter_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
-            length = target_length or built_length
         elif workload == "af3_boltz2_state_sweep":
             program = build_af3_boltz2_state_sweep_program(params, seed=0)
             built_length = program.constructs[0].segments[0].sequence_length
@@ -433,6 +461,7 @@ def run_preflight(
             length = target_length or built_length
         elif workload == "symmetric_oligomer_ring":
             length = target_length or int(params["segment_length_aa"])
+            params["segment_length_aa"] = length
             program = build_symmetric_oligomer_ring_program(params)
             built_length = program.constructs[0].segments[0].sequence_length
         elif workload == "boltz2_state_sweep":
@@ -443,13 +472,16 @@ def run_preflight(
             length = target_length or len(str(spec.global_parameters.get("binder_sequence", "")))
             program = build_ppi_interface_specificity_program(params, region_pass=0)
             built_length = program.constructs[0].segments[0].sequence_length
+        detail = "build-only preflight (objective execution skipped)"
+        if built_length != length:
+            detail += f"; requested length {length}, built length {built_length}"
         ladder = [
             LadderStepResult(
-                level="L0",
+                level="BUILD",
                 output_length=built_length,
                 expected_length=length,
                 passed=built_length == length,
-                detail="build-only preflight (GPU constraints skipped)",
+                detail=detail,
             )
         ]
         return PreflightReport(
@@ -511,6 +543,14 @@ def assert_workload_feasible(report: PreflightReport) -> None:
 
     if report.classification == "ok":
         return
+    build_step = next((step for step in report.ladder_steps if step.level == "BUILD"), None)
+    if build_step is not None:
+        raise ValueError(
+            "build-only binding infeasible: requested length "
+            f"{build_step.expected_length}, built length {build_step.output_length}. "
+            "Reconcile the fixture input and requested length before running GPU constraints. "
+            f"{report.summary()}"
+        )
     if report.classification == "platform_error":
         raise ValueError(
             f"platform error at length={report.target_length}: L0 bare MCMC failed. "

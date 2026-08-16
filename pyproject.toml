@@ -10,12 +10,15 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "anthropic>=0.119.0,<1",
+  "custom-optimizer==0.0.1",
   "modal>=1.5.2,<2",
   "numpy>=2,<3",
   "proto-language @ git+https://github.com/evo-design/proto-language.git@edf64afbcf84cc7c5e4e1404418c8ef1f16c34ce",
   "pydantic>=2.11,<3",
   "python-dotenv>=1.1,<2",
   "scikit-learn>=1.9,<2",
+  "setuptools>=80,<81",
+  "ViennaRNA==2.7.2",
 ]
 
 [project.optional-dependencies]

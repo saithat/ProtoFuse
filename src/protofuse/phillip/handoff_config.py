@@ -32,8 +32,8 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
     ),
     "custom-egfp-lung": HandoffConfig(
         fixture_id="custom-egfp-lung",
-        methodology_id="custom-egfp-v1",
-        seed_policy="caller supplied; pool uses stochastic MCMC init per member",
+        methodology_id="custom-egfp-v2",
+        seed_policy="caller supplied; one derived NumPy seed drives the released CUSTOM pool",
         compile_device="local",
     ),
     "esm2-protein-maturation": HandoffConfig(
@@ -105,7 +105,7 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
     ),
     "rfdiffusion3-af3-ppi": HandoffConfig(
         fixture_id="rfdiffusion3-af3-ppi",
-        methodology_id="rfdiffusion3-af3-ppi-v1",
+        methodology_id="rfdiffusion3-af3-ppi-v2",
         seed_policy=(
             "paper generation seeds not reported; prototype fixes RFdiffusion3 and "
             "ProteinMPNN seed 0 and AlphaFold3 seed 0; paired full/fused arms must match"
@@ -114,16 +114,17 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
     ),
     "af3-boltz2-state-sweep": HandoffConfig(
         fixture_id="af3-boltz2-state-sweep",
-        methodology_id="af3-boltz2-state-sweep-v1",
+        methodology_id="af3-boltz2-state-sweep-v3",
         seed_policy=(
-            "paper uses five independent seeds without listing values; prototype uses "
-            "implementation seeds 0 through 4, paired identically across full/fused arms"
+            "paper reports five seeds without values; the target-level protocol slice uses "
+            "implementation seeds 0 through 4 across ten beta settings and five draws per "
+            "setting, paired identically across full/fused arms"
         ),
         compile_device="modal",
     ),
     "evo2-enformer-borzoi": HandoffConfig(
         fixture_id="evo2-enformer-borzoi",
-        methodology_id="evo2-enformer-borzoi-v1",
+        methodology_id="evo2-enformer-borzoi-v3",
         seed_policy=(
             "paper generation seed not reported; BeamSearchOptimizer seed is fixed to 0, "
             "paired identically across full/fused arms, while Evo2Generator exposes no seed field"

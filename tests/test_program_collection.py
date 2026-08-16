@@ -114,11 +114,11 @@ def test_wave2_collections_are_reviewed_and_hashed(collection_id: str) -> None:
     assert len(loaded.manifest.programs) == 2
 
 
-def test_custom_egfp_lung_collection_is_reviewed_and_hashed() -> None:
+def test_custom_egfp_lung_collection_is_hashed_and_reviewed() -> None:
     loaded = load_collection(CUSTOM_COLLECTION, require_reviewed=True)
 
     assert loaded.manifest.collection_id == "custom-egfp-lung"
-    assert loaded.manifest.methodology_id == "custom-egfp-v1"
+    assert loaded.manifest.methodology_id == "custom-egfp-v2"
     assert loaded.manifest.reviewed is True
     assert len(loaded.manifest.programs) == 2
     assert {entry.program_id for entry in loaded.manifest.programs} == {
@@ -139,4 +139,4 @@ def test_custom_egfp_design_builds_program() -> None:
     spec.loader.exec_module(module)
 
     program = module.build_program()
-    assert program.constructs[0].segments[0].sequence_length == 720
+    assert program.constructs[0].segments[0].sequence_length == 717

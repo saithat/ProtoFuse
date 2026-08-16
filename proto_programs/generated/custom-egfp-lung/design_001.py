@@ -1,6 +1,7 @@
-"""Full-tier CUSTOM eGFP lung pool member (720 bp, 100 MCMC steps).
+"""Full paper-scale CUSTOM eGFP-to-lung reproduction (717 bp, 1,000 candidates).
 
-Represents one candidate in CUSTOM's n_pool=1000 propose-score-select loop.
+Uses the authors' released synonymous generator, five-metric ranking,
+homopolymer filter, and top-10 selection.
 Paper: Hernandez-Alias et al., Genome Biology 2023, 10.1186/s13059-023-02868-2.
 """
 

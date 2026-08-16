@@ -50,4 +50,8 @@ def test_model_family_comparison_uses_one_grouped_vector_output_split(tmp_path: 
     assert all(
         len(model["audit"]["mae"]) == 2 for model in report["models"].values()
     )
+    assert all(
+        len(model["audit"]["accepted_error"]["mae_q95_q05_fraction"]) == 2
+        for model in report["models"].values()
+    )
     json.dumps(report, allow_nan=False)

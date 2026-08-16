@@ -1,4 +1,4 @@
-"""Full-tier Evo 2 regulatory design for the ARC Morse pattern with separate Enformer and Borzoi losses."""
+"""Full-tier Evo 2 regulatory design for the ARC Morse pattern with separate Enformer and Borzoi losses. The paper uses 15 proposals per retained prompt for ARC."""
 
 from __future__ import annotations
 
@@ -14,4 +14,4 @@ from protofuse.phillip.program_builders import (
 def build_program() -> Program:
     spec = load_fixture_spec("evo2-enformer-borzoi")
     params = resolve_workload_params(spec, tier="full")
-    return build_evo2_regulatory_design_program(params, morse_pattern=".- .-. -.-.", dot_bp=384)
+    return build_evo2_regulatory_design_program(params, morse_pattern=".- .-. -.-.", dot_bp=384, proposals_per_result=15)

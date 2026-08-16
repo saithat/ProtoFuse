@@ -5,11 +5,12 @@ Frozen program collection for **CUSTOM** tissue-specific eGFP codon pool optimiz
 
 | Program | Tier | Description |
 |---------|------|-------------|
-| `design_001.py` | full | Single pool-member MCMC program (720 bp, 100 steps) |
-| `design_002.py` | smoke | Fast sanity variant (720 bp, 20 steps) |
+| `design_001.py` | full | Paper-scale 717-bp eGFP workflow: 1,000 candidates, five CUSTOM metrics, homopolymer filtering, top 10 |
+| `design_002.py` | smoke | Reduced 30-candidate software diagnostic; not reproduction evidence |
 
-The minute-scale workload is the outer pool loop (`n_pool=1000`) orchestrated by
-`run_custom_egfp_lung()` in `program_builders.py`; each `build_program()` here is one
-candidate generator Sai can profile and fuse.
+`design_001.py` is one complete released-CUSTOM-style pool, not one MCMC member. Use the
+same-pool parity artifact before collecting Proto or ProtoFuse results, and keep the paper's
+historical results separate from newly paired seeds.
 
 Methodology fixture: `workspaces/phillip/fixtures/custom-egfp-lung/methodology.json`.
+Experiment contract: `docs/CUSTOM_REPRODUCTION.md`.

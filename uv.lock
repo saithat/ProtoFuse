@@ -460,6 +460,19 @@ wheels = [
 ]
 
 [[package]]
+name = "custom-optimizer"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "rna" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/09/49e8ff5c786c63bbcf280d6f52b8e2e6f247798fa15c19de8e7be8890d66/custom_optimizer-0.0.1-py3-none-any.whl", hash = "sha256:cd23bc89a95202e686dfe212d507b55aefa0ce90c0b9f67873f870095d978067", size = 78410, upload-time = "2022-03-17T09:19:47.084Z" },
+]
+
+[[package]]
 name = "cycler"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1894,12 +1907,15 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "custom-optimizer" },
     { name = "modal" },
     { name = "numpy" },
     { name = "proto-language" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "scikit-learn" },
+    { name = "setuptools" },
+    { name = "viennarna" },
 ]
 
 [package.optional-dependencies]
@@ -1920,6 +1936,7 @@ requires-dist = [
     { name = "altair", marker = "extra == 'notebook'", specifier = ">=5.5,<6" },
     { name = "anthropic", specifier = ">=0.119.0,<1" },
     { name = "marimo", marker = "extra == 'notebook'", specifier = ">=0.23,<1" },
+    { name = "custom-optimizer", specifier = "==0.0.1" },
     { name = "modal", specifier = ">=1.5.2,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.17,<2" },
     { name = "numpy", specifier = ">=2,<3" },
@@ -1931,6 +1948,8 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1,<2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12,<1" },
     { name = "scikit-learn", specifier = ">=1.9,<2" },
+    { name = "setuptools", specifier = ">=80,<81" },
+    { name = "viennarna", specifier = "==2.7.2" },
 ]
 provides-extras = ["dev", "notebook"]
 
@@ -2311,6 +2330,19 @@ wheels = [
 ]
 
 [[package]]
+name = "rna"
+version = "0.13.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/95/84980c8b000f10f99523bbf71a62cf8c4567ccb25e2d44f9c862b23e8958/rna-0.13.4.tar.gz", hash = "sha256:212361511f766d427a45dee347874ace15451c5dbe29c3a2b5eb94c887ad9ce4", size = 620156, upload-time = "2026-03-25T13:51:39.063Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/e6/2456a8a75c36455fde1a46bcb8e7fa9a7ca8331ab26fb686e2148df2b2ee/rna-0.13.4-py3-none-any.whl", hash = "sha256:346797c61e21533c1ce301b5ebaa932ca72bac70e888edf804d11a866471ba0c", size = 75489, upload-time = "2026-03-25T13:51:37.709Z" },
+]
+
+[[package]]
 name = "rpds-py"
 version = "2026.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2407,6 +2439,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c5/f0/184b4b5f8d00f2a92cf96eec8967a3d550b52cf94362dad1100df9e48d57/send2trash-2.1.0.tar.gz", hash = "sha256:1c72b39f09457db3c05ce1d19158c2cbef4c32b8bedd02c155e49282b7ea7459", size = 17255, upload-time = "2026-01-14T06:27:36.056Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/78/504fdd027da3b84ff1aecd9f6957e65f35134534ccc6da8628eb71e76d3f/send2trash-2.1.0-py3-none-any.whl", hash = "sha256:0da2f112e6d6bb22de6aa6daa7e144831a4febf2a87261451c4ad849fe9a873c", size = 17610, upload-time = "2026-01-14T06:27:35.218Z" },
+]
+
+[[package]]
+name = "setuptools"
+version = "80.10.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/95/faf61eb8363f26aa7e1d762267a8d602a1b26d4f3a1e758e92cb3cb8b054/setuptools-80.10.2.tar.gz", hash = "sha256:8b0e9d10c784bf7d262c4e5ec5d4ec94127ce206e8738f29a437945fbc219b70", size = 1200343, upload-time = "2026-01-25T22:38:17.252Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/b8/f1f62a5e3c0ad2ff1d189590bfa4c46b4f3b6e49cef6f26c6ee4e575394d/setuptools-80.10.2-py3-none-any.whl", hash = "sha256:95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173", size = 1064234, upload-time = "2026-01-25T22:38:15.216Z" },
 ]
 
 [[package]]
@@ -2660,6 +2701,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2e/28/64ca011edf31c715b4fad359c587ea52391aaffa125065695590241ff617/uvicorn-0.52.3.tar.gz", hash = "sha256:18857b9e6579300be55c91c0a1cfd37d9a2cf0cabea33b88275f199eb73b8b58", size = 100621, upload-time = "2026-08-13T16:50:02.899Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/2b/ebd108734a8204c6b4b93c681c9a38c5273b3ccd5d129fee4ffc1d97772c/uvicorn-0.52.3-py3-none-any.whl", hash = "sha256:116af2710dbf47c80f463cd20ee4884b6662f4c9f227d797ddc7279d2fcc2c7c", size = 79859, upload-time = "2026-08-13T16:50:01.323Z" },
+]
+
+[[package]]
+name = "viennarna"
+version = "2.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/7a/2165d7d54234efc63a929a33d8a746cc23c3834747d195bd4d1b56cd1124/viennarna-2.7.2.tar.gz", hash = "sha256:44682b8a5f077faf32bf5d0353a232c74091ea47255a76a56495f9fb02e1e872", size = 6325292, upload-time = "2025-12-30T02:02:37.294Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/9e/15d00b8a67e0176ff35fc1bdadac8d051062fd32d431be711309ad807af1/viennarna-2.7.2-cp312-cp312-macosx_10_14_x86_64.whl", hash = "sha256:7a0b6b488417d6dd17ae4494d7b9b77a7f5713516325dfa2e6bb5eb29362a7b1", size = 2656390, upload-time = "2025-12-30T02:02:01.727Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/11/4f381962409a7f63730d4877c09de75e31dd37054250e89870b71e685402/viennarna-2.7.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:306efabeec8e5608351f5d039d4ce0c171d0bd216086eaf255cdb51d8c827640", size = 2488951, upload-time = "2025-12-30T02:02:03.445Z" },
+    { url = "https://files.pythonhosted.org/packages/79/93/4128120d867a7bda53e37fffac58035209e14ee36568a0d44565b42db7b8/viennarna-2.7.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4413387dc286d4d5a778afcc09cee17d60c7f38c6991451da7566ad21612ae38", size = 12971583, upload-time = "2025-12-30T02:02:04.692Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/ba/c2b939614c4e48b7e387db7549eaf2b03d682e030eee1b93679854bc0bd1/viennarna-2.7.2-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1e4132cbb35dc258cc97f2e1b7b83bd11712d539c4757dfb78445c38041e439c", size = 13412633, upload-time = "2025-12-30T02:02:06.841Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/73/90f8f323337a88c27f7fd28d64e5b93f520a1704e9ff0489774aedc38059/viennarna-2.7.2-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:220977fc95bf9e72173300afc8d2f15afcd4679582a420d90fb4a7c83db4b118", size = 12998891, upload-time = "2025-12-30T02:02:08.7Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/9c/fa4391936abf0624cafa4ad72c38d5d7462cc8d6bd6968709758f31dca08/viennarna-2.7.2-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:24a3aa924ddd318c8c240ced3dfcc5affd324f184eb4a137dd35e96d2c3bcacc", size = 14177767, upload-time = "2025-12-30T02:02:10.937Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/ef/48c46b000caf747fc03866c00fbc14fff89e833b614f2b261487b7260440/viennarna-2.7.2-cp312-cp312-win_amd64.whl", hash = "sha256:68b0803568549256dadf7383e02ee98973433e6d4c59abebb6a27f278ba77c02", size = 2020809, upload-time = "2025-12-30T02:02:12.651Z" },
 ]
 
 [[package]]

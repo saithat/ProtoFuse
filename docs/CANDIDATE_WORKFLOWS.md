@@ -36,8 +36,8 @@ regulatory models) inside MCMC, pool, or cycling loops.
 
 Reviewed rows are active collections listed in
 [`src/protofuse/sai/TODO.md`](../src/protofuse/sai/TODO.md); they stay here for topology
-reference only. `dnachisel-num1`, `custom-egfp-lung`, and
-`gpcr-cxcr4-miniprotein` are also reviewed baseline handoffs.
+reference only. `dnachisel-num1`, `custom-egfp-lung`, and `gpcr-cxcr4-miniprotein` are also
+reviewed baseline handoffs.
 
 Generated sources awaiting human review:
 

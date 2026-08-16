@@ -24,7 +24,6 @@ authority. Smoke is a reduced executable workload, not a fake program.
 | Collection ID | Path | Primary program | Notes |
 |---------------|------|-----------------|-------|
 | `dnachisel-num1` | `proto_programs/generated/dnachisel-num1/` | **`design_001.py`** (936 bp) | Start with full for profiling; `design_002.py` is the reduced smoke tier. Historical full outer loop **138 s** — see benchmarks. |
-| `custom-egfp-lung` | `proto_programs/generated/custom-egfp-lung/` | **`design_001.py`** (720 bp) | Start with full for profiling; `design_002.py` is the reduced smoke tier. Historical full pool loop **79 s** — see benchmarks. |
 | `esm2-protein-maturation` | `proto_programs/generated/esm2-protein-maturation/` | **`design_001.py`** (129 aa) | GPU MCMC; profile inside `run_esm2_protein_maturation(tier="full")`. |
 | `antibody-cdr-maturation` | `proto_programs/generated/antibody-cdr-maturation/` | **`design_001.py`** (121 aa) | GPU CDR MCMC; best Sai fusion target after esm2. |
 | `gpcr-cxcr4-miniprotein` | `proto_programs/generated/gpcr-cxcr4-miniprotein/` | **`design_001.py`** (70 aa) | RFdiffusion3+Boltz-2; `structure_binding` passes 4RWS hotspots. |
@@ -42,6 +41,11 @@ Generated collections `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`, and
 `evo2-enformer-borzoi` currently have `reviewed=false`. Do not analyze or train on them as
 handoffs until their paper encodings pass human review and the manifest status is updated
 through the normal finalization flow.
+
+The regenerated `custom-egfp-lung` v2 collection is also pending human paper-fidelity review.
+Its primary program is the exact 717-bp, 1,000-candidate workflow; use
+[`docs/CUSTOM_REPRODUCTION.md`](../../../docs/CUSTOM_REPRODUCTION.md) after approval, and never
+substitute the reduced-pool `design_002.py` diagnostic for results.
 
 ## Analyze program collections
 
@@ -92,7 +96,8 @@ they are not placeholder functions waiting to be filled in.
 
 ## Future program collections (lower priority)
 
-CPU codon handoffs (`custom-egfp-lung`, `dnachisel-num1`) are weak fusion targets.
+The retired CUSTOM smoke proxy and `dnachisel-num1` were weak fusion targets. The exact CUSTOM
+v2 workflow has five ViennaRNA/CUSTOM objectives and must be profiled before its value is judged.
 `gpcr-cxcr4-miniprotein` is the primary GPU-backed collection once Modal execution is
 unblocked. When Phillip adds collections, prefer scenarios from
 [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md) that repeat GPU

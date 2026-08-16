@@ -1,4 +1,4 @@
-"""Smoke-tier CUSTOM eGFP lung pool member for fast local sanity checks."""
+"""Reduced-pool CUSTOM eGFP-to-lung diagnostic; not the reproduction result."""
 
 from __future__ import annotations
 

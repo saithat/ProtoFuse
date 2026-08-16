@@ -65,7 +65,8 @@ def _():
                 {flow_arrow()}
                 {flow_node("Learned surrogate")}
               </div>
-              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding-left:248px;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+                          padding-left:248px;">
                 {flow_edge("no / reject")}
                 {flow_arrow("↳")}
                 {flow_node("Original full-model path")}
@@ -492,7 +493,7 @@ def _(dedent, mo, smoke_flow_chart):
 
                     | Tier | Purpose | Owner |
                     |------|---------|-------|
-                    | **Smoke** | Wiring check — tiny inputs, one end-to-end run | Phillip handoff gate |
+                    | **Smoke** | Tiny-input wiring check; one end-to-end run | Phillip handoff |
                     | **Full** | Real loops, teacher traces, fusion profiling | Sai |
 
                     **Before GPU workflows**, smoke catches import errors, bad constraints, and

@@ -7,14 +7,19 @@
   },
   "generators": [
     {
-      "name": "probabilistic tissue codon generator",
-      "description": "Generate synonymous coding sequences by selecting codons with probabilities proportional to tissue-specific importance weights.",
-      "parameters": {"target_tissue": "lung", "mutations_per_step": 3},
+      "name": "CUSTOM tissue codon generator",
+      "description": "Use the authors' released CUSTOM package to sample synonymous eGFP coding sequences from lung-specific codon probabilities.",
+      "parameters": {"target_tissue": "Lung", "degree": 0.5, "n_pool": 1000},
       "evidence": [
         {
           "quote": "Therefore, for each amino acid, a certain codon is selected with a probability proportional to the first. If the selected codon is enriched in the tissue, it is incorporated into the sequence.",
           "section": "Methods",
           "page": 10
+        },
+        {
+          "quote": "We applied CUSTOM to the protein sequences of eGFP and mCherry (Uniprot ID: C5MKY7, X5DSL3).",
+          "section": "Expression vectors design",
+          "page": 11
         }
       ],
       "output": "dna"
@@ -22,48 +27,88 @@
   ],
   "constraints": [
     {
-      "name": "tissue codon optimization",
-      "description": "Maximize codon usage aligned with lung tissue PTR-derived codon preferences.",
-      "parameters": {"target_tissue": "lung"},
+      "name": "CUSTOM body MFE",
+      "description": "Minimize the released CUSTOM mean 40-nucleotide sliding-window minimum free energy for the coding-sequence body.",
+      "parameters": {"metric": "MFE", "direction": "min"},
       "evidence": [
         {
-          "quote": "We then use these identified patterns for the development of CUSTOM, a codon optimizer algorithm which suggests a synonymous codon design in order to optimize protein production in a tissue-specific manner.",
-          "section": "Abstract",
-          "page": 1
+          "quote": "Minimum Free Energy (MFE): a measure of mRNA stability from the ViennaRNA package",
+          "section": "Selecting the top scoring candidates",
+          "page": 10
         }
       ],
-      "metric": "tissue_codon_score",
+      "metric": "MFE",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "CUSTOM initial MFE",
+      "description": "Maximize the released CUSTOM minimum free energy of the first 40 nucleotides.",
+      "parameters": {"metric": "MFEini", "direction": "max"},
+      "evidence": [
+        {
+          "quote": "CUSTOM distinguishes between the first 40 nucleotides (whose weak secondary structure leads to increased translation initiation) and the rest of the sequence (whose strong secondary structure relates to longer mRNA half-lives)",
+          "section": "Selecting the top scoring candidates",
+          "page": 10
+        }
+      ],
+      "metric": "MFEini",
       "direction": "maximize",
       "weight": 1.0
     },
     {
-      "name": "GC content target",
-      "description": "Keep GC content near the desired target for mRNA stability.",
-      "parameters": {"min_gc": 45, "max_gc": 55, "target_gc": 50},
+      "name": "CUSTOM CAI",
+      "description": "Maximize the released CUSTOM human codon adaptation index.",
+      "parameters": {"metric": "CAI", "direction": "max"},
       "evidence": [
         {
-          "quote": "GC content: a measure of similarity between the sequence GC content and a desired target value of GC",
-          "section": "Methods",
-          "page": 11
+          "quote": "Codon Adaptation Index (CAI): a measure of similarity between the codon usage of the sequence and that of the human genome",
+          "section": "Selecting the top scoring candidates",
+          "page": 10
         }
       ],
-      "metric": "gc_percent",
-      "direction": "range",
-      "weight": 0.5
+      "metric": "CAI",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "CUSTOM CPB",
+      "description": "Maximize the released CUSTOM human codon-pair bias score.",
+      "parameters": {"metric": "CPB", "direction": "max"},
+      "evidence": [
+        {
+          "quote": "Codon Pair Bias (CPB): a measure of similarity between the codon pair usage of the sequence and that of the human genome",
+          "section": "Selecting the top scoring candidates",
+          "page": 10
+        }
+      ],
+      "metric": "CPB",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "CUSTOM ENC",
+      "description": "Minimize the released CUSTOM effective number of codons.",
+      "parameters": {"metric": "ENC", "direction": "min"},
+      "evidence": [
+        {
+          "quote": "Effective Number of Codons (ENC): a measure of codon evenness. A value of 20 means that all 100% codons are biased towards the most common codon, while 61 corresponds to no bias at all",
+          "section": "Selecting the top scoring candidates",
+          "page": 10
+        }
+      ],
+      "metric": "ENC",
+      "direction": "minimize",
+      "weight": 1.0
     },
     {
       "name": "homopolymer filter",
-      "description": "Filter sequences with homopolymers at or above length 7 that impede expression.",
-      "parameters": {"homopolymer_max": 7},
+      "description": "Reject every coding sequence containing a homopolymer of seven or more nucleotides.",
+      "parameters": {"homopolymers": 7},
       "evidence": [
         {
-          "quote": "Homopolymers: filters out sequences with homopolymers of a certain length, which can lead to worse expression",
-          "section": "Methods",
-          "page": 11
-        },
-        {
-          "quote": "Sequences with homopolymers equal or larger than 7 were filtered out and scored",
-          "section": "Experimental model and protocol",
+          "quote": "Sequences with homopolymers equal or larger than 7 were filtered out and scored with:",
+          "section": "Expression vectors design",
           "page": 11
         }
       ],
@@ -74,31 +119,31 @@
   ],
   "optimizers": [
     {
-      "name": "pool propose-score-select",
-      "description": "Generate a pool of tissue-optimized sequences and select the top-scoring candidate.",
-      "parameters": {"n_pool": 1000, "top_k": 10, "num_steps": 100},
+      "name": "CUSTOM paper pool",
+      "description": "Generate one 1,000-sequence pool, min-max normalize the five metrics over that complete pool, filter homopolymers, and retain the top ten.",
+      "parameters": {"n_pool": 1000, "top_k": 10},
       "evidence": [
         {
-          "quote": "We follow a simple probabilistic approach with two steps: (1) translate tissue-specific codon preferences into a pool of optimal sequences and (2) select the desired sequence based on other parameters of relevance.",
-          "section": "Methods",
-          "page": 10
+          "quote": "Sequences were optimized to either lung or kidney, generating a total of n_pool = 1000.",
+          "section": "Expression vectors design",
+          "page": 11
         },
         {
-          "quote": "Sequences were optimized to either lung or kidney, generating a total of n_pool = 1000.",
-          "section": "Experimental model and protocol",
+          "quote": "Among the top 10 scoring candidates of each optimization, we selected 2x eGFP Kidney, 2x eGFP Lung, 2x mCherry Kidney, and 2x mCherry Lung",
+          "section": "Expression vectors design",
           "page": 11
         }
       ],
       "strategy": "propose_score_select",
-      "stopping_criteria": {"n_pool": 1000, "top_k": 10, "num_steps": 100}
+      "stopping_criteria": {"n_pool": 1000, "top_k": 10}
     }
   ],
   "model_dependencies": [
     {
       "name": "CUSTOM",
-      "version_or_checkpoint": null,
+      "version_or_checkpoint": "custom-optimizer==0.0.1",
       "provider": "CRG Barcelona",
-      "purpose": "Tissue-specific codon optimization reference implementation",
+      "purpose": "Released tissue-specific synonymous generator and ranking metrics",
       "evidence": [
         {
           "quote": "CUSTOM is publicly available as a Python package (https://github.com/hexavier/CUSTOM) and as a web interface (https://custom.crg.eu).",
@@ -106,113 +151,93 @@
           "page": 3
         }
       ]
+    },
+    {
+      "name": "ViennaRNA",
+      "version_or_checkpoint": "2.7.2",
+      "provider": "ViennaRNA Package",
+      "purpose": "MFE and initial-MFE calculations required by released CUSTOM",
+      "evidence": []
     }
   ],
   "global_parameters": {
     "workload": "custom_egfp_pool",
     "target_protein": "eGFP",
-    "target_tissue": "lung",
-    "segment_length_bp": 720,
+    "target_tissue": "Lung",
+    "protein_sequence": "MVSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTLTYGVQCFSRYPDHMKQHDFFKSAMPEGYVQERTIFFKDDGNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYIMADKQKNGIKVNFKIRHNIEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSTQSALSKDPNEKRDHMVLLEFVTAAGITLGMDELYK",
+    "segment_length_bp": 717,
     "n_pool": 1000,
     "top_k": 10,
-    "num_steps": 100,
-    "mutations_per_step": 3,
+    "degree": 0.5,
     "homopolymer_max": 7,
-    "target_gc": 50.0,
-    "min_gc": 45,
-    "max_gc": 55,
-    "num_results": 1,
-    "proposals_per_result": 1
+    "num_results": 10
   },
   "workflow": {
     "steps": [
       {
         "id": "generate_pool",
-        "operation": "probabilistic tissue codon pool generation",
-        "inputs": ["amino_acid_sequence", "target_tissue"],
-        "outputs": ["candidate_pool"],
-        "parameters": {"n_pool": 1000},
+        "operation": "run released CUSTOM optimize(eGFP) for Lung",
+        "inputs": ["eGFP_protein", "Lung"],
+        "outputs": ["1000_synonymous_coding_sequences"],
+        "parameters": {"n_pool": 1000, "degree": 0.5},
         "evidence": [
           {
-            "quote": "Once a pool of optimized sequences has been generated, the best-ranked ones can be selected as the user desires.",
+            "quote": "We follow a simple probabilistic approach with two steps: (1) translate tissue-specific codon preferences into a pool of optimal sequences and (2) select the desired sequence based on other parameters of relevance.",
             "section": "Methods",
             "page": 10
           }
         ]
       },
       {
-        "id": "filter_homopolymers",
-        "operation": "remove sequences with homopolymers >= 7",
-        "inputs": ["candidate_pool"],
-        "outputs": ["filtered_pool"],
-        "parameters": {"homopolymer_max": 7},
-        "evidence": []
-      },
-      {
-        "id": "score_candidates",
-        "operation": "score tissue codon usage, GC content, and composite metrics",
-        "inputs": ["filtered_pool"],
-        "outputs": ["scored_pool"],
+        "id": "score_pool",
+        "operation": "evaluate MFE, MFEini, CAI, CPB, and ENC for every candidate",
+        "inputs": ["1000_synonymous_coding_sequences"],
+        "outputs": ["five_metric_vectors"],
         "parameters": {},
         "evidence": []
       },
       {
-        "id": "select_best",
-        "operation": "select top-scoring tissue-optimized coding sequence",
-        "inputs": ["scored_pool"],
-        "outputs": ["optimized_dna"],
-        "parameters": {"top_k": 10},
-        "evidence": [
-          {
-            "quote": "Among the top 10 scoring candidates of each optimization, we selected 2x eGFPKidney, 2x eGFPLung",
-            "section": "Experimental model and protocol",
-            "page": 11
-          }
-        ]
+        "id": "filter_and_select",
+        "operation": "filter homopolymers >=7 and retain top 10 by equal-weight normalized score",
+        "inputs": ["five_metric_vectors"],
+        "outputs": ["top_10_eGFP_Lung_sequences"],
+        "parameters": {"homopolymers": 7, "top": 10},
+        "evidence": []
       }
     ],
     "edges": [
-      {"source": "generate_pool", "target": "filter_homopolymers", "artifact": "candidate_pool"},
-      {"source": "filter_homopolymers", "target": "score_candidates", "artifact": "filtered_pool"},
-      {"source": "score_candidates", "target": "select_best", "artifact": "scored_pool"}
+      {"source": "generate_pool", "target": "score_pool", "artifact": "candidate_pool"},
+      {"source": "score_pool", "target": "filter_and_select", "artifact": "scored_pool"}
     ]
   },
   "selection_thresholds": [
     {
-      "name": "homopolymer ceiling",
+      "name": "paper homopolymer filter",
       "metric": "max_homopolymer_length",
       "operator": "<",
       "value": 7,
-      "unit": "bp",
-      "applies_to": "candidate DNA",
-      "evidence": []
-    }
-  ],
-  "experimental_measurements": [
-    {
-      "name": "eGFP lung expression fold-change",
-      "value": null,
-      "unit": "relative fluorescence",
-      "conditions": {"cell_line": "A549", "tissue_target": "lung"},
-      "role": "validation",
+      "unit": "nt",
+      "applies_to": "candidate coding sequence",
       "evidence": [
         {
-          "quote": "We applied CUSTOM to the protein sequences of eGFP and mCherry (Uniprot ID: C5MKY7, X5DSL3). Sequences were optimized to either lung or kidney",
-          "section": "Experimental model and protocol",
+          "quote": "Sequences with homopolymers equal or larger than 7 were filtered out and scored with:",
+          "section": "Expression vectors design",
           "page": 11
         }
       ]
     }
   ],
+  "experimental_measurements": [],
   "assumptions": [
-    "eGFP CDS length (~720 bp) stands in for the full coding sequence optimized in the paper.",
-    "Pool MCMC with n_pool=1000 matches the paper's experimental pool size at ~1 minute wall time.",
-    "Tissue codon weights are a simplified static profile rather than the full random-forest PTR model.",
-    "MFE, CAI, CPB, and ENC scoring from select_best are deferred; tissue codon + GC + homopolymer gate the v1 baseline."
+    "This reproduces the released in-silico eGFP-to-lung optimization, not the downstream cloning or expression experiment.",
+    "The five min/max directions are transcribed from the paper's displayed select_best call and confirmed against CUSTOM 0.0.1; Paperclip converts that formula to presentation markup, so the per-metric evidence quotes use the surrounding verbatim prose.",
+    "Each raw metric is mapped affinely into Proto's [0,1] score interval; affine mapping leaves the paper's per-pool min-max ranking unchanged.",
+    "The [-200,0] kcal/mol safety interval contains feasible ViennaRNA MFE values for every 40-nucleotide window and fails closed if violated.",
+    "Although ENC is interpreted on an idealized 20-to-61 scale, CUSTOM's finite-sequence estimator can slightly exceed 61; the [0,100] Proto affine envelope is a non-clipping transport bound, while the raw value and exact per-pool ranking are retained."
   ],
   "unknowns": [
-    "ViennaRNA MFE scoring is not bound in v1 Proto baseline.",
-    "Exact CUSTOM random-forest tissue feature weights are not reproduced.",
-    "Bidirectional TRE3G cloning context from expression vector design is not modeled."
+    "The paper and released experiment script do not report random seeds, so the exact historical 1,000 candidate sequences cannot be regenerated.",
+    "The paper does not pin its CUSTOM, NumPy, pandas, or ViennaRNA dependency versions; this reproduction pins CUSTOM 0.0.1 and ViennaRNA 2.7.2.",
+    "Wet-lab expression measurements and the authors' final manual choice of two candidates are outside this computational reproduction."
   ]
 }

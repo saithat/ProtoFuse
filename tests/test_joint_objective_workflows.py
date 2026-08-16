@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from proto_language.core import Sequence
 from proto_language.optimizer import BeamSearchOptimizer, RejectionSamplingOptimizer
 from proto_tools.entities.structures.structure import Structure
 
@@ -36,7 +37,7 @@ END
     ("fixture_id", "expected_programs"),
     [
         ("rfdiffusion3-af3-ppi", 6),
-        ("af3-boltz2-state-sweep", 6),
+        ("af3-boltz2-state-sweep", 51),
         ("evo2-enformer-borzoi", 4),
     ],
 )
@@ -74,6 +75,21 @@ def test_rfdiffusion3_af3_program_preserves_three_model_objectives(
         "_target_sequence_from_pdb",
         lambda _pdb_id, _chains: "A" * 200,
     )
+    monkeypatch.setattr(
+        program_builders,
+        "crop_target_structure",
+        lambda structure, _spans: structure,
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "target_sequence_from_cropped_structure",
+        lambda _structure, _chains: "A" * 200,
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "paper_binder_origin",
+        lambda _structure, _hotspots: [0.0, 0.0, 10.0],
+    )
     spec = load_fixture_spec("rfdiffusion3-af3-ppi")
     params = resolve_workload_params(spec, tier="smoke")
 
@@ -86,8 +102,7 @@ def test_rfdiffusion3_af3_program_preserves_three_model_objectives(
     assert optimizer.config.seed == 0
     assert {constraint.label for constraint in optimizer.constraints} >= {
         "proteinmpnn_probability",
-        "af3_iptm_proxy",
-        "af3_mean_pae_proxy",
+        "af3_paper_success",
     }
     generator_config = optimizer.generators[0].config
     assert generator_config.rfdiffusion3_config.seed == 0
@@ -113,26 +128,71 @@ def test_state_sweep_program_has_model_by_state_objective_vector(
     spec = load_fixture_spec("af3-boltz2-state-sweep")
     params = resolve_workload_params(spec, tier="smoke")
 
-    program = build_af3_boltz2_state_sweep_program(params, seed=3)
+    program = build_af3_boltz2_state_sweep_program(params, seed=3, beta=0.45)
     optimizer = program.optimizers[0]
 
     assert isinstance(optimizer, RejectionSamplingOptimizer)
     assert optimizer.config.seed == 3
     assert {constraint.label for constraint in optimizer.constraints} >= {
-        "af3_one_minus_tm_dominant",
-        "af3_one_minus_tm_alternative",
-        "boltz2_one_minus_tm_dominant",
-        "boltz2_one_minus_tm_alternative",
+        "alphafold3_scaled_one_minus_tm_dominant",
+        "alphafold3_scaled_one_minus_tm_alternative",
+        "boltz2_scaled_one_minus_tm_dominant",
+        "boltz2_scaled_one_minus_tm_alternative",
     }
-    af3_constraints = [item for item in optimizer.constraints if item.label.startswith("af3_")]
+    af3_constraints = [
+        item for item in optimizer.constraints if item.label.startswith("alphafold3_")
+    ]
     boltz_constraints = [
         item for item in optimizer.constraints if item.label.startswith("boltz2_")
     ]
-    assert all(item.function_config.alphafold3_config.seeds == [3] for item in af3_constraints)
-    assert all(item.function_config.boltz2_config.seed == 3 for item in boltz_constraints)
+    assert all(item.function_config.seed == 3 for item in af3_constraints)
+    assert all(item.function_config.seed == 3 for item in boltz_constraints)
+    assert all(item.function_config.beta == 0.45 for item in af3_constraints + boltz_constraints)
 
 
-def test_evo2_program_uses_beam_search_and_separate_predictor_losses() -> None:
+def test_pair_scaling_contract_refuses_unscaled_fallback() -> None:
+    from protofuse.phillip.pair_scaling_contract import (
+        PairScaledStateTMScoreConfig,
+        clear_reviewed_pair_scaling_backends,
+        install_default_reviewed_pair_scaling_backends,
+        pair_scaled_state_tmscore_constraint,
+    )
+
+    clear_reviewed_pair_scaling_backends()
+    config = PairScaledStateTMScoreConfig(
+        model="boltz2",
+        beta=-0.15,
+        seed=0,
+        recycling_steps=3,
+        sampling_steps=200,
+        diffusion_samples=1,
+        step_scale=1.5,
+        max_msa_seqs=1024,
+        subsample_msa=False,
+        target_structure=Structure(structure=_MINIMAL_PDB),
+        reference_state="dominant",
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="refuses to substitute unscaled"):
+            pair_scaled_state_tmscore_constraint(
+                [(Sequence(sequence="A", sequence_type="protein"),)],
+                config,
+            )
+    finally:
+        install_default_reviewed_pair_scaling_backends()
+
+
+def test_evo2_program_uses_beam_search_and_separate_predictor_losses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from protofuse.phillip import program_builders
+
+    monkeypatch.setattr(
+        program_builders,
+        "resolve_evo2_genomic_context",
+        lambda _payload: ("C" * 163_840, "C" * 40_960, "G" * 359_936),
+    )
     spec = load_fixture_spec("evo2-enformer-borzoi")
     params = resolve_workload_params(spec, tier="smoke")
 
@@ -144,9 +204,12 @@ def test_evo2_program_uses_beam_search_and_separate_predictor_losses() -> None:
     assert optimizer.config.beam_length == 128
     assert optimizer.config.num_results == 1
     assert optimizer.config.proposals_per_result == 2
+    assert optimizer.target_segment.sequence_length == 128
+    assert optimizer.config.prompt == "C" * 4096
+    assert optimizer.generators[0].config.prompts == ["C" * 4096]
     assert [constraint.label for constraint in optimizer.constraints] == [
-        "enformer_pattern_mae_proxy",
-        "borzoi_pattern_mae_proxy",
+        "enformer_pattern_l1_sum",
+        "borzoi_pattern_l1_sum",
     ]
     assert [constraint.weight for constraint in optimizer.constraints] == [0.5, 0.5]
     assert "seed" not in type(optimizer.generators[0].config).model_fields
@@ -218,8 +281,28 @@ def test_joint_objective_preflight_uses_explicit_build_strategy(
         "_target_sequence_from_pdb",
         lambda _pdb_id, _chains: "A" * 200,
     )
+    monkeypatch.setattr(
+        program_builders,
+        "crop_target_structure",
+        lambda structure, _spans: structure,
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "target_sequence_from_cropped_structure",
+        lambda _structure, _chains: "A" * 200,
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "paper_binder_origin",
+        lambda _structure, _hotspots: [0.0, 0.0, 10.0],
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "resolve_evo2_genomic_context",
+        lambda _payload: ("C" * 163_840, "C" * 40_960, "G" * 359_936),
+    )
 
     report = run_preflight(fixture_id)
 
     assert report.classification == "ok"
-    assert report.ladder_steps[0].detail == "build-only preflight (GPU constraints skipped)"
+    assert report.ladder_steps[0].detail == "build-only preflight (objective execution skipped)"

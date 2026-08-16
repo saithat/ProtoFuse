@@ -22,6 +22,8 @@ from protofuse.sai.model import SequenceFeatureSchema
 from protofuse.sai.training import (
     PreparedTrainingData,
     TeacherSample,
+    _normalized_mae,
+    _q95_q05_ranges,
     _quantile,
     _rank_correlations,
     prepare_training_data,
@@ -205,12 +207,21 @@ def _accepted_error_metrics(
     actual: np.ndarray,
     predicted: np.ndarray,
     accepted: np.ndarray,
-) -> dict[str, list[float] | None]:
+    ranges: np.ndarray,
+) -> dict[str, list[float] | list[float | None] | None]:
     if not accepted.any():
-        return {"mae": None, "max_error": None}
+        missing: list[float | None] = [None] * int(actual.shape[1])
+        return {
+            "mae": None,
+            "mae_q95_q05_fraction": missing,
+            "max_error": None,
+        }
     absolute = np.abs(actual[accepted] - predicted[accepted])
     return {
         "mae": absolute.mean(axis=0).tolist(),
+        "mae_q95_q05_fraction": _normalized_mae(
+            actual[accepted], predicted[accepted], ranges
+        ),
         "max_error": absolute.max(axis=0).tolist(),
     }
 
@@ -241,6 +252,7 @@ def _evaluate_family(
     audit = data.audit_mask
     audit_prediction = prediction[audit]
     audit_actual = data.y[audit]
+    audit_ranges = _q95_q05_ranges(audit_actual)
     audit_accepted = accepted[audit]
     curve = []
     for probability in (0.50, 0.75, 0.90, 0.95, 0.99):
@@ -257,6 +269,7 @@ def _evaluate_family(
                     audit_actual,
                     audit_prediction,
                     selected,
+                    audit_ranges,
                 )["mae"],
             }
         )
@@ -275,6 +288,9 @@ def _evaluate_family(
         },
         "audit": {
             **_error_metrics(audit_actual, audit_prediction),
+            "score_q05": np.quantile(audit_actual, 0.05, axis=0).tolist(),
+            "score_q95": np.quantile(audit_actual, 0.95, axis=0).tolist(),
+            "score_q95_q05_range": audit_ranges.tolist(),
             "support_coverage": float(np.mean(support[audit] <= support_threshold)),
             "uncertainty_coverage": float(
                 np.mean(uncertainty[audit] <= uncertainty_threshold)
@@ -285,6 +301,7 @@ def _evaluate_family(
                 audit_actual,
                 audit_prediction,
                 audit_accepted,
+                audit_ranges,
             ),
             "selective_risk_curve": curve,
         },

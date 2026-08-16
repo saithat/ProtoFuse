@@ -36,11 +36,16 @@ DNA_CHISEL_NUM1_REGISTRY: dict[str, str] = {
 
 CUSTOM_EGFP_REGISTRY: dict[str, str] = {
     **DNA_BASELINE_REGISTRY,
-    "probabilistic tissue codon generator": "proto_language.generator.RandomNucleotideGenerator",
-    "tissue codon optimization": "protofuse.phillip.custom_constraints.tissue_codon_constraint",
-    "GC content target": "proto_language.constraint.gc_content_constraint",
+    "CUSTOM tissue codon generator": (
+        "protofuse.phillip.custom_constraints.CustomTissueCodonGenerator"
+    ),
+    "CUSTOM body MFE": "protofuse.phillip.custom_constraints.custom_mfe_constraint",
+    "CUSTOM initial MFE": "protofuse.phillip.custom_constraints.custom_mfe_init_constraint",
+    "CUSTOM CAI": "protofuse.phillip.custom_constraints.custom_cai_constraint",
+    "CUSTOM CPB": "protofuse.phillip.custom_constraints.custom_cpb_constraint",
+    "CUSTOM ENC": "protofuse.phillip.custom_constraints.custom_enc_constraint",
     "homopolymer filter": "proto_language.constraint.max_homopolymer_constraint",
-    "pool propose-score-select": "protofuse.phillip.pool_optimizer.run_pool_optimizer",
+    "CUSTOM paper pool": "protofuse.phillip.custom_constraints.CustomPaperPoolOptimizer",
 }
 
 # --- Protein workflow registries (Wave 1+) ---
@@ -155,15 +160,14 @@ BOLTZ2_STATE_SWEEP_REGISTRY: dict[str, str] = {
 
 RFDIFFUSION3_AF3_PPI_REGISTRY: dict[str, str] = {
     "RFdiffusion3 PPI backbone generation": (
-        "proto_language.generator.RFdiffusionMPNNBinderGenerator"
+        "protofuse.phillip.rfd3_paper.RFD3PaperBinderGenerator"
     ),
     "ProteinMPNN inverse folding probability": (
         "proto_language.constraint.mpnn_sequence_probability_constraint"
     ),
-    "AlphaFold3 interface confidence proxy": (
-        "proto_language.constraint.structure_iptm_constraint"
+    "AlphaFold3 paper success gate": (
+        "protofuse.phillip.rfd3_paper.rfd3_af3_paper_success_constraint"
     ),
-    "AlphaFold3 mean PAE proxy": "proto_language.constraint.structure_pae_constraint",
     "protein length range": "proto_language.constraint.protein_length_constraint",
     "rejection sampling PPI benchmark": (
         "proto_language.optimizer.RejectionSamplingOptimizer"
@@ -171,23 +175,23 @@ RFDIFFUSION3_AF3_PPI_REGISTRY: dict[str, str] = {
 }
 
 AF3_BOLTZ2_STATE_REGISTRY: dict[str, str] = {
-    "fixed sequence cross-model sweep": (
+    "fixed-sequence pair-scaling sweep": (
         "protofuse.phillip.state_sweep_generators.FixedSequenceSweepGenerator"
     ),
     "AlphaFold3 dominant-state TM-score": (
-        "proto_language.constraint.structure_tmscore_constraint"
+        "protofuse.phillip.pair_scaling_contract.pair_scaled_state_tmscore_constraint"
     ),
     "AlphaFold3 alternative-state TM-score": (
-        "proto_language.constraint.structure_tmscore_constraint"
+        "protofuse.phillip.pair_scaling_contract.pair_scaled_state_tmscore_constraint"
     ),
     "Boltz-2 dominant-state TM-score": (
-        "proto_language.constraint.structure_tmscore_constraint"
+        "protofuse.phillip.pair_scaling_contract.pair_scaled_state_tmscore_constraint"
     ),
     "Boltz-2 alternative-state TM-score": (
-        "proto_language.constraint.structure_tmscore_constraint"
+        "protofuse.phillip.pair_scaling_contract.pair_scaled_state_tmscore_constraint"
     ),
-    "protein length range": "proto_language.constraint.protein_length_constraint",
-    "rejection sampling state ensemble": (
+    "fixed protein sequence": "proto_language.constraint.protein_length_constraint",
+    "pair-scaling seed-setting slice": (
         "proto_language.optimizer.RejectionSamplingOptimizer"
     ),
 }
@@ -195,10 +199,10 @@ AF3_BOLTZ2_STATE_REGISTRY: dict[str, str] = {
 EVO2_REGULATORY_REGISTRY: dict[str, str] = {
     "Evo 2 autoregressive generation": "proto_language.generator.Evo2Generator",
     "Enformer chromatin pattern loss": (
-        "proto_language.constraint.enformer_chromatin_accessibility_morse_constraint"
+        "protofuse.phillip.evo2_paper_constraints.evo2_paper_enformer_l1_constraint"
     ),
     "Borzoi chromatin pattern loss": (
-        "proto_language.constraint.borzoi_chromatin_accessibility_morse_constraint"
+        "protofuse.phillip.evo2_paper_constraints.evo2_paper_borzoi_l1_constraint"
     ),
     "chunked beam search": "proto_language.optimizer.BeamSearchOptimizer",
 }
@@ -267,8 +271,10 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 filename="design_001.py",
                 tier="full",
                 docstring=(
-                    "Full-tier CUSTOM eGFP lung pool member (720 bp, 100 MCMC steps).\n\n"
-                    "Represents one candidate in CUSTOM's n_pool=1000 propose-score-select loop.\n"
+                    "Full paper-scale CUSTOM eGFP-to-lung reproduction "
+                    "(717 bp, 1,000 candidates).\n\n"
+                    "Uses the authors' released synonymous generator, five-metric ranking,\n"
+                    "homopolymer filter, and top-10 selection.\n"
                     "Paper: Hernandez-Alias et al., Genome Biology 2023, "
                     "10.1186/s13059-023-02868-2."
                 ),
@@ -277,7 +283,10 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
             ProgramVariant(
                 filename="design_002.py",
                 tier="smoke",
-                docstring="Smoke-tier CUSTOM eGFP lung pool member for fast local sanity checks.",
+                docstring=(
+                    "Reduced-pool CUSTOM eGFP-to-lung diagnostic; "
+                    "not the reproduction result."
+                ),
                 builder_call="build_custom_egfp_program(params)",
             ),
         ),
@@ -631,9 +640,9 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 docstring=(
                     "Full-tier RFdiffusion3 PPI benchmark target.\n\n"
                     "Generate 400 backbones, sample four ProteinMPNN sequences per backbone, "
-                    "and retain separate ProteinMPNN probability, AlphaFold3 ipTM-proxy, and "
-                    "AlphaFold3 mean-PAE-proxy scores. Paper binder-pTM and minimum interchain "
-                    "pAE endpoints remain separate benchmark measurements."
+                    "use the paper's exact target crop, atom hotspots, and binder origin, then "
+                    "retain ProteinMPNN probability plus the conjunctive AlphaFold3 paper gate "
+                    "with binder-pTM, minimum interchain PAE, and target-aligned binder RMSD."
                 ),
                 builder_call=(
                     f"build_rfdiffusion3_af3_ppi_program(params, target_index={target_index})"
@@ -663,31 +672,42 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
             "dominant_state_pdb",
             "alternative_state_pdb",
             "num_samples",
+            "pair_scaling_betas",
         ),
         variants=tuple(
             ProgramVariant(
-                filename=f"design_{seed + 1:03d}.py",
+                filename=f"design_{beta_index * 5 + seed + 1:03d}.py",
                 tier="full",
                 docstring=(
-                    "Full-tier cross-model conformational diagnostic.\n\n"
-                    "For one of five explicit implementation seeds, score the fixed sequence "
-                    "with separate AlphaFold3 and Boltz-2 TM-scores to each of two reference "
-                    "states. This is a ProtoFuse joint-surrogate extension; the paper uses "
-                    "AlphaFold3 only as an external baseline."
+                    "Full-tier pair-representation-scaling protocol slice.\n\n"
+                    f"Use beta={beta} and implementation seed {seed} for five AlphaFold3 and "
+                    "five Boltz-2 draws, with separate TM-scores to both reference states. "
+                    "Execution requires explicitly registered reviewed backends and has no "
+                    "unscaled fallback."
                 ),
-                builder_call=f"build_af3_boltz2_state_sweep_program(params, seed={seed})",
+                builder_call=(
+                    "build_af3_boltz2_state_sweep_program("
+                    f"params, seed={seed}, beta={beta})"
+                ),
+            )
+            for beta_index, beta in enumerate(
+                (-0.75, -0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6, 0.75)
             )
             for seed in range(5)
         )
         + (
             ProgramVariant(
-                filename="design_006.py",
+                filename="design_051.py",
                 tier="smoke",
                 docstring=(
-                    "Smoke-tier AlphaFold3/Boltz-2 dual-state TM-score diagnostic on "
-                    "adenylate kinase."
+                    "Smoke-tier audited Boltz-2 pair-scaling binding check on adenylate kinase "
+                    "at beta=-0.15. AlphaFold3 stays fail-closed until licensed weights and its "
+                    "independently reviewed backend are available."
                 ),
-                builder_call="build_af3_boltz2_state_sweep_program(params, seed=0)",
+                builder_call=(
+                    "build_af3_boltz2_state_sweep_program("
+                    "params, seed=0, beta=-0.15, models=(\"boltz2\",))"
+                ),
             ),
         ),
     ),
@@ -709,8 +729,9 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 tier="full",
                 docstring=(
                     "Full-tier Evo 2 regulatory design for the EVO2 Morse pattern.\n\n"
-                    "Generate 128-bp chunks with Evo 2 and retain separate Enformer and "
-                    "four-replicate Borzoi pattern losses; the paper ranks their 0.5/0.5 mean."
+                    "Generate 128-bp chunks with Evo 2 in hash-verified mm39 context and retain "
+                    "the exact Enformer and four-replicate Borzoi L1 sums; the paper ranks "
+                    "their 0.5/0.5 mean."
                 ),
                 builder_call=(
                     'build_evo2_regulatory_design_program(params, morse_pattern=". ...- --- '
@@ -722,11 +743,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                 tier="full",
                 docstring=(
                     "Full-tier Evo 2 regulatory design for the ARC Morse pattern with separate "
-                    "Enformer and Borzoi losses."
+                    "Enformer and Borzoi losses. The paper uses 15 proposals per retained prompt "
+                    "for ARC."
                 ),
                 builder_call=(
                     'build_evo2_regulatory_design_program(params, morse_pattern=".- .-. -.-.", '
-                    "dot_bp=384)"
+                    "dot_bp=384, proposals_per_result=15)"
                 ),
             ),
             ProgramVariant(

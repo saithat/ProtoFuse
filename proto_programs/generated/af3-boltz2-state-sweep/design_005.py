@@ -1,6 +1,6 @@
-"""Full-tier cross-model conformational diagnostic.
+"""Full-tier pair-representation-scaling protocol slice.
 
-For one of five explicit implementation seeds, score the fixed sequence with separate AlphaFold3 and Boltz-2 TM-scores to each of two reference states. This is a ProtoFuse joint-surrogate extension; the paper uses AlphaFold3 only as an external baseline.
+Use beta=-0.75 and implementation seed 4 for five AlphaFold3 and five Boltz-2 draws, with separate TM-scores to both reference states. Execution requires explicitly registered reviewed backends and has no unscaled fallback.
 """
 
 from __future__ import annotations
@@ -17,4 +17,4 @@ from protofuse.phillip.program_builders import (
 def build_program() -> Program:
     spec = load_fixture_spec("af3-boltz2-state-sweep")
     params = resolve_workload_params(spec, tier="full")
-    return build_af3_boltz2_state_sweep_program(params, seed=4)
+    return build_af3_boltz2_state_sweep_program(params, seed=4, beta=-0.75)

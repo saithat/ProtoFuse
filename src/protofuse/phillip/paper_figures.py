@@ -19,7 +19,6 @@ from protofuse.phillip.paper_ingest import (
 )
 from protofuse.phillip.paper_profiles import (
     FIGURES_DIR,
-    MANIFEST_PATH,
     PRIMARY_FIGURE_IDS,
     REPO_ROOT,
     load_figure_manifest,
@@ -113,7 +112,7 @@ def _resolve_document_path(doi: str, *, fetch_if_missing: bool) -> str | None:
         return path
 
     proc = _run_paperclip(["fetch", doi, "--into", CLIPBOARD_FOLDER], timeout=300)
-    clipboard_path: str | None = None
+    clipboard_path = None
     if proc.returncode == 0:
         tokens = _FETCH_DOC_RE.findall(proc.stdout)
         usr_ids = [token for token in tokens if token.startswith("usr_")]
@@ -160,7 +159,11 @@ def _match_figure_file(filenames: list[str], figure_id: str) -> str | None:
             if re.search(r"(?:^|[_-])fig(?:ure)?[_-]?1(?:[_\.]|$)|^f1[_\.]", name, re.I)
         ]
     if not matched and normalized == "fig3":
-        matched = [name for name in filenames if "fig3" in name.lower() or "figure3" in name.lower()]
+        matched = [
+            name
+            for name in filenames
+            if "fig3" in name.lower() or "figure3" in name.lower()
+        ]
     if not matched:
         return filenames[0]
 
@@ -237,7 +240,9 @@ def _figure_caption(document_path: str, label: str) -> str:
     return line.strip()
 
 
-def sync_primary_figure(collection_id: str, *, fetch_if_missing: bool = True) -> dict[str, Any] | None:
+def sync_primary_figure(
+    collection_id: str, *, fetch_if_missing: bool = True
+) -> dict[str, Any] | None:
     """Discover the curated primary figure via Paperclip and cache metadata locally."""
 
     if not _paperclip_installed():

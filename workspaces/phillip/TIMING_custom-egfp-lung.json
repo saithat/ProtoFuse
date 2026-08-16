@@ -1,0 +1,29 @@
+{
+  "fixture_id": "custom-egfp-lung",
+  "collection_id": "custom-egfp-lung",
+  "methodology_id": "custom-egfp-v2",
+  "paper_identifier": "10.1186/s13059-023-02868-2",
+  "paper_source_path": "data/papers/custom.txt",
+  "topology": "multiobjective_search",
+  "compile_device": "local",
+  "total_elapsed_s": 0.004,
+  "stages": [
+    {
+      "stage": "methodology_fixture",
+      "elapsed_s": 0.0
+    },
+    {
+      "stage": "compile_proto_plan",
+      "elapsed_s": 0.0
+    },
+    {
+      "stage": "generate_program_sources",
+      "elapsed_s": 0.001
+    },
+    {
+      "stage": "finalize_collection",
+      "elapsed_s": 0.004
+    }
+  ],
+  "handoff_path": "proto_programs/generated/custom-egfp-lung"
+}

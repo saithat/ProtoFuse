@@ -6,6 +6,11 @@ coerced to zero.
 
 ## Current audit snapshot
 
+The CUSTOM numbers in this snapshot came from the retired 720-bp/two-objective smoke proxy.
+They remain as negative historical evidence and must not be presented as the current reproduction.
+The exact 717-bp/five-metric full-pool protocol, thresholds, paper comparison, and run order are in
+[`CUSTOM_REPRODUCTION.md`](CUSTOM_REPRODUCTION.md).
+
 As of 2026-08-15:
 
 - Four Modal smoke workloads have full-model run summaries but no paired learned-fusion run.
@@ -22,7 +27,7 @@ As of 2026-08-15:
   constraints have at least one evidence record. A source path or evidence record is not by
   itself proof that the encoding is a fair reading of the cited paper.
 
-## Preferred model experiment: CUSTOM smoke
+## Historical diagnostic: retired CUSTOM smoke proxy
 
 On 2026-08-15, the executable comparison was run on the reviewed `custom-egfp-lung`
 `design-002` smoke program. This is a local research diagnostic, not a full-tier result or a

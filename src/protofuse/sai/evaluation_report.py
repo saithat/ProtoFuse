@@ -74,13 +74,38 @@ def aggregate_paired_runs(
     ]
     surrogate_routes = sum(int(run["surrogate_routes"]) for run in runs)
     parent_routes = sum(int(run["full_model_routes"]) for run in runs)
-    avoided_parent_evaluations = sum(
-        int(run["parent_item_evaluations_avoided"]) for run in runs
+    exact_parallel_routes = sum(int(run.get("exact_parallel_routes", 0)) for run in runs)
+    parallelized_parent_evaluations = sum(
+        int(run.get("initial_stage_parent_item_evaluations_parallelized", 0))
+        for run in runs
+    )
+    initial_parent_evaluations_bypassed = sum(
+        int(
+            run.get(
+                "initial_stage_parent_item_evaluations_bypassed",
+                run["parent_item_evaluations_avoided"],
+            )
+        )
+        for run in runs
     )
     fallback_parent_evaluations = sum(
         int(run["parent_item_evaluations_from_fallback"]) for run in runs
     )
-    routed = surrogate_routes + parent_routes
+    final_validation_parent_evaluations = sum(
+        int(run.get("mandatory_final_validation_parent_item_evaluations", 0))
+        for run in runs
+    )
+    net_parent_evaluations_avoided = sum(
+        int(
+            run.get(
+                "net_parent_item_evaluations_avoided",
+                int(run["parent_item_evaluations_avoided"])
+                - int(run.get("mandatory_final_validation_parent_item_evaluations", 0)),
+            )
+        )
+        for run in runs
+    )
+    routed = surrogate_routes + parent_routes + exact_parallel_routes
     target_objectives = max((int(run["target_objectives"]) for run in runs), default=0)
     reason_counts: Counter[str] = Counter()
     for run in runs:
@@ -90,6 +115,13 @@ def aggregate_paired_runs(
     ties = len(regrets) - wins - losses
     total_fused = sum(fused_times)
     status_counts = Counter(str(run["status"]) for run in runs)
+    energy_comparison_reasons = sorted(
+        {
+            str(run["energy_comparison_reason"])
+            for run in runs
+            if run.get("energy_comparison_reason")
+        }
+    )
 
     report: dict[str, Any] = {
         "timing": {
@@ -108,11 +140,24 @@ def aggregate_paired_runs(
             "fallback_parent_seconds": sum(
                 float(run["fallback_parent_seconds"]) for run in runs
             ),
+            "exact_parallel_parent_seconds": sum(
+                float(run.get("exact_parallel_parent_seconds", 0.0)) for run in runs
+            ),
             "final_validation_seconds": None,
             "per_step_p50_seconds": None,
             "per_step_p95_seconds": None,
         },
         "accuracy": {
+            "candidate_pool_hash_available_runs": sum(
+                run.get("candidate_pool_identical") is not None for run in runs
+            ),
+            "candidate_pool_identical_runs": sum(
+                run.get("candidate_pool_identical") is True for run in runs
+            ),
+            "energy_comparable_runs": sum(bool(run.get("energy_comparable", True)) for run in runs),
+            "energy_comparison_reason": (
+                "; ".join(energy_comparison_reasons) if energy_comparison_reasons else None
+            ),
             "final_energy_mae": sum(differences) / len(differences) if differences else None,
             "final_energy_rmse": (
                 math.sqrt(sum(value * value for value in differences) / len(differences))
@@ -143,6 +188,7 @@ def aggregate_paired_runs(
             "rank_correlation": None,
             "accepted_per_objective_mae": None,
             "accepted_per_objective_max_error": None,
+            "accepted_mae_q95_q05_fraction": None,
             "offline_selective_coverage": None,
             "threshold_agreement": None,
             "false_acceptance_rate": None,
@@ -154,12 +200,35 @@ def aggregate_paired_runs(
         },
         "routing": {
             "surrogate_routes": surrogate_routes,
+            "exact_parallel_routes": exact_parallel_routes,
             "full_model_routes": parent_routes,
             "surrogate_coverage": surrogate_routes / routed if routed else None,
+            "exact_parallel_coverage": (
+                exact_parallel_routes / routed if routed else None
+            ),
             "deferral_reasons": dict(sorted(reason_counts.items())),
             "target_objective_count": target_objectives,
-            "target_parent_item_evaluations_avoided": avoided_parent_evaluations,
+            "initial_stage_target_parent_item_evaluations_bypassed": (
+                initial_parent_evaluations_bypassed
+            ),
+            "mandatory_final_validation_parent_item_evaluations": (
+                final_validation_parent_evaluations
+            ),
+            "net_parent_item_evaluations_avoided": net_parent_evaluations_avoided,
+            # Backward-compatible alias. This is an initial-stage count, not net savings.
+            "target_parent_item_evaluations_avoided": initial_parent_evaluations_bypassed,
+            "target_parent_item_evaluations_avoided_scope": (
+                "initial routing stage only; mandatory final validation is excluded"
+            ),
             "target_parent_item_evaluations_from_fallback": fallback_parent_evaluations,
+            "target_parent_item_evaluations_parallelized": (
+                parallelized_parent_evaluations
+            ),
+            "parent_item_evaluation_definition": (
+                "one original constraint evaluated for one candidate; final validation counts "
+                "every original constraint it executes, while initial bypasses cover only the "
+                "fused target objectives"
+            ),
             "deferral_recovery": None,
         },
         "work": {
@@ -180,6 +249,7 @@ def aggregate_paired_runs(
             "timing_runs": len(successful),
             "fully_valid_accuracy_runs": status_counts["ok"],
             "arm_failures": status_counts["arm_failed"],
+            "candidate_pool_mismatches": status_counts["candidate_pool_mismatch"],
             "non_finite_energy_runs": status_counts["non_finite_energy"],
             "output_length_mismatches": status_counts["output_length_mismatch"],
         },
@@ -199,6 +269,9 @@ def aggregate_paired_runs(
         accuracy["accepted_per_objective_mae"] = offline_metrics.get("audit_accepted_mae")
         accuracy["accepted_per_objective_max_error"] = offline_metrics.get(
             "audit_accepted_max_error"
+        )
+        accuracy["accepted_mae_q95_q05_fraction"] = offline_metrics.get(
+            "audit_accepted_mae_q95_q05_fraction"
         )
         accuracy["offline_selective_coverage"] = offline_metrics.get(
             "audit_selective_coverage"

@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+from proto_tools.entities.structures.structure import Structure
 
 from protofuse.phillip.handoff_config import HANDOFF_CONFIGS
 from protofuse.phillip.program_builders import load_fixture_spec, run_dnachisel_num1
@@ -14,6 +15,15 @@ from protofuse.phillip.workload_preflight import (
     run_isolation_ladder,
     run_preflight,
 )
+
+_MINIMAL_PDB = """\
+ATOM      1  N   ALA A   1      11.104  13.207  10.111  1.00 20.00           N
+ATOM      2  CA  ALA A   1      12.000  13.000  10.000  1.00 20.00           C
+ATOM      3  C   ALA A   1      12.500  11.600  10.000  1.00 20.00           C
+ATOM      4  O   ALA A   1      11.800  10.600  10.000  1.00 20.00           O
+TER
+END
+"""
 
 
 def test_every_reviewed_fixture_has_an_explicit_preflight_strategy() -> None:
@@ -73,6 +83,79 @@ def test_dnachisel_num1_smoke_output_length() -> None:
     program, wall_ms = run_dnachisel_num1(tier="smoke")
     assert_output_length(program, 100)
     assert wall_ms < 30_000
+
+
+@pytest.mark.parametrize("target_length", [None, 491])
+def test_boltz2_state_sweep_preflight_builds_full_target(
+    monkeypatch: pytest.MonkeyPatch,
+    target_length: int | None,
+) -> None:
+    from protofuse.phillip import program_builders
+
+    requested_pdbs: list[str] = []
+
+    def target_sequence(pdb_id: str, _chains: list[str]) -> str:
+        requested_pdbs.append(pdb_id)
+        return "A" * (491 if pdb_id == "4GBY" else 214)
+
+    monkeypatch.setattr(program_builders, "_target_sequence_from_pdb", target_sequence)
+    monkeypatch.setattr(
+        program_builders,
+        "_target_structure_from_pdb",
+        lambda _pdb_id: Structure(structure=_MINIMAL_PDB),
+    )
+
+    report = run_preflight("boltz2-state-sweep", target_length=target_length)
+
+    assert report.classification == "ok"
+    assert report.target_length == 491
+    assert report.output_length == 491
+    assert report.ladder_steps[0].expected_length == 491
+    assert requested_pdbs == ["4GBY"]
+
+
+def test_esm2_full_length_preflight_uses_full_length_seed() -> None:
+    report = run_preflight("esm2-protein-maturation", target_length=129)
+
+    assert report.classification == "ok"
+    assert report.target_length == 129
+    assert report.output_length == 129
+
+
+def test_esm2_preflight_rejects_target_longer_than_seed() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"target_length=130: full-tier seed has only 129 residues",
+    ):
+        run_preflight("esm2-protein-maturation", target_length=130)
+
+
+def test_build_only_length_mismatch_is_not_a_platform_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from protofuse.phillip import program_builders
+
+    monkeypatch.setattr(
+        program_builders,
+        "_target_sequence_from_pdb",
+        lambda _pdb_id, _chains: "A" * 491,
+    )
+    monkeypatch.setattr(
+        program_builders,
+        "_target_structure_from_pdb",
+        lambda _pdb_id: Structure(structure=_MINIMAL_PDB),
+    )
+
+    report = run_preflight("boltz2-state-sweep", target_length=500)
+
+    assert report.classification == "binding_infeasible"
+    assert report.ladder_steps[0].level == "BUILD"
+    assert "requested length 500, built length 491" in report.ladder_steps[0].detail
+    with pytest.raises(
+        ValueError,
+        match=r"build-only binding infeasible: requested length 500, built length 491",
+    ):
+        assert_workload_feasible(report)
 
 
 @pytest.mark.slow

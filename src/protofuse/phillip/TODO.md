@@ -36,10 +36,9 @@ is not automatically a handoff: `rfdiffusion3-af3-ppi`, `af3-boltz2-state-sweep`
 - [x] Commit `proto_programs/generated/dnachisel-num1/` to `main`.
 - [x] Tell Sai the collection ID: `dnachisel-num1`.
 
-- [x] Generate `proto_programs/generated/custom-egfp-lung/design_*.py` from CUSTOM fixture.
-- [x] Run `finalize_collection(..., reviewed=True)` for collection ID `custom-egfp-lung`.
-- [x] Commit `proto_programs/generated/custom-egfp-lung/` to `main`.
-- [x] Tell Sai the collection ID: `custom-egfp-lung`.
+- [x] Generate and hand off the prior CUSTOM v1 collection.
+- [x] Human-accept the regenerated paper-faithful CUSTOM v2 collection, finalize it with
+      `reviewed=True`, and obtain `READY FOR HANDOFF` from `protofuse review`.
 
 After Sai starts analysis, treat the collection as read-only. Any change → new
 `collection_id`.
@@ -55,8 +54,8 @@ BioEmu ensemble filtering. See
       (`proto_programs/generated/boltz2-state-sweep/`; collection ID on `main`).
 
 The next handoff work is not more builder plumbing. It is human paper-encoding review for
-the three `reviewed=false` joint-objective collections named above, followed by normal
-finalization if accepted. Unbuilt ideas such as `tm-switch-multistate` remain in
+the three `reviewed=false` collections named above, followed by normal finalization only for
+accepted encodings. Unbuilt ideas such as `tm-switch-multistate` remain in
 [`docs/CANDIDATE_WORKFLOWS.md`](../../../docs/CANDIDATE_WORKFLOWS.md).
 
 ## Out of scope (Sai)

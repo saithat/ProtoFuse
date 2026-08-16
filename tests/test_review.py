@@ -24,13 +24,14 @@ def test_review_passes_for_committed_dna_collection() -> None:
     assert {check.name for check in report.checks} == EXPECTED_CHECKS
 
 
-def test_review_detects_source_drift_and_hash_checks() -> None:
+def test_custom_review_passes_after_scientific_approval() -> None:
     report = review_fixture("custom-egfp-lung", run_preflight_check=False)
     by_name = {check.name: check for check in report.checks}
 
     assert by_name["source_drift"].status == "pass"
     assert by_name["source_safety"].status == "pass"
     assert by_name["manifest"].status == "pass"
+    assert report.ok, report.summary()
 
 
 def test_review_fails_when_collection_is_missing() -> None:

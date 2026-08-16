@@ -566,11 +566,14 @@ def format_review(review: PaperReview, *, abstract_only: bool = False, width: in
     if abstract_only:
         return "\n".join(lines)
 
-    searched_remotely = bool(review.quote_source and review.quote_source.startswith("paperclip:"))
+    searched_remotely = review.quote_source is not None and review.quote_source.startswith(
+        "paperclip:"
+    )
     lines.extend(["", "FULL TEXT", ""])
     if review.full_text_path is not None:
         lines.append(f"  {review.full_text_path} ({review.full_text_words:,} words)")
     elif searched_remotely:
+        assert review.quote_source is not None
         document = review.quote_source.removeprefix("paperclip:")
         lines.append(f"  searched in Paperclip at {document} (nothing stored locally)")
     else:
