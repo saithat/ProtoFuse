@@ -16,6 +16,7 @@ from protofuse.sai.training import (
     _q95_q05_ranges,
     _rank_correlations,
     _read_trace,
+    _sample_input_sha256,
     load_teacher_samples,
 )
 from protofuse.sai.transform import linear_gate_decision
@@ -80,8 +81,7 @@ def audit_frozen_fusion(
     labels = artifact.manifest.constraint_labels
     trace_rows = [row for path in resolved_traces for row in _read_trace(path)]
     expected_constraints = {
-        constraint.label: constraint
-        for constraint in artifact.manifest.group_signature.constraints
+        constraint.label: constraint for constraint in artifact.manifest.group_signature.constraints
     }
     relevant_rows = [
         row
@@ -127,12 +127,16 @@ def audit_frozen_fusion(
         optimizer_index=artifact.manifest.optimizer_index,
         constraint_labels=labels,
     )
+    heldout_input_hashes = tuple(_sample_input_sha256(sample.sequences) for sample in samples)
+    if len(set(heldout_input_hashes)) != len(heldout_input_hashes):
+        raise ValueError("held-out traces contain duplicate input sequences")
+    input_overlap = sorted(set(heldout_input_hashes) & set(split.input_sha256))
+    if input_overlap:
+        raise ValueError(f"held-out input hashes overlap training data: {input_overlap}")
     if len(relevant_rows) != len(samples) * len(labels):
         raise ValueError("held-out traces have incomplete or unequal objective occurrences")
     for sample in samples:
-        for output_index, normalization in enumerate(
-            artifact.model.resolved_output_normalizations
-        ):
+        for output_index, normalization in enumerate(artifact.model.resolved_output_normalizations):
             computed_bins = normalization.sequence_bin_count(sample.sequences)
             if computed_bins is None:
                 continue
@@ -146,10 +150,7 @@ def audit_frozen_fusion(
                 )
     actual = np.asarray([sample.outputs for sample in samples], dtype=np.float64)
     normalized_actual = np.asarray(
-        [
-            artifact.model.normalize_outputs(sample.outputs, sample.sequences)
-            for sample in samples
-        ],
+        [artifact.model.normalize_outputs(sample.outputs, sample.sequences) for sample in samples],
         dtype=np.float64,
     )
     if not np.all(np.isfinite(actual)) or not np.all(np.isfinite(normalized_actual)):
@@ -202,9 +203,7 @@ def audit_frozen_fusion(
         accepted_mae_array = np.abs(accepted_actual - accepted_predicted).mean(axis=0)
         accepted_mae_values: list[float | None] = list(accepted_mae_array)
         normalized_mae = [
-            float(error / span)
-            if math.isfinite(float(span)) and float(span) > 0.0
-            else None
+            float(error / span) if math.isfinite(float(span)) and float(span) > 0.0 else None
             for error, span in zip(accepted_mae_array, ranges, strict=True)
         ]
         accepted_spearman = _rank_correlations(accepted_actual, accepted_predicted)
@@ -258,6 +257,8 @@ def audit_frozen_fusion(
             "heldout_group_count": len(heldout_groups),
             "trace_hash_disjoint": True,
             "group_disjoint": True,
+            "input_hash_disjoint": bool(split.input_sha256),
+            "heldout_input_sha256": sorted(heldout_input_hashes),
         },
         "samples": {
             "total": len(samples),

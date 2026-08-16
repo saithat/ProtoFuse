@@ -6,26 +6,70 @@ coerced to zero.
 
 ## Current audit snapshot
 
-The CUSTOM numbers in this snapshot came from the retired 720-bp/two-objective smoke proxy.
-They remain as negative historical evidence and must not be presented as the current reproduction.
+The current learned-fusion result is the completed LigandMPNN + ESMFold v3 campaign below.
+The CUSTOM numbers later in this document came from the retired 720-bp/two-objective smoke proxy;
+they remain negative historical evidence and must not be presented as the current reproduction.
 The exact 717-bp/five-metric full-pool protocol, thresholds, paper comparison, and run order are in
 [`CUSTOM_REPRODUCTION.md`](CUSTOM_REPRODUCTION.md).
 
-As of 2026-08-15:
+As of 2026-08-16:
 
-- Four Modal smoke workloads have full-model run summaries but no paired learned-fusion run.
-  One local CUSTOM smoke fusion now has a paired diagnostic described below.
-- One analysis-only CUSTOM pilot fits one ordinary least-squares matrix to two outputs:
-  tissue codon score and GC fraction.
-- That pilot has 1,198 training, 396 calibration, and 398 audit samples grouped by
-  trajectory chain, plus a 1,998-sample full-trajectory holdout.
-- Four hand-crafted OOD challenges are rejected. There are no held-out high-value positive
-  cases or positive-but-uncertain cases for deferral testing.
+- The v3 campaign completed 100 fresh development groups and a separately opened 20-group
+  external audit under the new trace schema and frozen protocol.
+- Its external audit failed the normalized-error requirement and the ESMFold rank requirement,
+  despite passing coverage, provenance, disjointness, and LigandMPNN ranking.
+- The v3 artifact remains `reviewed=false`; no paired timing was run after the failed audit.
+- The earlier analysis-only CUSTOM pilot and its paired diagnostic remain historical negative
+  evidence as described below.
 - No learned surrogate is packaged as a reviewed `FusionBundle`.
 - Twelve of 15 methodology fixtures point to a local source path (including the workflow
   rationale document used by several prototype fixtures). Across all fixtures, 32 of 62
   constraints have at least one evidence record. A source path or evidence record is not by
   itself proof that the encoding is a fair reading of the cited paper.
+
+## Completed LigandMPNN + ESMFold v3 campaign
+
+The larger v3 campaign recollected every trajectory under a fresh schema and campaign protocol.
+No legacy trace contributed to training. One hundred development groups produced 435 unique
+two-objective samples after 65 duplicate inputs were removed. The deterministic group split was
+60/20/20 groups, containing 259 training, 87 calibration, and 89 development-audit samples.
+
+The final representation one-hot encodes only the eight contract-declared mutable residues,
+giving 160 features and coverage of 146/152 possible non-native residue-position categories.
+Inner group cross-validation selected a two-output ridge ensemble with the following
+objective-specific settings:
+
+| Objective | Ridge alpha | Standardize features |
+| --- | ---: | :---: |
+| `mpnn_probability` | 1 | no |
+| `structure_plddt` | 10 | yes |
+
+The development audit was used to choose this representation and model, so it is
+model-selection-only evidence rather than a confirmatory test. The artifact and its training
+provenance were frozen before any external trace was opened.
+
+The external cohort then produced 70 unique samples from 20 new groups after removing 30
+duplicates. It had zero trace-hash, group, or input-hash overlap with development, and all
+provenance and disjointness checks passed. The gate accepted 49/70 samples (`0.70` coverage) and
+fell back for 21: 18 out-of-domain inputs and three predictions outside the valid score range.
+
+| Objective | Accepted normalized MAE | Maximum | Accepted Spearman | Minimum |
+| --- | ---: | ---: | ---: | ---: |
+| `mpnn_probability` | 0.08760199 | 0.05 | 0.932959 | 0.90 |
+| `structure_plddt` | 0.09690646 | 0.05 | 0.814184 | 0.90 |
+
+Both objectives failed normalized MAE, and ESMFold also failed the rank threshold. The external
+audit status is therefore `fail`; the artifact remains `reviewed=false`. The evaluation stopped
+there, with no paired timing and no speedup claim. See
+[`LIGANDMPNN_ESMFOLD_EXPERIMENT.md`](LIGANDMPNN_ESMFOLD_EXPERIMENT.md) for the workload-specific
+protocol.
+
+Post-audit review found that the compact artifact also needed an explicit hash of the 155 fixed
+scaffold residues. The runtime and campaign contracts now require that binding for reviewed or
+new campaign artifacts and fall back on a mismatch. The audited byte-frozen artifact remains
+analysis-only. Replaying its 100 development traces with the strengthened schema reproduced the
+same development metrics and passed the new freeze checks; the opened external cohort was not
+used to change coefficients or hyperparameters.
 
 ## Historical diagnostic: retired CUSTOM smoke proxy
 
@@ -164,25 +208,32 @@ The current splitter hashes the stable group IDs with the declared split seed, t
 and trajectory-group counts. The number of proposals per trajectory can differ by optimizer and
 stopping rule, so sample counts must be measured rather than inferred from the nominal step count.
 
-### Collection target for the next experiment
+### Completed v3 collection and future targets
 
-For the narrow, single-program hackathon claim, collect 100 independent teacher trajectories:
+The LigandMPNN + ESMFold v3 campaign completed the narrow 100-development-group starting design
+and kept the confirmatory cohort external:
 
-| Cohort | Trajectories | Approximate states at 20 proposals/run | Used for |
+| Cohort | Groups | Unique samples | Used for |
 | --- | ---: | ---: | --- |
-| Train | 60 | 1,200 | Fit each candidate model family and draw grouped learning curves |
-| Calibration/validation | 20 | 400 | Choose family settings and calibrate support/uncertainty gates |
-| Untouched test | 20 | 400 | One final surrogate accuracy, rank, and coverage report |
+| Training | 60 | 259 | Fit the selected compact ridge ensemble |
+| Calibration | 20 | 87 | Calibrate support, uncertainty, and error gates |
+| Development audit | 20 | 89 | Model and representation selection only |
+| Frozen external audit | 20 | 70 | One confirmatory accuracy, rank, and coverage decision |
 
-Keep another roughly 50 unseen trajectories for paired full-versus-fused runtime and downstream
-accuracy, and construct 40--60 targeted challenge cases for OOD, constraint-boundary, non-finite,
-and otherwise rare failures. Challenge cases are not a substitute for random test trajectories.
+Development deduplication removed 65 of 500 candidate samples; external deduplication removed 30
+of 100. The model and gates were frozen before external collection, and the two cohorts had zero
+trace-hash, group, or input-hash overlap. Because the external audit failed, paired timing was not
+opened.
 
-The 100-trajectory target is a starting design, not a universal guarantee. Plot grouped learning
-curves at increasing training-group counts and gather more data when error, ranking, coverage, or
-model-family ordering is still changing materially. For paired timing, inspect the confidence
-interval sequentially and stop only when it clearly accepts or rejects the predeclared minimum
-useful speedup.
+One hundred development trajectories remain a starting design, not a universal guarantee. Plot
+grouped learning curves at increasing training-group counts and gather more data when error,
+ranking, coverage, or model-family ordering is still changing materially. For a future artifact
+that passes its confirmatory audit, collect separate unseen trajectories for paired
+full-versus-fused runtime and downstream accuracy, and construct targeted challenge cases for
+OOD, constraint-boundary, non-finite, and otherwise rare failures. Challenge cases are not a
+substitute for random test trajectories. Inspect the paired timing confidence interval
+sequentially and stop only when it clearly accepts or rejects the predeclared minimum useful
+speedup.
 
 The current `compare-models` command reports its internal audit cohort while model families are
 being compared. Once that report is used to choose a family, the cohort is a development audit,
@@ -300,11 +351,12 @@ gate accepts or defers the complete group. It does **not** train against Proto's
 energy. Preserving separate outputs keeps objective-specific error, thresholds, weights, and
 Pareto analysis visible.
 
-The current linear least-squares matrix is still column-separable: fitting all output columns at
-once gives the same coefficients as fitting one linear regression per objective. The objectives
-share features, grouped bootstrap samples, support detection, and routing, but the model has no
-explicit covariance term or shared nonlinear representation. Describe it as a **multi-output
-linear surrogate**, not as a covariance-aware multi-task surrogate.
+Both the ordinary-least-squares baseline and the regularized ridge artifact are column-separable:
+fitting all output columns at once gives the same coefficients as fitting one regression per
+objective. The objectives share features, grouped bootstrap samples, support detection, and
+routing, but the model has no explicit covariance term or shared nonlinear representation.
+Describe it as a **multi-output linear surrogate**, not as a covariance-aware multi-task
+surrogate.
 
 ### Models to compare
 
@@ -313,7 +365,7 @@ the smallest credible families:
 
 | Family | Use here | Main limitation |
 | --- | --- | --- |
-| Linear ensemble | Required interpretable baseline for additive/composition objectives | Cannot express complex nonlinear interactions |
+| Linear or ridge ensemble | Required interpretable baseline for compact additive features | Cannot express complex nonlinear interactions |
 | Tree ensemble | Primary nonlinear comparator for small or medium tabular feature sets | Ensemble spread is only an empirical uncertainty estimate |
 | Independent GP per objective | Optional small-data comparator after reducing feature dimension | Cubic scaling and awkward high-dimensional sequence inputs |
 | Small shared-trunk, multi-head network | Comparator when traces or pretrained embeddings are sufficient | Easy to overfit and become confidently wrong OOD |
@@ -333,6 +385,12 @@ ordinary-least-squares ensemble, Extra Trees, and an ensemble of one-hidden-laye
 MLPs using the small-data L-BFGS solver. Each family uses the same support-distance rule and
 calibrates its ensemble-disagreement threshold on the same calibration cohort. Inference latency
 excludes one warmup prediction.
+
+The completed LigandMPNN + ESMFold v3 campaign followed that exploratory comparison with a
+representation-specific ridge selection. It reduced the protein input to 160 one-hot features at
+the eight mutable positions, selected each output's ridge alpha and standardization setting by
+inner group cross-validation, and recentered grouped bootstrap members around the full-data ridge
+fit. That development procedure was frozen before the separate external audit.
 
 The report contains configuration, fit warnings/time, estimated serialized size, calibration and
 audit MAE/RMSE/max error, rank correlation, support and uncertainty coverage, in-range fraction,

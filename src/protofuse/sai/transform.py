@@ -278,7 +278,8 @@ class _RoutedConstraint(Constraint):
             function=function,
             function_config=seed_config,
             label=parent.label,
-            weight=parent.weight,
+            threshold=parent.threshold,
+            weight=parent.weight if parent.threshold is None else None,
         )
         self._parent = parent
 
@@ -452,6 +453,13 @@ def transform_with_artifact(program: Program, artifact: Any) -> Program:
     """Return a transformed deep copy or raise before touching the original."""
 
     manifest = artifact.manifest
+    if any(
+        schema.position_indices is not None and schema.fixed_context_sha256 is None
+        for schema in artifact.model.input_schemas
+    ):
+        raise FusionCompatibilityError(
+            "selected-position fusion has no frozen sequence context"
+        )
     actual = step_group_signature(
         program,
         optimizer_index=manifest.optimizer_index,
@@ -468,8 +476,8 @@ def transform_with_artifact(program: Program, artifact: Any) -> Program:
     optimizer = cloned.optimizers[manifest.optimizer_index]
     by_label = {constraint.label: constraint for constraint in optimizer.constraints}
     targets = [by_label[label] for label in manifest.constraint_labels]
-    if any(not target.supports_discrete or target.threshold is not None for target in targets):
-        raise FusionCompatibilityError("fusion targets must be discrete scoring constraints")
+    if any(not target.supports_discrete for target in targets):
+        raise FusionCompatibilityError("fusion targets must be discrete constraints")
     input_ids = tuple(id(segment) for segment in targets[0].inputs)
     if any(tuple(id(segment) for segment in target.inputs) != input_ids for target in targets):
         raise FusionCompatibilityError("joint fusion constraints must share identical inputs")
@@ -668,9 +676,13 @@ def build_sampled_custom_mfe_bundle(
 
 def build_artifact_bundle(artifact: Any) -> FusionBundle[object]:
     manifest = artifact.manifest
+    has_unbound_selected_context = any(
+        schema.position_indices is not None and schema.fixed_context_sha256 is None
+        for schema in artifact.model.input_schemas
+    )
 
     def matches(program: object) -> bool:
-        if not isinstance(program, Program):
+        if not isinstance(program, Program) or has_unbound_selected_context:
             return False
         try:
             actual = step_group_signature(

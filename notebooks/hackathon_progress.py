@@ -449,7 +449,7 @@ def _(
             ]
         )
 
-    collection_detail
+    collection_detail  # noqa: B018 - final Marimo cell expression renders the component
 
 
 @app.cell(hide_code=True)

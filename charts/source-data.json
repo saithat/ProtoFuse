@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "scope": "Aggregate, slide-safe chart data; no proposal-level records or sequences.",
+  "sources": {
+    "adaptive": {
+      "path": "data/analysis/custom-egfp-lung/paired-adaptive-boundary-fresh-seeds-200-203.json",
+      "sha256": "1e30d0646b419f4f265e469eee99af8660b9705974f89a3d8c218c8333b8afb6"
+    },
+    "sampled": {
+      "path": "data/analysis/custom-egfp-lung/paired-sampled-window.json",
+      "sha256": "226336107e1d969d678efcf84ba0b38b7cef02950d9c04158f723184a3899a5c"
+    },
+    "parallel": {
+      "path": "data/analysis/custom-egfp-lung/paired-exact-parallel.json",
+      "sha256": "3bec926dec98f177b83125ff257b0335c92edcc830c41793ec0752dbbf6136bc"
+    },
+    "custom_audit": {
+      "path": "data/analysis/custom-egfp-lung/frozen-sampled-mfe-audit-v2.json",
+      "sha256": "1f49a11a51bad97860c8072307cd4ff4e57d9c5e5464b1cc07833d45792c1b5f"
+    },
+    "evo2_audit": {
+      "path": "data/analysis/evo2-enformer-borzoi/audit/design-006-seed-001-audit.json",
+      "sha256": "336a738b7f16170b5b9353c54bdfd07d119225655fa432834b2613b264797a3e"
+    }
+  },
+  "strategies": [
+    {
+      "id": "adaptive",
+      "label": "Adaptive boundary",
+      "color": "adaptive",
+      "net_speedup": 9.717078980021991,
+      "speedup_ci_95": [
+        9.466344426727002,
+        10.114659029524361
+      ],
+      "mean_top10_recall": 1.0,
+      "minimum_top10_recall": 1.0,
+      "paired_runs": 4,
+      "proposals": 4000
+    },
+    {
+      "id": "sampled",
+      "label": "Sampled window",
+      "color": "sampled",
+      "net_speedup": 12.260905716651461,
+      "speedup_ci_95": [
+        11.99689887892872,
+        12.521283940849266
+      ],
+      "mean_top10_recall": 0.9099999999999999,
+      "minimum_top10_recall": 0.8,
+      "paired_runs": 10,
+      "proposals": 10000
+    },
+    {
+      "id": "parallel",
+      "label": "Exact parallel",
+      "color": "parallel",
+      "net_speedup": 5.7942731483901575,
+      "speedup_ci_95": [
+        5.768356955964007,
+        5.815585800274544
+      ],
+      "mean_top10_recall": 1.0,
+      "minimum_top10_recall": 1.0,
+      "paired_runs": 10,
+      "proposals": 10000
+    }
+  ],
+  "routing": [
+    {
+      "label": "CUSTOM adaptive",
+      "surrogate_routes": 3844,
+      "fallback_routes": 156,
+      "exact_parallel_routes": 0,
+      "total_routes": 4000
+    },
+    {
+      "label": "CUSTOM sampled",
+      "surrogate_routes": 9881,
+      "fallback_routes": 119,
+      "exact_parallel_routes": 0,
+      "total_routes": 10000
+    },
+    {
+      "label": "CUSTOM exact parallel",
+      "surrogate_routes": 0,
+      "fallback_routes": 0,
+      "exact_parallel_routes": 10000,
+      "total_routes": 10000
+    },
+    {
+      "label": "Evo2 independent audit",
+      "surrogate_routes": 0,
+      "fallback_routes": 192,
+      "exact_parallel_routes": 0,
+      "total_routes": 192
+    }
+  ],
+  "custom_frozen_audit": {
+    "accepted_mae_q95_q05_fraction": 0.04204692977483684,
+    "max_accepted_mae_q95_q05_fraction": 0.05,
+    "accepted_spearman": 0.9834556074553621,
+    "min_accepted_spearman": 0.9,
+    "coverage": 0.99075,
+    "min_coverage": 0.3,
+    "total_samples": 4000,
+    "accepted_samples": 3963,
+    "heldout_groups": 4,
+    "status": "pass"
+  }
+}

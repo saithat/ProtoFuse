@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,14 +20,34 @@ class SequenceFeatureSchema(ModelArtifact):
     alphabet: str = Field(min_length=2)
     kmer_size: int = Field(default=1, ge=1, le=3)
     stride: int = Field(default=1, ge=1)
+    include_kmers: bool = True
     include_composition: bool = True
     expected_length: int | None = Field(default=None, ge=1)
     position_encoding: Literal["none", "one_hot"] = "none"
+    position_indices: tuple[int, ...] | None = None
+    fixed_context_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def position_encoding_has_fixed_length(self) -> SequenceFeatureSchema:
+    def feature_families_are_consistent(self) -> SequenceFeatureSchema:
         if self.position_encoding == "one_hot" and self.expected_length is None:
             raise ValueError("one-hot position encoding requires expected_length")
+        if self.position_indices is not None:
+            if self.position_encoding != "one_hot" or self.expected_length is None:
+                raise ValueError("selected positions require fixed-length one-hot encoding")
+            if not self.position_indices:
+                raise ValueError("selected positions cannot be empty")
+            if tuple(sorted(set(self.position_indices))) != self.position_indices:
+                raise ValueError("selected positions must be unique and strictly increasing")
+            if self.position_indices[0] < 0 or self.position_indices[-1] >= self.expected_length:
+                raise ValueError("selected position is outside the expected sequence length")
+        if self.fixed_context_sha256 is not None and self.position_indices is None:
+            raise ValueError("fixed context requires explicitly selected mutable positions")
+        if (
+            not self.include_kmers
+            and not self.include_composition
+            and self.position_encoding == "none"
+        ):
+            raise ValueError("feature schema must enable at least one feature family")
         return self
 
     @property
@@ -37,15 +58,38 @@ class SequenceFeatureSchema(ModelArtifact):
 
     @property
     def feature_count(self) -> int:
-        aggregate_count = len(self.kmers) + (
+        aggregate_count = (len(self.kmers) if self.include_kmers else 0) + (
             len(self.alphabet) if self.include_composition else 0
         )
         positional_count = (
-            self.expected_length * len(self.alphabet)
+            len(self.position_indices or tuple(range(self.expected_length))) * len(self.alphabet)
             if self.position_encoding == "one_hot" and self.expected_length is not None
             else 0
         )
         return aggregate_count + positional_count
+
+
+def sequence_fixed_context_sha256(
+    sequence: str,
+    mutable_position_indices: tuple[int, ...],
+) -> str:
+    """Hash the sequence length and every residue outside the mutable positions."""
+
+    mutable = set(mutable_position_indices)
+    if len(mutable) != len(mutable_position_indices):
+        raise ValueError("mutable positions must be unique")
+    if mutable and (min(mutable) < 0 or max(mutable) >= len(sequence)):
+        raise ValueError("mutable position is outside the sequence")
+    digest = sha256(b"protofuse-fixed-sequence-context-v1\0")
+    digest.update(len(sequence).to_bytes(8, "big"))
+    for index, symbol in enumerate(sequence):
+        if index in mutable:
+            continue
+        encoded = symbol.encode()
+        digest.update(index.to_bytes(8, "big"))
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
 
 
 class OutputNormalization(ModelArtifact):
@@ -143,13 +187,18 @@ class LinearEnsembleModel(ModelArtifact):
     scalarizes the objectives nor explicitly models covariance between them.
     """
 
-    schema_version: str = "1.2"
+    schema_version: str = "1.4"
     input_schemas: tuple[SequenceFeatureSchema, ...]
     output_labels: tuple[str, ...]
     output_normalizations: tuple[OutputNormalization, ...] = ()
     coefficients: tuple[tuple[tuple[float, ...], ...], ...]
+    fit_method: Literal["ols", "ridge"] = "ols"
+    ridge_alpha: tuple[float, ...] = ()
+    ridge_standardize_features: tuple[bool, ...] = ()
     feature_center: tuple[float, ...]
     feature_scale: tuple[float, ...]
+    reject_unseen_features: bool = False
+    feature_seen: tuple[bool, ...] = ()
     support_threshold: float = Field(ge=0)
     uncertainty_threshold: float = Field(ge=0)
     calibration_absolute_error: tuple[float, ...]
@@ -163,8 +212,21 @@ class LinearEnsembleModel(ModelArtifact):
             raise ValueError("model requires input schemas, output labels, and coefficients")
         if len(self.feature_center) != feature_count or len(self.feature_scale) != feature_count:
             raise ValueError("feature center/scale dimensions do not match feature schema")
+        if self.feature_seen and len(self.feature_seen) != feature_count:
+            raise ValueError("feature-seen dimensions do not match feature schema")
+        if self.reject_unseen_features and not self.feature_seen:
+            raise ValueError("unseen-feature rejection requires a frozen feature-seen mask")
         if len(self.calibration_absolute_error) != output_count:
             raise ValueError("calibration error dimension does not match outputs")
+        if self.fit_method == "ridge":
+            if (
+                len(self.ridge_alpha) != output_count
+                or len(self.ridge_standardize_features) != output_count
+                or any(alpha <= 0.0 or not math.isfinite(alpha) for alpha in self.ridge_alpha)
+            ):
+                raise ValueError("ridge metadata must match outputs with positive finite alphas")
+        elif self.ridge_alpha or self.ridge_standardize_features:
+            raise ValueError("OLS artifacts cannot declare ridge metadata")
         if self.output_normalizations and len(self.output_normalizations) != output_count:
             raise ValueError("output normalization dimension does not match outputs")
         for normalization in self.output_normalizations:
@@ -193,8 +255,7 @@ class LinearEnsembleModel(ModelArtifact):
 
     def output_scales(self, sequences: tuple[str, ...]) -> tuple[float, ...]:
         return tuple(
-            normalization.scale(sequences)
-            for normalization in self.resolved_output_normalizations
+            normalization.scale(sequences) for normalization in self.resolved_output_normalizations
         )
 
     def normalize_outputs(
@@ -227,32 +288,41 @@ def _features(sequence: str, schema: SequenceFeatureSchema) -> list[float]:
     unexpected = sorted(set(sequence) - set(schema.alphabet))
     if unexpected:
         raise ValueError(f"sequence contains unsupported symbols: {unexpected}")
-    kmers = schema.kmers
+    if schema.fixed_context_sha256 is not None:
+        if schema.position_indices is None:  # validated by the schema model
+            raise ValueError("fixed sequence context has no mutable positions")
+        actual_context = sequence_fixed_context_sha256(sequence, schema.position_indices)
+        if actual_context != schema.fixed_context_sha256:
+            raise ValueError("sequence fixed context differs from the frozen feature schema")
+    kmers = schema.kmers if schema.include_kmers else ()
     kmer_index = {kmer: index for index, kmer in enumerate(kmers)}
     values = [0.0] * schema.feature_count
-    positions = list(range(0, max(0, len(sequence) - schema.kmer_size + 1), schema.stride))
-    valid_positions = [
-        position
-        for position in positions
-        if len(sequence[position : position + schema.kmer_size]) == schema.kmer_size
-    ]
-    denominator = max(1, len(valid_positions))
-    for position in valid_positions:
-        kmer = sequence[position : position + schema.kmer_size]
-        values[kmer_index[kmer]] += 1.0 / denominator
+    if schema.include_kmers:
+        positions = list(range(0, max(0, len(sequence) - schema.kmer_size + 1), schema.stride))
+        valid_positions = [
+            position
+            for position in positions
+            if len(sequence[position : position + schema.kmer_size]) == schema.kmer_size
+        ]
+        denominator = max(1, len(valid_positions))
+        for position in valid_positions:
+            kmer = sequence[position : position + schema.kmer_size]
+            values[kmer_index[kmer]] += 1.0 / denominator
     if schema.include_composition:
         composition_offset = len(kmers)
         length = max(1, len(sequence))
         for offset, symbol in enumerate(schema.alphabet):
             values[composition_offset + offset] = sequence.count(symbol) / length
     if schema.position_encoding == "one_hot":
-        aggregate_count = len(kmers) + (
+        aggregate_count = (len(kmers) if schema.include_kmers else 0) + (
             len(schema.alphabet) if schema.include_composition else 0
         )
         symbol_index = {symbol: index for index, symbol in enumerate(schema.alphabet)}
         alphabet_size = len(schema.alphabet)
-        for position, symbol in enumerate(sequence):
-            values[aggregate_count + position * alphabet_size + symbol_index[symbol]] = 1.0
+        selected_positions = schema.position_indices or tuple(range(len(sequence)))
+        for block, position in enumerate(selected_positions):
+            symbol = sequence[position]
+            values[aggregate_count + block * alphabet_size + symbol_index[symbol]] = 1.0
     return values
 
 
@@ -292,8 +362,7 @@ class LinearEnsemblePredictor:
         normalized_uncertainties = tuple(
             math.sqrt(
                 sum(
-                    (output[column] - normalized_values[column]) ** 2
-                    for output in ensemble_outputs
+                    (output[column] - normalized_values[column]) ** 2 for output in ensemble_outputs
                 )
                 / len(ensemble_outputs)
             )
@@ -301,8 +370,7 @@ class LinearEnsemblePredictor:
         )
         output_scales = self.artifact.output_scales(sequences)
         values = tuple(
-            value * scale
-            for value, scale in zip(normalized_values, output_scales, strict=True)
+            value * scale for value, scale in zip(normalized_values, output_scales, strict=True)
         )
         uncertainties = tuple(
             uncertainty * scale
@@ -324,6 +392,14 @@ class LinearEnsemblePredictor:
             )
             / len(features)
         )
+        if self.artifact.reject_unseen_features and any(
+            abs(value) > 1e-12 and not seen
+            for value, seen in zip(features, self.artifact.feature_seen, strict=True)
+        ):
+            support_score = self.artifact.support_threshold + max(
+                1.0,
+                self.artifact.support_threshold * 1e-6,
+            )
         return LinearPrediction(
             values,
             uncertainties,

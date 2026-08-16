@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
@@ -44,6 +44,7 @@ class SplitManifest(BaseModel):
     schema_version: str = "1.0"
     seed: int
     trace_sha256: tuple[str, ...]
+    input_sha256: tuple[str, ...] = ()
     train_groups: tuple[str, ...]
     calibration_groups: tuple[str, ...]
     audit_groups: tuple[str, ...]
@@ -127,10 +128,7 @@ def validate_teacher_trace_contract(
                 raise ValueError(
                     f"teacher trace contract differs for constraint {row.constraint_label!r}"
                 )
-            if (
-                row.schema_version == "1.1"
-                and row.program_sha256 != expected_program_sha256
-            ):
+            if row.schema_version == "1.1" and row.program_sha256 != expected_program_sha256:
                 raise ValueError("teacher trace full-program contract differs")
             seen_labels.add(row.constraint_label)
     if len(trace_schemas) > 1:
@@ -173,8 +171,7 @@ def load_teacher_samples(
                 continue
             if row.error is not None or row.score is None or row.input_sequences is None:
                 raise ValueError(
-                    f"teacher trace contains failed or incomplete row for "
-                    f"{row.constraint_label!r}"
+                    f"teacher trace contains failed or incomplete row for {row.constraint_label!r}"
                 )
             if row.has_structures or row.has_logits:
                 raise ValueError(
@@ -188,9 +185,7 @@ def load_teacher_samples(
         per_label = buckets[key]
         missing = [label for label in constraint_labels if label not in per_label]
         if missing:
-            raise ValueError(
-                f"teacher objective group is incomplete or unequal; missing {missing}"
-            )
+            raise ValueError(f"teacher objective group is incomplete or unequal; missing {missing}")
         occurrence_counts = {len(per_label[label]) for label in constraint_labels}
         if len(occurrence_counts) != 1:
             raise ValueError("teacher objective group is incomplete or unequal")
@@ -270,9 +265,7 @@ def infer_feature_schemas(samples: tuple[TeacherSample, ...]) -> tuple[SequenceF
                 include_composition=sequence_type != "protein",
                 expected_length=next(iter(lengths)) if len(lengths) == 1 else None,
                 position_encoding=(
-                    "one_hot"
-                    if sequence_type == "protein" and len(lengths) == 1
-                    else "none"
+                    "one_hot" if sequence_type == "protein" and len(lengths) == 1 else "none"
                 ),
             )
         )
@@ -296,6 +289,15 @@ def _split_groups(groups: set[str], seed: int) -> tuple[set[str], set[str], set[
     return train, calibration, audit
 
 
+def _sample_input_sha256(sequences: tuple[str, ...]) -> str:
+    digest = sha256()
+    for sequence in sequences:
+        encoded = sequence.encode()
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
 def prepare_training_data(
     samples: tuple[TeacherSample, ...],
     *,
@@ -311,6 +313,16 @@ def prepare_training_data(
         raise ValueError("training requires samples and at least one output label")
     if any(len(sample.outputs) != len(output_labels) for sample in samples):
         raise ValueError("teacher output dimensions do not match output labels")
+    groups_by_input: dict[str, set[str]] = defaultdict(set)
+    for sample in samples:
+        groups_by_input[_sample_input_sha256(sample.sequences)].add(sample.group_id)
+    cross_group_duplicates = sorted(
+        digest for digest, groups in groups_by_input.items() if len(groups) > 1
+    )
+    if cross_group_duplicates:
+        raise ValueError(
+            "identical teacher inputs span multiple group IDs; grouped splitting would leak"
+        )
     resolved_normalizations = output_normalizations or tuple(
         OutputNormalization() for _ in output_labels
     )
@@ -348,9 +360,7 @@ def prepare_training_data(
     if not np.all(np.isfinite(output_scales)) or np.any(output_scales <= 0.0):
         raise ValueError("teacher output normalization scales must be positive and finite")
     normalized_y = y / output_scales
-    if not np.all(np.isfinite(normalized_y)) or np.any(
-        (normalized_y < 0.0) | (normalized_y > 1.0)
-    ):
+    if not np.all(np.isfinite(normalized_y)) or np.any((normalized_y < 0.0) | (normalized_y > 1.0)):
         raise ValueError("normalized teacher outputs must be finite and in [0, 1]")
 
     train_groups, calibration_groups, audit_groups = _split_groups(
@@ -366,6 +376,7 @@ def prepare_training_data(
     split = SplitManifest(
         seed=seed,
         trace_sha256=tuple(file_sha256(path) for path in trace_paths),
+        input_sha256=tuple(sorted(groups_by_input)),
         train_groups=tuple(sorted(train_groups)),
         calibration_groups=tuple(sorted(calibration_groups)),
         audit_groups=tuple(sorted(audit_groups)),
@@ -413,9 +424,7 @@ def _rank_correlations(actual: np.ndarray, predicted: np.ndarray) -> list[float 
         actual_centered = actual_ranks - actual_ranks.mean()
         predicted_centered = predicted_ranks - predicted_ranks.mean()
         denominator = float(
-            np.sqrt(
-                np.sum(np.square(actual_centered)) * np.sum(np.square(predicted_centered))
-            )
+            np.sqrt(np.sum(np.square(actual_centered)) * np.sum(np.square(predicted_centered)))
         )
         correlations.append(
             float(np.sum(actual_centered * predicted_centered) / denominator)
@@ -448,81 +457,78 @@ def _normalized_mae(
     ]
 
 
-def train_linear_ensemble(
-    samples: tuple[TeacherSample, ...],
+def _training_result_from_coefficients(
+    prepared: PreparedTrainingData,
     *,
     output_labels: tuple[str, ...],
-    trace_paths: tuple[Path, ...],
-    schemas: tuple[SequenceFeatureSchema, ...] | None = None,
-    output_normalizations: tuple[OutputNormalization, ...] = (),
-    seed: int = 0,
-    ensemble_size: int = 8,
+    coefficients: list[np.ndarray],
+    fit_method: Literal["ols", "ridge"],
+    ridge_alpha: tuple[float, ...] = (),
+    ridge_standardize_features: tuple[bool, ...] = (),
+    reject_unseen_features: bool = False,
+    smooth_support_scale: bool = False,
+    extra_metrics: Mapping[str, Any] | None = None,
 ) -> TrainingResult:
-    if ensemble_size < 2:
-        raise ValueError("ensemble_size must be at least 2")
-    prepared = prepare_training_data(
-        samples,
-        output_labels=output_labels,
-        trace_paths=trace_paths,
-        schemas=schemas,
-        output_normalizations=output_normalizations,
-        seed=seed,
-    )
-    resolved_schemas = prepared.schemas
+    """Calibrate and package one already-fitted coefficient ensemble."""
+
+    if not coefficients:
+        raise ValueError("coefficient ensemble cannot be empty")
     x = prepared.x
     y = prepared.y
-    normalized_y = prepared.normalized_y
     output_scales = prepared.output_scales
-    group_values = prepared.group_values
     train_mask = prepared.train_mask
     calibration_mask = prepared.calibration_mask
     audit_mask = prepared.audit_mask
-
     design = np.column_stack((np.ones(len(x)), x))
-    rng = np.random.default_rng(seed)
-    train_group_list = list(prepared.split.train_groups)
-    coefficients: list[np.ndarray] = []
-    for _ in range(ensemble_size):
-        sampled_groups = rng.choice(
-            train_group_list,
-            size=len(train_group_list),
-            replace=True,
-        )
-        indices = np.concatenate(
-            [np.flatnonzero(group_values == group) for group in sampled_groups]
-        )
-        # The vector solve is a compact multi-output implementation, but ordinary least squares
-        # remains column-separable: it does not learn cross-objective covariance.
-        coefficients.append(
-            np.linalg.lstsq(design[indices], normalized_y[indices], rcond=None)[0]
-        )
     normalized_stacked = np.stack([design @ coefficient for coefficient in coefficients])
     normalized_prediction = normalized_stacked.mean(axis=0)
     normalized_uncertainty = normalized_stacked.std(axis=0)
     prediction = normalized_prediction * output_scales
     center = x[train_mask].mean(axis=0)
     scale = np.maximum(x[train_mask].std(axis=0), 1e-6)
+    if smooth_support_scale:
+        scale = np.maximum(scale, 0.5 / math.sqrt(int(train_mask.sum()) + 1.0))
+    feature_seen = np.any(np.abs(x[train_mask]) > 1e-12, axis=0)
+    unseen = (
+        np.any((np.abs(x) > 1e-12) & ~feature_seen, axis=1)
+        if reject_unseen_features
+        else np.zeros(len(x), dtype=np.bool_)
+    )
     support = np.sqrt(np.mean(np.square((x - center) / scale), axis=1))
-    support_threshold = _quantile(support[calibration_mask], 0.99)
+    supported_calibration = calibration_mask & ~unseen
+    if not supported_calibration.any():
+        raise ValueError("calibration contains no samples supported by the training categories")
+    support_threshold = _quantile(support[supported_calibration], 0.99)
+    support[unseen] = support_threshold + max(1.0, support_threshold * 1e-6)
     uncertainty_threshold = _quantile(
-        normalized_uncertainty[calibration_mask].max(axis=1),
+        normalized_uncertainty[supported_calibration].max(axis=1),
         0.99,
     )
     calibration_error = np.abs(y[calibration_mask] - prediction[calibration_mask])
+    supported_calibration_error = np.abs(
+        y[supported_calibration] - prediction[supported_calibration]
+    )
     error_quantiles = tuple(
-        _quantile(calibration_error[:, output_index], 0.99)
+        _quantile(supported_calibration_error[:, output_index], 0.99)
         for output_index in range(len(output_labels))
     )
     model = LinearEnsembleModel(
-        input_schemas=resolved_schemas,
+        input_schemas=prepared.schemas,
         output_labels=output_labels,
         output_normalizations=prepared.output_normalizations,
         coefficients=tuple(
             tuple(tuple(float(value) for value in row) for row in coefficient)
             for coefficient in coefficients
         ),
+        fit_method=fit_method,
+        ridge_alpha=ridge_alpha,
+        ridge_standardize_features=ridge_standardize_features,
         feature_center=tuple(float(value) for value in center),
         feature_scale=tuple(float(value) for value in scale),
+        reject_unseen_features=reject_unseen_features,
+        feature_seen=(
+            tuple(bool(value) for value in feature_seen) if reject_unseen_features else ()
+        ),
         support_threshold=support_threshold,
         uncertainty_threshold=uncertainty_threshold,
         calibration_absolute_error=error_quantiles,
@@ -548,17 +554,16 @@ def train_linear_ensemble(
     accepted_actual = audit_actual[audit_accepted]
     accepted_prediction = audit_prediction[audit_accepted]
     metrics = {
+        "fit_method": fit_method,
+        "ridge_alpha": list(ridge_alpha),
+        "ridge_standardize_features": list(ridge_standardize_features),
         "calibration_mae": calibration_error.mean(axis=0).tolist(),
-        "calibration_rmse": np.sqrt(
-            np.mean(np.square(calibration_error), axis=0)
-        ).tolist(),
+        "calibration_rmse": np.sqrt(np.mean(np.square(calibration_error), axis=0)).tolist(),
         "calibration_max_error": calibration_error.max(axis=0).tolist(),
         "audit_mae": audit_error.mean(axis=0).tolist(),
         "audit_rmse": np.sqrt(np.mean(np.square(audit_error), axis=0)).tolist(),
         "audit_max_error": audit_error.max(axis=0).tolist(),
-        "audit_rank_correlation": _rank_correlations(
-            audit_actual, audit_prediction
-        ),
+        "audit_rank_correlation": _rank_correlations(audit_actual, audit_prediction),
         "audit_score_q05": np.quantile(audit_actual, 0.05, axis=0).tolist(),
         "audit_score_q95": np.quantile(audit_actual, 0.95, axis=0).tolist(),
         "audit_score_q95_q05_range": audit_ranges.tolist(),
@@ -567,6 +572,7 @@ def train_linear_ensemble(
             np.mean(audit_normalized_uncertainty <= uncertainty_threshold)
         ),
         "audit_selective_coverage": float(np.mean(audit_accepted)),
+        "audit_unseen_feature_rejections": int(unseen[audit_mask].sum()),
         "audit_accepted_mae": (
             accepted_error.mean(axis=0).tolist() if len(accepted_error) else None
         ),
@@ -579,7 +585,245 @@ def train_linear_ensemble(
             accepted_error.max(axis=0).tolist() if len(accepted_error) else None
         ),
     }
+    if extra_metrics:
+        metrics.update(extra_metrics)
     return TrainingResult(model=model, split=prepared.split, metrics=metrics)
+
+
+def train_linear_ensemble(
+    samples: tuple[TeacherSample, ...],
+    *,
+    output_labels: tuple[str, ...],
+    trace_paths: tuple[Path, ...],
+    schemas: tuple[SequenceFeatureSchema, ...] | None = None,
+    output_normalizations: tuple[OutputNormalization, ...] = (),
+    seed: int = 0,
+    ensemble_size: int = 8,
+) -> TrainingResult:
+    if ensemble_size < 2:
+        raise ValueError("ensemble_size must be at least 2")
+    prepared = prepare_training_data(
+        samples,
+        output_labels=output_labels,
+        trace_paths=trace_paths,
+        schemas=schemas,
+        output_normalizations=output_normalizations,
+        seed=seed,
+    )
+    design = np.column_stack((np.ones(len(prepared.x)), prepared.x))
+    rng = np.random.default_rng(seed)
+    train_group_list = list(prepared.split.train_groups)
+    coefficients: list[np.ndarray] = []
+    for _ in range(ensemble_size):
+        sampled_groups = rng.choice(
+            train_group_list,
+            size=len(train_group_list),
+            replace=True,
+        )
+        indices = np.concatenate(
+            [np.flatnonzero(prepared.group_values == group) for group in sampled_groups]
+        )
+        # The vector solve is a compact multi-output implementation, but ordinary least squares
+        # remains column-separable: it does not learn cross-objective covariance.
+        coefficients.append(
+            np.linalg.lstsq(
+                design[indices],
+                prepared.normalized_y[indices],
+                rcond=None,
+            )[0]
+        )
+    return _training_result_from_coefficients(
+        prepared,
+        output_labels=output_labels,
+        coefficients=coefficients,
+        fit_method="ols",
+    )
+
+
+def _fit_ridge_column(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    alpha: float,
+    standardize_features: bool,
+) -> np.ndarray:
+    """Fit ridge with an unpenalized intercept and return raw-feature coefficients."""
+
+    center = x.mean(axis=0)
+    y_center = float(y.mean())
+    scale = (
+        np.maximum(x.std(axis=0), 1e-6)
+        if standardize_features
+        else np.ones(x.shape[1], dtype=np.float64)
+    )
+    centered = (x - center) / scale
+    gram = centered.T @ centered
+    right = centered.T @ (y - y_center)
+    scaled_coefficients = np.linalg.solve(
+        gram + alpha * np.eye(x.shape[1], dtype=np.float64),
+        right,
+    )
+    coefficients = scaled_coefficients / scale
+    intercept = y_center - float(center @ coefficients)
+    return np.concatenate(([intercept], coefficients))
+
+
+def _fit_ridge_matrix(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    alphas: tuple[float, ...],
+    standardize_features: tuple[bool, ...],
+) -> np.ndarray:
+    return np.column_stack(
+        [
+            _fit_ridge_column(
+                x,
+                y[:, output_index],
+                alpha=alphas[output_index],
+                standardize_features=standardize_features[output_index],
+            )
+            for output_index in range(y.shape[1])
+        ]
+    )
+
+
+def _ridge_inner_cv(
+    prepared: PreparedTrainingData,
+    *,
+    seed: int,
+    alpha_grid: tuple[float, ...],
+) -> tuple[tuple[float, ...], tuple[bool, ...], tuple[float, ...]]:
+    train_groups = sorted(
+        prepared.split.train_groups,
+        key=lambda group: sha256(f"ridge-cv:{seed}:{group}".encode()).hexdigest(),
+    )
+    fold_count = min(5, len(train_groups))
+    if fold_count < 2:
+        raise ValueError("ridge selection requires at least two training groups")
+    folds = tuple(set(train_groups[index::fold_count]) for index in range(fold_count))
+    selected_alpha: list[float] = []
+    selected_standardization: list[bool] = []
+    selected_mae: list[float] = []
+    for output_index in range(prepared.normalized_y.shape[1]):
+        candidates: list[tuple[float, bool, float]] = []
+        for standardize in (False, True):
+            for alpha in alpha_grid:
+                absolute_error = 0.0
+                observations = 0
+                for heldout_groups in folds:
+                    heldout = (
+                        np.asarray([group in heldout_groups for group in prepared.group_values])
+                        & prepared.train_mask
+                    )
+                    inner_train = prepared.train_mask & ~heldout
+                    coefficient = _fit_ridge_column(
+                        prepared.x[inner_train],
+                        prepared.normalized_y[inner_train, output_index],
+                        alpha=alpha,
+                        standardize_features=standardize,
+                    )
+                    prediction = (
+                        np.column_stack((np.ones(int(heldout.sum())), prepared.x[heldout]))
+                        @ coefficient
+                    )
+                    absolute_error += float(
+                        np.abs(prepared.normalized_y[heldout, output_index] - prediction).sum()
+                    )
+                    observations += int(heldout.sum())
+                candidates.append((absolute_error / observations, standardize, alpha))
+        mae, standardize, alpha = min(
+            candidates,
+            key=lambda candidate: (candidate[0], candidate[1], candidate[2]),
+        )
+        selected_alpha.append(alpha)
+        selected_standardization.append(standardize)
+        selected_mae.append(mae)
+    return (
+        tuple(selected_alpha),
+        tuple(selected_standardization),
+        tuple(selected_mae),
+    )
+
+
+def train_ridge_ensemble(
+    samples: tuple[TeacherSample, ...],
+    *,
+    output_labels: tuple[str, ...],
+    trace_paths: tuple[Path, ...],
+    schemas: tuple[SequenceFeatureSchema, ...],
+    output_normalizations: tuple[OutputNormalization, ...] = (),
+    seed: int = 0,
+    ensemble_size: int = 8,
+    alpha_grid: tuple[float, ...] = (
+        0.0001,
+        0.001,
+        0.01,
+        0.1,
+        1.0,
+        3.1622776601683795,
+        10.0,
+        100.0,
+    ),
+) -> TrainingResult:
+    """Fit objective-specific ridge columns with grouped CV and bootstrap uncertainty."""
+
+    if ensemble_size < 2:
+        raise ValueError("ensemble_size must be at least 2")
+    if not alpha_grid or any(alpha <= 0.0 or not math.isfinite(alpha) for alpha in alpha_grid):
+        raise ValueError("ridge alpha grid must contain positive finite values")
+    prepared = prepare_training_data(
+        samples,
+        output_labels=output_labels,
+        trace_paths=trace_paths,
+        schemas=schemas,
+        output_normalizations=output_normalizations,
+        seed=seed,
+    )
+    alphas, standardize, inner_cv_mae = _ridge_inner_cv(
+        prepared,
+        seed=seed,
+        alpha_grid=alpha_grid,
+    )
+    full = _fit_ridge_matrix(
+        prepared.x[prepared.train_mask],
+        prepared.normalized_y[prepared.train_mask],
+        alphas=alphas,
+        standardize_features=standardize,
+    )
+    rng = np.random.default_rng(seed)
+    train_groups = list(prepared.split.train_groups)
+    bootstrap: list[np.ndarray] = []
+    for _ in range(ensemble_size):
+        sampled_groups = rng.choice(train_groups, size=len(train_groups), replace=True)
+        indices = np.concatenate(
+            [np.flatnonzero(prepared.group_values == group) for group in sampled_groups]
+        )
+        bootstrap.append(
+            _fit_ridge_matrix(
+                prepared.x[indices],
+                prepared.normalized_y[indices],
+                alphas=alphas,
+                standardize_features=standardize,
+            )
+        )
+    bootstrap_mean = np.mean(np.stack(bootstrap), axis=0)
+    recentered = [full + coefficient - bootstrap_mean for coefficient in bootstrap]
+    return _training_result_from_coefficients(
+        prepared,
+        output_labels=output_labels,
+        coefficients=recentered,
+        fit_method="ridge",
+        ridge_alpha=alphas,
+        ridge_standardize_features=standardize,
+        reject_unseen_features=True,
+        smooth_support_scale=True,
+        extra_metrics={
+            "ridge_inner_cv_mae": list(inner_cv_mae),
+            "ridge_alpha_grid": list(alpha_grid),
+            "ridge_bootstrap_recentered": True,
+        },
+    )
 
 
 def write_trained_fusion(

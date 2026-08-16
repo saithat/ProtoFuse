@@ -92,6 +92,11 @@ def load_fusion_artifact(
     model = LinearEnsembleModel.model_validate_json(model_path.read_text())
     if model.output_labels != manifest.constraint_labels:
         raise ValueError("model outputs do not match fusion constraint labels")
+    if manifest.reviewed and any(
+        schema.position_indices is not None and schema.fixed_context_sha256 is None
+        for schema in model.input_schemas
+    ):
+        raise ValueError("reviewed selected-position fusion has no frozen sequence context")
     return LoadedFusionArtifact(root=root, manifest=manifest, model=model)
 
 

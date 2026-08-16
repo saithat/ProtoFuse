@@ -192,7 +192,8 @@ def load_paper_profile(
     registered: PaperRecord | None = None
     abstract: str | None = None
     if is_doi:
-        registered = fetch_paper_record(  # type: ignore[arg-type]
+        assert identifier is not None
+        registered = fetch_paper_record(
             identifier,
             use_cache=True,
             refresh=fetch_online,

@@ -5,13 +5,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from proto_language.core import Segment, Sequence
-from proto_language.generator import (
-    RFdiffusionMPNNBinderGenerator,
-    RFdiffusionMPNNBinderGeneratorConfig,
+from proto_language.core import Sequence
+from proto_tools import (
+    Chain,
+    Complex,
+    InverseFoldingStructureInput,
+    RFdiffusion3Config,
+    RFdiffusion3DesignSpec,
+    RFdiffusion3Input,
+    Structure,
+    predict_structures,
+    run_rfdiffusion3,
 )
-from proto_tools import Chain, Complex, InverseFoldingStructureInput, Structure, predict_structures
-from proto_tools.entities.structures.selection import ChainSelection, ResidueSelection
+from proto_tools.entities.structures.selection import ChainSelection
 
 
 def _binder_chain_id(structure: Structure, target_chains: list[str]) -> str:
@@ -20,13 +26,6 @@ def _binder_chain_id(structure: Structure, target_chains: list[str]) -> str:
         if chain_id not in target_chains:
             return chain_id
     return chain_ids[-1]
-
-
-def _fixed_target_positions(structure: Structure, target_chains: list[str]) -> dict[str, list[int]]:
-    fixed: dict[str, list[int]] = {}
-    for chain_id in target_chains:
-        fixed[chain_id] = list(range(1, len(structure.get_chain_positions(chain_id)) + 1))
-    return fixed
 
 
 def _inverse_folding_input_from_complex(
@@ -38,8 +37,44 @@ def _inverse_folding_input_from_complex(
     return InverseFoldingStructureInput(
         structure=structure,
         chains_to_redesign=ChainSelection(chains=[binder_chain]),
-        fixed_positions=ResidueSelection(chains=_fixed_target_positions(structure, target_chains)),
     )
+
+
+def _contiguous_position_spans(positions: list[int]) -> list[tuple[int, int]]:
+    """Collapse observed residue numbers into spans without inventing missing residues."""
+
+    if not positions:
+        return []
+    spans: list[tuple[int, int]] = []
+    start = end = positions[0]
+    for position in positions[1:]:
+        if position == end + 1:
+            end = position
+            continue
+        spans.append((start, end))
+        start = end = position
+    spans.append((start, end))
+    return spans
+
+
+def _resolved_target_contig(
+    structure: Structure,
+    *,
+    target_chains: list[str],
+    binder_length: int,
+) -> str:
+    """Build a fixed-target contig from residues that actually exist in the structure."""
+
+    target_segments: list[str] = []
+    for chain_id in target_chains:
+        positions = structure.get_chain_positions(chain_id)
+        if not positions:
+            raise ValueError(f"Target chain {chain_id!r} has no polymer residues.")
+        target_segments.extend(
+            f"{chain_id}{start}-{end}"
+            for start, end in _contiguous_position_spans(positions)
+        )
+    return ",".join(target_segments) + f",/0,{binder_length}"
 
 
 def make_rfdiffusion_boltz_cycling_conditioning_fn(
@@ -53,25 +88,33 @@ def make_rfdiffusion_boltz_cycling_conditioning_fn(
 ) -> Callable[[list[Sequence]], list[InverseFoldingStructureInput]]:
     """Bootstrap with RFdiffusion3+MPNN, then re-fold binder+target with Boltz-2 each cycle."""
 
-    rfdiffusion_config = RFdiffusionMPNNBinderGeneratorConfig(
-        target_structure=target_structure,
+    target_contig = _resolved_target_contig(
+        target_structure,
         target_chains=target_chains,
-        hotspots=hotspots,
+        binder_length=binder_length,
     )
 
     def _bootstrap_structure() -> InverseFoldingStructureInput:
-        bootstrap_binder = Segment(length=binder_length, sequence_type="protein", label="binder")
-        generator = RFdiffusionMPNNBinderGenerator(rfdiffusion_config)
-        generator.assign(bootstrap_binder)
-        bootstrap_binder.proposal_sequences = [
-            Sequence(sequence="X" * binder_length, sequence_type="protein")
-        ]
-        generator.sample()
-        proposal = bootstrap_binder.proposal_sequences[0]
-        if proposal.structure is None:
-            raise RuntimeError("RFdiffusionMPNN bootstrap did not attach a binder-target structure")
+        result = run_rfdiffusion3(
+            inputs=RFdiffusion3Input(
+                design_specs=[
+                    RFdiffusion3DesignSpec(
+                        input_structure=target_structure,
+                        contig=target_contig,
+                        select_hotspots=",".join(hotspots) if hotspots else None,
+                        infer_ori_strategy="hotspots" if hotspots else None,
+                    )
+                ]
+            ),
+            config=RFdiffusion3Config(),
+        )
+        if not result.designed_structures or not result.designed_structures[0].structures:
+            raise RuntimeError(
+                f"RFdiffusion3 produced no binder backbones for contig {target_contig!r}."
+            )
+        structure = result.designed_structures[0].structures[0].structure
         return _inverse_folding_input_from_complex(
-            proposal.structure,
+            structure,
             target_chains=target_chains,
         )
 
@@ -97,9 +140,6 @@ def make_rfdiffusion_boltz_cycling_conditioning_fn(
                 InverseFoldingStructureInput(
                     structure=folded,
                     chains_to_redesign=ChainSelection(chains=["A"]),
-                    fixed_positions=ResidueSelection(
-                        chains={"B": list(range(1, len(target_sequence) + 1))}
-                    ),
                 )
             )
         return outputs

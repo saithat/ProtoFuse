@@ -133,6 +133,7 @@ from protofuse.phillip.rfd3_paper import (
     target_sequence_from_cropped_structure,
 )
 from protofuse.phillip.score_only_structure import (
+    score_only_boltz2_iptm_constraint,
     score_only_esmfold_plddt_constraint,
 )
 from protofuse.phillip.sequence_init import generate_filter_safe_sequence
@@ -1683,16 +1684,24 @@ def build_rfdiffusion3_boltz2_binder_program(params: dict[str, Any]) -> Program:
     constraints = [
         Constraint(
             inputs=[binder, target],
-            function=structure_iptm_constraint,
-            function_config={"structure_tool": "boltz2"},
+            function=score_only_boltz2_iptm_constraint,
+            function_config={
+                "boltz2_config": {"use_msa": False},
+            },
             threshold=float(params["min_iptm"]),
             label="iptm",
         ),
         Constraint(
             inputs=[binder, target],
             function=structure_plddt_constraint,
-            function_config={"structure_tool": "boltz2"},
-            threshold=float(params["min_plddt"]),
+            function_config={
+                "structure_tool": "boltz2",
+                "boltz2_config": {"use_msa": False},
+            },
+            # structure_plddt_constraint returns the lower-is-better energy
+            # ``1 - normalized_pLDDT``. Methodology files express their minimum
+            # confidence on the conventional 0-100 pLDDT scale.
+            threshold=(100.0 - float(params["min_plddt"])) / 100.0,
             label="plddt",
         ),
         Constraint(

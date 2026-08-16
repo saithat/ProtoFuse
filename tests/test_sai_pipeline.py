@@ -70,8 +70,7 @@ def raw_enformer_l1(
 ) -> list[ConstraintOutput]:
     del config
     return [
-        ConstraintOutput(score=0.25 * ((len(item[1].sequence) + 127) // 128))
-        for item in inputs
+        ConstraintOutput(score=0.25 * ((len(item[1].sequence) + 127) // 128)) for item in inputs
     ]
 
 
@@ -82,11 +81,7 @@ def raw_borzoi_l1(
     del config
     return [
         ConstraintOutput(
-            score=(
-                0.50
-                * ((len(item[1].sequence) + 31) // 32)
-                * BORZOI_LCB_MAXIMUM_L1_PER_BIN
-            )
+            score=(0.50 * ((len(item[1].sequence) + 31) // 32) * BORZOI_LCB_MAXIMUM_L1_PER_BIN)
         )
         for item in inputs
     ]
@@ -195,12 +190,15 @@ def test_legacy_model_defaults_to_identity_output_normalization() -> None:
         uncertainties=prediction.normalized_uncertainties,
         support_score=0.0,
     ).use_surrogate
-    assert linear_gate_decision(
-        model,
-        values=(0.25, 1.01),
-        uncertainties=(0.0, 0.0),
-        support_score=0.0,
-    ).reason == "prediction_out_of_range"
+    assert (
+        linear_gate_decision(
+            model,
+            values=(0.25, 1.01),
+            uncertainties=(0.0, 0.0),
+            support_score=0.0,
+        ).reason
+        == "prediction_out_of_range"
+    )
 
 
 def test_position_encoding_is_order_sensitive_and_backward_compatible() -> None:
@@ -377,6 +375,55 @@ def test_artifact_loader_requires_review_and_verifies_hash(tmp_path: Path) -> No
     (artifact.root / "model.json").write_text("{}\n")
     with pytest.raises(ValueError, match="hash mismatch"):
         load_fusion_artifact(artifact.root, require_reviewed=False)
+
+
+def test_reviewed_artifact_rejects_unbound_selected_position_context(tmp_path: Path) -> None:
+    program = build_constant_program()
+    signature = step_group_signature(
+        program,
+        optimizer_index=0,
+        constraint_labels=("low", "high"),
+    )
+    schema = SequenceFeatureSchema(
+        sequence_type="dna",
+        alphabet="ACGT",
+        include_kmers=False,
+        include_composition=False,
+        expected_length=4,
+        position_encoding="one_hot",
+        position_indices=(0,),
+    )
+    matrix = ((0.25, 0.75), *((0.0, 0.0),) * schema.feature_count)
+    model = LinearEnsembleModel(
+        input_schemas=(schema,),
+        output_labels=("low", "high"),
+        coefficients=(matrix, matrix),
+        feature_center=(0.0,) * schema.feature_count,
+        feature_scale=(1.0,) * schema.feature_count,
+        support_threshold=1.0,
+        uncertainty_threshold=0.0,
+        calibration_absolute_error=(0.0, 0.0),
+    )
+    manifest = FusionManifest(
+        fusion_id="unsafe-selected-context",
+        version="1",
+        optimizer_index=0,
+        constraint_labels=("low", "high"),
+        group_signature=signature,
+        group_signature_sha256=signature.sha256,
+        model_sha256="0" * 64,
+    )
+    artifact = write_unreviewed_fusion_artifact(
+        tmp_path / "unsafe-selected-context",
+        manifest=manifest,
+        model=model,
+    )
+    with pytest.raises(FusionCompatibilityError, match="no frozen sequence context"):
+        transform_with_artifact(program, artifact)
+    reviewed = artifact.manifest.model_copy(update={"reviewed": True})
+    (artifact.root / "manifest.json").write_text(reviewed.model_dump_json(indent=2) + "\n")
+    with pytest.raises(ValueError, match="no frozen sequence context"):
+        load_fusion_artifact(artifact.root)
 
 
 def test_transform_is_transactional_and_runs_surrogate_with_parent_validation(
@@ -561,9 +608,7 @@ def test_trace_training_and_unreviewed_packaging_are_reproducible(tmp_path: Path
     )
 
     incomplete_trace = tmp_path / "training-incomplete.jsonl"
-    incomplete_trace.write_text(
-        "\n".join(json.dumps(row) for row in rows[:-1]) + "\n"
-    )
+    incomplete_trace.write_text("\n".join(json.dumps(row) for row in rows[:-1]) + "\n")
     with pytest.raises(ValueError, match="objective group is incomplete"):
         load_teacher_samples(
             (incomplete_trace,),
@@ -629,9 +674,7 @@ def test_sequence_bin_training_decodes_varying_raw_l1_sums(tmp_path: Path) -> No
             sequences=("C" * 16, "A" * target_bp, "G" * 16),
             outputs=(
                 0.25 * (target_bp // 128),
-                0.50
-                * (target_bp // 32)
-                * BORZOI_LCB_MAXIMUM_L1_PER_BIN,
+                0.50 * (target_bp // 32) * BORZOI_LCB_MAXIMUM_L1_PER_BIN,
             ),
             group_id=f"stage-{target_bp}",
             output_target_bins=(target_bp // 128, target_bp // 32),
@@ -650,14 +693,10 @@ def test_sequence_bin_training_decodes_varying_raw_l1_sums(tmp_path: Path) -> No
         ensemble_size=2,
     )
     model = LinearEnsembleModel.model_validate_json(result.model.model_dump_json())
-    prediction = LinearEnsemblePredictor(model).predict(
-        ("C" * 16, "A" * 512, "G" * 16)
-    )
+    prediction = LinearEnsemblePredictor(model).predict(("C" * 16, "A" * 512, "G" * 16))
 
     assert prediction.normalized_values == pytest.approx((0.25, 0.50))
-    assert prediction.values == pytest.approx(
-        (1.0, 8.0 * BORZOI_LCB_MAXIMUM_L1_PER_BIN)
-    )
+    assert prediction.values == pytest.approx((1.0, 8.0 * BORZOI_LCB_MAXIMUM_L1_PER_BIN))
     assert prediction.normalized_uncertainties == pytest.approx((0.0, 0.0))
     assert result.metrics["audit_score_q95"][1] > 1.0
     assert linear_gate_decision(
@@ -749,9 +788,7 @@ def test_trace_freezes_contract_before_runtime_seed_injection(tmp_path: Path) ->
     ):
         program.run()
 
-    [row] = [
-        TraceRow.model_validate_json(line) for line in trace_path.read_text().splitlines()
-    ]
+    [row] = [TraceRow.model_validate_json(line) for line in trace_path.read_text().splitlines()]
     assert len(seen_seeds) == 1
     assert isinstance(seen_seeds[0], int)
     assert row.schema_version == "1.1"
@@ -768,8 +805,9 @@ def test_trace_freezes_contract_before_runtime_seed_injection(tmp_path: Path) ->
 
     drifted_path = tmp_path / "seeded-drifted.jsonl"
     drifted_path.write_text(
-        row.model_copy(update={"constraint_config": {"seed": 3, "fixed": "contract"}})
-        .model_dump_json()
+        row.model_copy(
+            update={"constraint_config": {"seed": 3, "fixed": "contract"}}
+        ).model_dump_json()
         + "\n"
     )
     with pytest.raises(ValueError, match="teacher trace contract differs"):
@@ -827,28 +865,19 @@ def test_paired_evaluation_excludes_warmup_and_reports_complete_metrics(tmp_path
     assert payload["metrics"]["reliability"]["fully_valid_accuracy_runs"] == 2
     assert payload["metrics"]["routing"]["surrogate_coverage"] == pytest.approx(1.0)
     assert (
-        payload["metrics"]["routing"][
-            "initial_stage_target_parent_item_evaluations_bypassed"
-        ]
-        == 4
+        payload["metrics"]["routing"]["initial_stage_target_parent_item_evaluations_bypassed"] == 4
     )
-    assert (
-        payload["metrics"]["routing"]["mandatory_final_validation_parent_item_evaluations"]
-        == 4
-    )
+    assert payload["metrics"]["routing"]["mandatory_final_validation_parent_item_evaluations"] == 4
     assert payload["metrics"]["routing"]["net_parent_item_evaluations_avoided"] == 0
     # Kept only as an explicitly scoped alias for pre-existing report consumers.
     assert payload["metrics"]["routing"]["target_parent_item_evaluations_avoided"] == 4
-    assert "initial routing stage only" in payload["metrics"]["routing"][
-        "target_parent_item_evaluations_avoided_scope"
-    ]
-    assert payload["metrics"]["routing"]["deferral_reasons"] == {
-        "calibrated_in_domain": 2
-    }
+    assert (
+        "initial routing stage only"
+        in payload["metrics"]["routing"]["target_parent_item_evaluations_avoided_scope"]
+    )
+    assert payload["metrics"]["routing"]["deferral_reasons"] == {"calibrated_in_domain": 2}
     full_metadata = payload["runs"][0]["full_result_metadata"][0]
-    assert full_metadata["segments"]["target"]["constraints"]["low"]["data"] == {
-        "teacher": "low"
-    }
+    assert full_metadata["segments"]["target"]["constraints"]["low"]["data"] == {"teacher": "low"}
     assert payload["metrics"]["accuracy"]["accepted_mae_q95_q05_fraction"] == [0.04, 0.03]
     assert payload["offline_surrogate_metrics"] == {
         "audit_mae": [0.0, 0.0],
@@ -1006,27 +1035,31 @@ def test_sequence_bin_gate_uses_normalized_ensemble_spread() -> None:
     prediction = LinearEnsemblePredictor(model).predict(("C", "A" * 128, "C"))
 
     assert prediction.normalized_uncertainties == pytest.approx((0.1, 0.1))
-    assert prediction.uncertainties == pytest.approx(
-        (0.1, 0.4 * BORZOI_LCB_MAXIMUM_L1_PER_BIN)
-    )
+    assert prediction.uncertainties == pytest.approx((0.1, 0.4 * BORZOI_LCB_MAXIMUM_L1_PER_BIN))
     assert linear_gate_decision(
         model,
         values=prediction.normalized_values,
         uncertainties=prediction.normalized_uncertainties,
         support_score=prediction.support_score,
     ).use_surrogate
-    assert linear_gate_decision(
-        model,
-        values=(0.5, 0.5),
-        uncertainties=(0.1, 0.12),
-        support_score=0.0,
-    ).reason == "uncertain"
-    assert linear_gate_decision(
-        model,
-        values=(0.5, 1.01),
-        uncertainties=(0.0, 0.0),
-        support_score=0.0,
-    ).reason == "prediction_out_of_range"
+    assert (
+        linear_gate_decision(
+            model,
+            values=(0.5, 0.5),
+            uncertainties=(0.1, 0.12),
+            support_score=0.0,
+        ).reason
+        == "uncertain"
+    )
+    assert (
+        linear_gate_decision(
+            model,
+            values=(0.5, 1.01),
+            uncertainties=(0.0, 0.0),
+            support_score=0.0,
+        ).reason
+        == "prediction_out_of_range"
+    )
 
 
 def test_proto_energy_classification_matches_proto_sentinels() -> None:
@@ -1043,9 +1076,7 @@ def test_paired_evaluation_reports_non_finite_final_energy(
     artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
     original_outputs = evaluation_module._outputs
 
-    def non_finite_outputs(
-        program: Program, *, optimizer_index: int
-    ) -> ProgramOutputs:
+    def non_finite_outputs(program: Program, *, optimizer_index: int) -> ProgramOutputs:
         outputs = original_outputs(program, optimizer_index=optimizer_index)
         return ProgramOutputs(outputs.sequences, (float("inf"),))
 

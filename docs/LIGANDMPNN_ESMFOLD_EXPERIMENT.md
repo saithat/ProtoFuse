@@ -39,29 +39,36 @@ both original parent objectives on the selected output.
   candidate-pool hashes are not currently exposed for this optimizer.
 - Hardware: the same pinned Modal accelerator class, at most one container per parent
   service, zero retries, and the same warm-container policy for both paired arms.
-- Split: group-disjoint seeded trajectories; at least three development groups and four
-  additional, hash-disjoint audit groups.
-- Model comparison: linear ensemble, Extra Trees, and a small shared-hidden-layer MLP
-  on the same frozen split. The portable runtime remains the linear ensemble unless
-  another family is implemented and separately reviewed.
+- Split: 100 fresh development trajectories assigned as 60 training, 20 calibration,
+  and 20 development-audit groups, followed by 20 separately collected external groups.
+- Model selection: compact regularized linear models selected by inner group cross-validation.
+  The development audit is model-selection evidence, not the confirmatory approval audit.
 - Paired evaluation: counterbalanced Proto and ProtoFuse arm order, an excluded warmup
   pair, identical program seeds, and complete `Program.run()` timing.
 
 “Joint” means one aligned two-output artifact, one inference call, and one routing
-decision. The current linear baseline fits separate coefficient columns and does
+decision. The selected ridge ensemble fits separate coefficient columns and does
 not claim covariance-aware or nonlinear multi-task learning.
 
-The fixed-length protein representation contains the 20 amino-acid 1-mer frequencies
-plus a position-major 163-by-20 one-hot encoding. The earlier composition-only encoding
-could not distinguish active-site positions and is retained only as rejected evidence.
-The repeated native starting sequence is removed from every cleaned trajectory before
-splitting so an exact baseline input cannot leak across development and held-out groups.
+The frozen representation contains one-hot categories only at the eight contract-declared
+mutable positions: 62, 64, 91, 92, 94, 96, 119, and 121 in one-based protein numbering.
+Twenty amino-acid categories at each position produce 160 features. This replaces the earlier
+3,280-column whole-sequence representation and its composition-only predecessor. The repeated
+native starting sequence is removed from every cleaned trajectory before splitting so an exact
+baseline input cannot leak across development and held-out groups.
+
+Post-audit hardening also binds compact artifacts to a hash of all 155 non-mutable scaffold
+residues. A fixed-context mismatch raises during featurization and sends the whole objective group
+to the parent models. Reviewed-artifact loading rejects selected-position models without that
+binding. Campaign fitting now rebuilds every clean trace from raw data, rejects cross-group input
+duplicates, derives mutable sites from the frozen generator configuration, and rechecks the three
+artifact file hashes before every external collection or campaign audit.
 
 ## Acceptance and failure policy
 
 The frozen-artifact audit uses the repository defaults: accepted normalized MAE at
 most `0.05` of each held-out objective's `q95-q05` range, accepted Spearman correlation
-at least `0.90`, selective coverage at least `0.30`, and at least four held-out groups.
+at least `0.90`, selective coverage at least `0.30`, and at least 20 held-out groups.
 
 An unmatched, out-of-distribution, uncertain, invalid, or failed prediction must invoke
 the complete LigandMPNN + ESMFold parent group. A run with no accepted surrogate routes
@@ -72,58 +79,42 @@ validation remains enabled.
 Raw traces, model artifacts, structures, and run reports belong under ignored `data/`
 paths and are not committed.
 
-## Hackathon smoke result (2026-08-16)
+## Larger v3 campaign result (2026-08-16)
 
-Six development trajectories produced 30 aligned, non-baseline teacher samples. The
-group-disjoint split contained 20 training, five calibration, and five development-audit
-samples. Four later trajectories produced 20 baseline-free external audit samples with
-no trace-hash, input-hash, or group overlap with development. All 150 retained cleaned
-constraint rows were complete and error-free; the 180 raw rows remain preserved separately.
+Version 3 started from a fresh trace schema and frozen campaign protocol; no legacy teacher
+trace was carried into training. The 100 development groups yielded 435 unique aligned samples
+after removing 65 repeated inputs. Their deterministic group split contained 60 training groups
+with 259 samples, 20 calibration groups with 87 samples, and 20 development-audit groups with
+89 samples. Because those audit results informed the final representation and regularization,
+the development audit is model-selection-only evidence.
 
-The same 3,280-column matrix was used to compare the linear ensemble, Extra Trees, and
-small shared-hidden-layer MLP. None met the acceptance rule. The linear ensemble was kept
-only as the portable exploratory baseline; the tree model did not improve ranking and the
-MLP generalized poorly on the 30-sample cohort.
+The selected artifact is a compact 160-feature, two-output ridge ensemble with group-disjoint
+inner cross-validation. It selected `alpha=1` without feature standardization for
+`mpnn_probability`, and `alpha=10` with feature standardization for `structure_plddt`. The
+100-group development cohort covered 146 of the 152 possible non-native residue-position
+categories. The artifact and all training provenance were frozen before any external trace was
+opened.
 
-The frozen external audit correctly failed:
+The subsequent external cohort contained 20 fresh groups and 70 unique samples after removing
+30 repeated inputs. Trace hashes, group IDs, and input hashes had zero overlap with development;
+all three disjointness and provenance checks passed. The frozen gate accepted 49 samples and
+fell back to the complete parent group for 21, giving `0.70` selective coverage. Of the fallback
+cases, 18 were out of domain and three had predictions outside the valid score range.
 
-| Objective | Accepted MAE | MAE / held-out q95-q05 | Accepted Spearman |
-| --- | ---: | ---: | ---: |
-| LigandMPNN probability loss | 0.0718 | 0.2735 | 0.7010 |
-| ESMFold confidence energy | 0.00440 | 0.2602 | 0.2843 |
+The confirmatory external audit failed:
 
-Selective coverage was 17/20 (`0.85`), but the required normalized MAE is at most
-`0.05` and required Spearman is at least `0.90` for every objective. The artifact
-therefore remains `reviewed=false` and is not eligible for automatic deployment.
+| Objective | Accepted MAE / held-out q95-q05 | Required maximum | Accepted Spearman | Required minimum |
+| --- | ---: | ---: | ---: | ---: |
+| LigandMPNN probability loss | 0.08760199 | 0.05 | 0.932959 | 0.90 |
+| ESMFold confidence energy | 0.09690646 | 0.05 | 0.814184 | 0.90 |
 
-An explicitly exploratory, counterbalanced two-seed Modal H100 smoke comparison then
-measured complete `Program.run()` calls, including fallback and mandatory final parent
-validation:
+Coverage and LigandMPNN ranking passed their individual thresholds, but both normalized-MAE
+checks and the ESMFold rank check failed. The artifact therefore remains `reviewed=false` and
+all automatic routing remains ineligible. No paired full-versus-fused timing was run after this
+failure, so v3 makes no speedup claim.
 
-| Result | Proto | ProtoFuse |
-| --- | ---: | ---: |
-| Total measured time | 47.64 s | 27.46 s |
-| Final sequence agreement | 2/2 | 2/2 |
-| Maximum final-energy difference | 0 | 0 |
-
-Aggregate speedup was `1.73x`. ProtoFuse used seven surrogate routes and five full-parent
-fallbacks across 12 routing decisions, then performed mandatory final validation. That
-avoided ten net expensive target-model item evaluations, or eight net item evaluations
-when the two extra cheap length validations are also charged to ProtoFuse. Per-seed speedups
-were `1.27x` and `2.74x`; two smoke seeds are far too few for a stable timing claim. This is
-useful proof that the joint LigandMPNN+ESMFold path executes and produced matching final
-outcomes in these two runs, not evidence that the rejected surrogate is accurate enough
-to approve.
-
-The per-objective accuracy fields embedded in the paired report are frozen metrics from
-the five-sample development audit; they are not shadow measurements from the timed runs.
-The separate 20-sample external audit above is the approval authority.
-
-Old no-variation proposals, infrastructure-stalled attempts, composition-only artifacts,
-and pre-correction runtime-seed traces are preserved under rejected ignored-data paths.
-The tracer now snapshots the pre-run constraint contract and records the program seed
-separately, preventing Proto's derived child seeds from masquerading as contract drift.
-This cohort predates trace schema `1.1`, so it also lacks the new seed-neutral full-program
-source hash and cannot provide source-complete approval provenance. The pLDDT reporting-unit
-correction changes metadata only; the continuous ESMFold score and every teacher target are
-unchanged.
+The byte-frozen artifact used for this audit predates the post-audit fixed-context field. Its
+scores remain the recorded analysis result, but it is not a runtime candidate. A clean-room replay
+from the same 100 development traces produced identical development metrics with the scaffold
+binding and passed the strengthened freeze contract; it was not promoted or reselected using the
+already-opened external labels.
