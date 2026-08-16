@@ -11,6 +11,8 @@ exported as a high-resolution PNG for slides and an editable SVG for design work
   inputs and sends uncertain or out-of-distribution inputs to an exact path.
 - `03-frozen-audit-gates`: shows the frozen held-out CUSTOM audit against its predeclared error,
   rank-correlation, and coverage thresholds.
+- `04-slide-results`: renders `slide-results.csv` as a condensed evaluation summary table for the
+  final slide in the evaluation deck.
 
 ## Regenerate
 

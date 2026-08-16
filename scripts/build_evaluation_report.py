@@ -5,9 +5,13 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import html
+import io
 import json
+import subprocess
+import sys
 import tempfile
 from collections import Counter
 from datetime import UTC, datetime
@@ -22,6 +26,13 @@ OBJECTIVES = {
     "esm2-protein-maturation": "ESM-2 perplexity + pLDDT / PAE",
     "rfdiffusion3-boltz2-binder": "ipTM + binding strength + quality gates",
 }
+
+CHART_STRATEGY_COLORS = {
+    "adaptive": "#0F766E",
+    "sampled": "#D97706",
+    "parallel": "#2563EB",
+}
+SLIDE_SPEEDUP_SCALE_MAX = 13.0
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -297,6 +308,16 @@ def collect_report_data(
     ]
     sources.extend(methodology.pop("sources"))
     sources.extend(checkpoints.pop("sources"))
+    chart_source_path = root / "charts" / "source-data.json"
+    chart_source = _read_json(chart_source_path)
+    chart_strategies = (
+        chart_source.get("strategies", [])
+        if isinstance(chart_source, dict) and isinstance(chart_source.get("strategies"), list)
+        else []
+    )
+    chart_source_record = _source_record(chart_source_path, root)
+    if chart_source_record is not None:
+        sources.append(chart_source_record)
 
     splits = pilot.get("splits", {}) if pilot is not None else {}
     trajectory = pilot.get("full_trajectory_holdout", {}) if pilot is not None else {}
@@ -476,12 +497,120 @@ def collect_report_data(
             "gaps": [],
         },
         "benchmarks": _benchmark_rows(modal, pilot),
+        "chart_strategies": chart_strategies,
         "sources": sources,
     }
 
 
 def _escape(value: Any) -> str:
     return html.escape(str(value), quote=True)
+
+
+def _ensure_slide_results_image(root: Path) -> Path | None:
+    csv_path = root / "charts" / "slide-results.csv"
+    png_path = root / "charts" / "04-slide-results.png"
+    if not csv_path.is_file():
+        return None
+    if not png_path.is_file() or png_path.stat().st_mtime < csv_path.stat().st_mtime:
+        subprocess.run(
+            [
+                sys.executable,
+                str(root / "charts" / "build_charts.py"),
+                "--slide-results-only",
+            ],
+            cwd=root,
+            check=True,
+        )
+    return png_path if png_path.is_file() else None
+
+
+def _slide_results_image_uri(root: Path) -> str | None:
+    png_path = _ensure_slide_results_image(root)
+    if png_path is None:
+        return None
+    encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _render_slide_results_image(image_uri: str) -> str:
+    return (
+        '<div class="slide-results-frame">'
+        f'<img class="slide-results-image" src="{image_uri}" '
+        'alt="Evaluation results summary table from slide-results.csv">'
+        "</div>"
+    )
+
+
+def _mermaid_diagram_image_uri(root: Path, suffix: str) -> str | None:
+    candidates = sorted(root.glob(f"mermaid-diagram-*-{suffix}.png"))
+    if not candidates:
+        candidates = sorted(root.glob(f"*-{suffix}.png"))
+    png_path = next((path for path in reversed(candidates) if path.is_file()), None)
+    if png_path is None:
+        return None
+    encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _routing_diagram_image_uri(root: Path) -> str | None:
+    return _mermaid_diagram_image_uri(root, "01")
+
+
+def _render_routing_diagram_image(image_uri: str) -> str:
+    return (
+        '<div class="routing-diagram-slide">'
+        '<p class="flow-label">ProtoFuse routing</p>'
+        '<div class="routing-diagram-frame">'
+        f'<img class="routing-diagram-image" src="{image_uri}" '
+        'alt="ProtoFuse routing flow: fusion match review, surrogate gating, and finalist re-scoring">'
+        "</div></div>"
+    )
+
+
+def _render_mermaid_diagram_panel(label: str, image_uri: str, alt: str) -> str:
+    return (
+        '<div class="mermaid-diagram-panel">'
+        f'<p class="flow-label">{_escape(label)}</p>'
+        '<div class="mermaid-diagram-frame">'
+        f'<img class="mermaid-diagram-image" src="{image_uri}" alt="{_escape(alt)}">'
+        "</div></div>"
+    )
+
+
+def _render_slide_surrogate_training(root: Path) -> str:
+    dataset_uri = _mermaid_diagram_image_uri(root, "22")
+    training_uri = _mermaid_diagram_image_uri(root, "55")
+    panels: list[str] = []
+    if dataset_uri is not None:
+        panels.append(
+            _render_mermaid_diagram_panel(
+                "Dataset generation",
+                dataset_uri,
+                "Dataset generation flow: choose run, collect traces, grow dataset, freeze split",
+            )
+        )
+    if training_uri is not None:
+        panels.append(
+            _render_mermaid_diagram_panel(
+                "Surrogate training",
+                training_uri,
+                "Surrogate training flow: teacher dataset, train ensemble, evaluate, human approval",
+            )
+        )
+    if not panels:
+        return '<div class="empty">Surrogate training diagrams were not found.</div>'
+    return f'<div class="surrogate-training-slide">{"".join(panels)}</div>'
+
+
+def _render_slide_routing(root: Path) -> str:
+    routing_uri = _routing_diagram_image_uri(root)
+    if routing_uri is None:
+        return (
+            '<div class="routing-diagram-slide empty">'
+            "ProtoFuse routing diagram was not found."
+            "</div>"
+        )
+    return _render_routing_diagram_image(routing_uri)
 
 
 def _format_time(seconds: Any) -> str:
@@ -545,6 +674,67 @@ def _format_error(value: Any, unit: str = "") -> str:
 
 def _format_percent(value: Any) -> str:
     return f"{100 * value:.1f}%" if isinstance(value, (int, float)) else "not available"
+
+
+def _format_top10_recall(item: dict[str, Any]) -> str:
+    mean_recall = item.get("mean_top10_recall")
+    minimum_recall = item.get("minimum_top10_recall")
+    if not isinstance(mean_recall, (int, float)):
+        return "top-10 not available"
+    recall_text = f"top-10 {mean_recall:.0%}"
+    if isinstance(minimum_recall, (int, float)) and minimum_recall < mean_recall:
+        recall_text += f" ({minimum_recall:.0%} min)"
+    return recall_text
+
+
+def _render_slide_speedup_fidelity(strategies: list[dict[str, Any]]) -> str:
+    if not strategies:
+        return (
+            '<p class="flow-label">Speed–fidelity tradeoff</p>'
+            '<div class="speedup-fidelity-slide empty">'
+            "Speed–fidelity chart data is unavailable. Regenerate "
+            "<code>charts/source-data.json</code> with "
+            "<code>uv run python charts/build_charts.py</code>."
+            "</div>"
+        )
+
+    rows: list[str] = []
+    for item in strategies:
+        if not isinstance(item, dict):
+            continue
+        speedup = item.get("net_speedup")
+        if not isinstance(speedup, (int, float)):
+            continue
+        color_key = str(item.get("color", ""))
+        color = CHART_STRATEGY_COLORS.get(color_key, "#274d7d")
+        width = min(100.0, 100.0 * float(speedup) / SLIDE_SPEEDUP_SCALE_MAX)
+        ci = item.get("speedup_ci_95")
+        if isinstance(ci, list) and len(ci) == 2 and all(
+            isinstance(value, (int, float)) for value in ci
+        ):
+            ci_text = f"{ci[0]:.2f}–{ci[1]:.2f}"
+        else:
+            ci_text = "CI unavailable"
+        rows.append(
+            '<div class="speedup-row">'
+            f'<span class="speedup-label">{_escape(item.get("label", "Strategy"))}</span>'
+            '<div class="speedup-bar-track" aria-hidden="true">'
+            f'<div class="speedup-bar" style="width:{width:.2f}%;background:{color};"></div>'
+            "</div>"
+            '<span class="speedup-meta">'
+            f"<strong>{speedup:.2f}×</strong>"
+            f"<small>{ci_text} · {_escape(_format_top10_recall(item))}</small>"
+            "</span></div>"
+        )
+
+    return (
+        '<p class="flow-label">Speed–fidelity tradeoff</p>'
+        '<div class="speedup-fidelity-slide" aria-label="Speed–fidelity tradeoff in eGFP optimization">'
+        f'<div class="speedup-fidelity-chart">{"".join(rows)}</div>'
+        '<p class="speedup-caption">Paired local-CPU cohorts on the 1,000-candidate eGFP/Lung workload. '
+        "Bars show net end-to-end speedup; labels include bootstrap 95% confidence intervals and "
+        "top-10 selection fidelity.</p></div>"
+    )
 
 
 def _render_pilot(pilot: dict[str, Any]) -> str:
@@ -1443,7 +1633,7 @@ def _render_slide_measure_next(*, plan_rows: list[str]) -> str:
     )
 
 
-def render_slides_html(data: dict[str, Any]) -> str:
+def render_slides_html(data: dict[str, Any], *, root: Path) -> str:
     summary = data["summary"]
     checkpoints = data["checkpoints"]
     splits = data["splits"]
@@ -1496,17 +1686,15 @@ def render_slides_html(data: dict[str, Any]) -> str:
         "<b>01 · COST</b><h3>Repeated model calls dominate.</h3>"
         "<p>An optimizer can score thousands of nearby proposals with the same sequence, structure, "
         "and binding models. Reusing learned local behavior could reduce time, accelerator use, and credits.</p>"
-        "</article><article class=\"motivation\"><b>02 · JOIN</b>"
+        "</article><article class=\"motivation\"><b>02 · LINKED</b>"
         "<h3>Objectives travel together.</h3>"
         "<p>The opportunity is to learn recurring groups—not replace one model at a time—so feature work "
-        "and predictions are shared across the same optimization decision.</p></article></div>"
-        '<p class="flow-label">Routing concept</p>'
-        '<div class="flow" aria-label="ProtoFuse routing concept"><div><span>Original</span>'
-        "<strong>Proto optimization program</strong></div><div><span>Detect</span>"
-        "<strong>Recurring expensive objective group</strong></div><div><span>Learn</span>"
-        "<strong>Joint calibrated surrogate</strong></div><div><span>Gate</span>"
-        "<strong>Check support + uncertainty</strong></div><div><span>Route</span>"
-        "<strong>Surrogate or full models</strong></div></div></div>",
+        "and predictions are shared across the same optimization decision.</p>"
+        "</article><article class=\"motivation\"><b>03 · OPTIMIZE</b>"
+        "<h3>Optimize</h3>"
+        "<p>Call <code>protofuse.optimize()</code> to check pairwise tool calls for an available "
+        "surrogate and replace matching instances.</p></article></div>"
+        f"{_render_slide_routing(root)}</div>",
         '<div class="studies-slide-frame">'
         + _slide_heading(
             "02",
@@ -1514,12 +1702,18 @@ def render_slides_html(data: dict[str, Any]) -> str:
         )
         + f'<div class="studies-slide">{_render_slide_paper_study_rows(paper_studies)}</div>'
         + "</div>",
+        _slide_heading(
+            "03",
+            "Surrogate model training and dataset generation",
+            "Collect full-model traces into a teacher dataset, then train, calibrate, and review a FusionBundle.",
+        )
+        + _render_slide_surrogate_training(root),
     ]
 
     slides.extend(
         [
         _slide_heading(
-            "03",
+            "04",
             "Current evidence",
             "Observed measurements, pilot results, surrogate metrics, curated outputs, and full-model baselines.",
         )
@@ -1536,7 +1730,7 @@ def render_slides_html(data: dict[str, Any]) -> str:
     for chunk_index, chunk in enumerate(benchmark_chunks[1:], start=2):
         slides.append(
             _slide_heading(
-                "03",
+                "04",
                 "Full-model benchmark summaries",
                 f"Workload timing and objective error ({chunk_index} / {len(benchmark_chunks)}).",
             )
@@ -1552,21 +1746,31 @@ def render_slides_html(data: dict[str, Any]) -> str:
 
     slides.append(
         _slide_heading(
-            "04",
+            "05",
             "What to measure next",
-            "Three priorities before the next claim.",
         )
         + _render_slide_measure_next(plan_rows=plan_rows)
     )
 
     slides.append(
         _slide_heading(
-            "05",
+            "06",
             "Evidence appendix summary",
             "Trace readiness, cohorts, checkpoints, and provenance at a glance.",
         )
         + f'<div class="metrics appendix-metrics">{_render_slide_appendix(summary, checkpoints, splits, len(data["sources"]))}</div>'
     )
+
+    slide_results_uri = _slide_results_image_uri(root)
+    if slide_results_uri is not None:
+        slides.append(
+            _slide_heading(
+                "07",
+                "Evaluation results at a glance",
+                "Condensed summary table generated from charts/slide-results.csv.",
+            )
+            + _render_slide_results_image(slide_results_uri)
+        )
 
     embedded = json.dumps(data, sort_keys=True, separators=(",", ":")).replace("<", "\\u003c")
     return SLIDES_PAGE_TEMPLATE.replace("__AUDIT_DATE__", _escape(data["audit_date"])).replace(
@@ -1591,8 +1795,11 @@ SLIDES_PAGE_TEMPLATE = """<!doctype html>
 .verdict{padding:24px;background:var(--ink);color:white;border-radius:11px 11px 11px 2px;box-shadow:10px 10px 0 var(--soft-orange)}.verdict small{color:#aebad0;font:750 9px ui-monospace,monospace;text-transform:uppercase}.verdict strong{display:block;margin:12px 0;color:#ff875d;font:780 24px ui-monospace,monospace}.verdict p{margin:0;color:#ccd5e3;font-size:13px;line-height:1.55}
 .heading{display:flex;align-items:end;justify-content:space-between;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--line)}.heading>div{display:flex;align-items:baseline;gap:12px}.index{color:var(--orange);font:800 10px ui-monospace,monospace}.heading h2{margin:0;font:700 36px Georgia,serif;letter-spacing:-.025em}.heading-note{max-width:520px;margin:0;color:var(--muted);font-size:13px;line-height:1.5;text-align:right}
 .motivation-grid{display:grid;grid-template-columns:repeat(3,1fr);border-left:1px solid var(--line);flex:1}.motivation{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.motivation b{color:var(--orange);font:800 10px ui-monospace,monospace}.motivation h3{margin:18px 0 8px;font:700 22px/1.15 Georgia,serif}.motivation p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
-.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line);grid-template-columns:repeat(2,1fr)}.why-routing-slide .motivation{padding:28px 30px}.why-routing-slide .motivation b{font:800 15px ui-monospace,monospace;letter-spacing:.12em}.why-routing-slide .motivation h3{margin:18px 0 12px;font:700 30px/1.18 Georgia,serif}.why-routing-slide .motivation p{margin:0;font-size:30px;line-height:1.48;color:#24324a}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
-.flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);background:var(--ink);gap:1px;flex:1}.flow div{min-height:120px;padding:16px;background:var(--paper);display:flex;flex-direction:column;gap:8px;justify-content:center;position:relative}.why-routing-slide .flow{flex:.85}.why-routing-slide .flow div{min-height:88px;padding:12px 14px}.flow div:not(:last-child):after{content:"→";position:absolute;right:-10px;z-index:2;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:50%;background:var(--paper);font-size:11px}.flow span{color:var(--orange);font:800 8px ui-monospace,monospace;text-transform:uppercase}.flow strong{font-size:12px;line-height:1.4}
+.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1;border-top:1px solid var(--line);grid-template-columns:repeat(3,1fr)}.why-routing-slide .motivation{padding:28px 30px}.why-routing-slide .motivation b{font:800 15px ui-monospace,monospace;letter-spacing:.12em}.why-routing-slide .motivation h3{margin:18px 0 12px;font:700 30px/1.18 Georgia,serif}.why-routing-slide .motivation p{margin:0;font-size:30px;line-height:1.48;color:#24324a}.why-routing-slide .routing-diagram-slide{flex:1.35}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);background:var(--ink);gap:1px;flex:1}.flow div{min-height:120px;padding:16px;background:var(--paper);display:flex;flex-direction:column;gap:8px;justify-content:center;position:relative}.flow div:not(:last-child):after{content:"→";position:absolute;right:-10px;z-index:2;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:50%;background:var(--paper);font-size:11px}.flow span{color:var(--orange);font:800 8px ui-monospace,monospace;text-transform:uppercase}.flow strong{font-size:12px;line-height:1.4}
+.routing-diagram-slide{display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);background:var(--card);padding:18px 22px;min-height:0}.routing-diagram-slide.empty{display:grid;place-items:center;color:var(--muted);font-size:14px;line-height:1.55;text-align:center}.routing-diagram-frame{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}.routing-diagram-image{display:block;width:100%;height:100%;object-fit:contain}
+.surrogate-training-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.surrogate-training-slide .mermaid-diagram-panel{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);background:var(--card);padding:14px 18px;flex:1;min-height:0}.surrogate-training-slide .mermaid-diagram-frame{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}.surrogate-training-slide .mermaid-diagram-image{display:block;width:100%;height:100%;object-fit:contain}
+.speedup-fidelity-slide{flex:.85;display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);background:var(--card);padding:18px 22px;min-height:0}.speedup-fidelity-slide.empty{display:grid;place-items:center;color:var(--muted);font-size:14px;line-height:1.55;text-align:center}.speedup-fidelity-chart{display:flex;flex-direction:column;gap:16px;flex:1;justify-content:center}.speedup-row{display:grid;grid-template-columns:220px 1fr 250px;gap:18px;align-items:center}.speedup-label{font:700 18px Georgia,serif;color:var(--ink)}.speedup-bar-track{height:28px;border:1px solid var(--line);background:var(--paper);position:relative}.speedup-bar{height:100%;min-width:2px}.speedup-meta{display:flex;flex-direction:column;gap:4px;text-align:right}.speedup-meta strong{font:760 24px ui-monospace,monospace;letter-spacing:-.04em}.speedup-meta small{color:var(--muted);font-size:11px;line-height:1.45}.speedup-caption{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:3px solid var(--ink);flex:1}.appendix-metrics{grid-template-columns:repeat(3,1fr)}.metric{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.metric:nth-child(4n){border-right:0}.appendix-metrics .metric:nth-child(3n){border-right:0}.appendix-metrics .metric:nth-child(4n){border-right:1px solid var(--line)}.metric-value{font:760 30px ui-monospace,monospace;letter-spacing:-.05em}.metric-label{margin-top:12px;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric p{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .evidence-slide{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}.evidence-slide .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.evidence-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}.evidence-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.evidence-metrics .metrics-compact{border-top-width:1px}.metrics-compact .metric{padding:12px 14px}.metrics-compact .metric-value{font-size:22px}.metrics-compact .metric-label{margin-top:8px;font-size:8px}.metrics-compact .metric p{font-size:10px;line-height:1.4}.result-grid-compact,.surrogate-grid-compact{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);flex:1}.result-grid-compact .result-card,.surrogate-grid-compact .surrogate-metric{padding:12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper)}.result-grid-compact .result-card:nth-child(2n),.surrogate-grid-compact .surrogate-metric:nth-child(2n){border-right:0}.result-grid-compact .result-card:nth-last-child(-n+2),.surrogate-grid-compact .surrogate-metric:nth-last-child(-n+2){border-bottom:0}.result-grid-compact .result-card strong{font-size:20px}.result-grid-compact .result-card span,.surrogate-grid-compact .surrogate-metric span{margin-top:8px;font-size:8px}.result-grid-compact .result-card p,.surrogate-grid-compact .surrogate-metric p{font-size:10px;line-height:1.4}.surrogate-grid-compact .surrogate-metric strong{font-size:14px}.evidence-viz .artifact-summary{border:1px solid var(--line)}.evidence-viz .artifact-summary div{padding:12px}.evidence-viz .artifact-summary strong{font-size:20px}.evidence-viz .viz-note{margin:10px 0 0;color:var(--muted);font-size:10px;line-height:1.45}.evidence-benchmarks .benchmark-table{flex:1;min-height:0}.evidence-benchmarks .benchmark-head{min-height:28px;font-size:8px}.evidence-benchmarks .benchmark-row{min-height:42px;font-size:11px}.evidence-benchmarks .paper-warning{margin-top:10px;padding:10px 12px;font-size:10px;line-height:1.45}
 .result-intro,.surrogate-header{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:end;padding:24px;background:var(--ink);color:white}.result-intro h3,.surrogate-header h3{margin:8px 0 0;font:700 24px/1.2 Georgia,serif}.result-intro p,.surrogate-header p{margin:0;color:#cbd4e3;font-size:12px;line-height:1.6}.result-grid{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid var(--line)}.result-card{padding:20px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.result-card strong{display:block;font:760 26px ui-monospace,monospace}.result-card span,.surrogate-metric span{display:block;margin-top:12px;font:800 9px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}.result-card p,.surrogate-metric p{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.55}
@@ -1602,7 +1809,7 @@ SLIDES_PAGE_TEMPLATE = """<!doctype html>
 .gap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1}.gap-card{padding:20px;background:var(--card);border:1px solid var(--line);border-top:3px solid var(--orange)}.gap-meta{display:flex;justify-content:space-between;align-items:center;color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.gap-meta b{padding:4px 7px;border-radius:999px;background:var(--soft-orange);color:var(--red)}.gap-card h3{margin:16px 0 10px;font:700 20px Georgia,serif}.gap-card p{margin:6px 0;color:var(--muted);font-size:11px;line-height:1.55}.gap-card p strong{color:var(--ink)}
 .next-steps-slide{display:flex;flex-direction:column;flex:1;min-height:0}.next-steps-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.next-steps-plan{flex:1}.next-steps-block .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.plan-compact{border-left:1px solid var(--line);flex:1;overflow:hidden;display:flex;flex-direction:column}.plan-compact.plan-full .plan-row{flex:1;grid-template-columns:64px 1fr}.plan-compact .plan-row{grid-template-columns:42px 1fr}.plan-compact .plan-index{font-size:10px}.plan-compact.plan-full .plan-index{font-size:18px}.plan-compact .plan-row>div{padding:10px 12px}.plan-compact.plan-full .plan-row>div{display:flex;align-items:center;padding:28px 32px}.plan-compact .plan-row h3{margin:4px 0 2px;font-size:13px;line-height:1.2}.plan-compact.plan-full .plan-row h3{margin:0;font-size:34px;line-height:1.25}.plan-compact .plan-row p{font-size:9px;line-height:1.4}
 .plan{border-left:1px solid var(--line);flex:1}.plan-row{display:grid;grid-template-columns:64px 1fr;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.plan-index{display:grid;place-items:center;color:var(--orange);background:#ebe7dd;font:800 12px ui-monospace,monospace}.plan-row>div{padding:18px 22px}.plan-row>div>strong{color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.plan-row h3{margin:6px 0 4px;font:700 18px Georgia,serif}.plan-row p{margin:0;color:var(--muted);font-size:11px;line-height:1.55}
-.appendix-note{margin-top:8px;padding:14px 16px;background:var(--soft-blue);color:var(--blue);font-size:12px;line-height:1.55;border:1px solid var(--line)}.state{white-space:nowrap;border-radius:999px;padding:4px 8px;font:800 8px ui-monospace,monospace;text-transform:uppercase}.state.available{color:var(--green);background:#dceee8}.state.partial{color:var(--yellow);background:#f5e7c8}.state.missing{color:var(--red);background:#f4dcd8}
+.appendix-note{margin-top:8px;padding:14px 16px;background:var(--soft-blue);color:var(--blue);font-size:12px;line-height:1.55;border:1px solid var(--line)}.slide-results-frame{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;border:1px solid var(--line);background:var(--card);padding:8px 10px;overflow:hidden}.slide-results-image{display:block;width:100%;height:100%;object-fit:contain}.state{white-space:nowrap;border-radius:999px;padding:4px 8px;font:800 8px ui-monospace,monospace;text-transform:uppercase}.state.available{color:var(--green);background:#dceee8}.state.partial{color:var(--yellow);background:#f5e7c8}.state.missing{color:var(--red);background:#f4dcd8}
 @media print{@page{size:10in 5.625in;margin:0}html,body{margin:0;padding:0;background:var(--paper);-webkit-print-color-adjust:exact;print-color-adjust:exact}.deck{display:block;gap:0;padding:0}.slide{display:block;width:10in;height:5.625in;max-height:5.625in;aspect-ratio:16/9;box-shadow:none;overflow:hidden;page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid}.slide:last-child{page-break-after:auto;break-after:auto}}
 </style>
 </head>
@@ -1759,7 +1966,7 @@ PAGE_TEMPLATE = """<!doctype html>
 <header class="topbar"><div class="brand">PROTOFUSE <b>/</b> EVALUATION</div><nav><a href="#why">Why</a><a href="#results">Results</a><a href="#gaps">Gaps</a><a href="#measure">Measure next</a></nav><div class="portable">portable interactive report</div></header>
 <section class="hero"><div class="hero-grid"><div><div class="eyebrow">motivation · evidence · next measurements · audit __AUDIT_DATE__</div><h1>Make expensive design loops faster.<br><span>Keep the full models when risk is high.</span></h1><p class="lede">Proto programs repeatedly call sequence and structure models while searching for better biological designs. ProtoFuse asks whether recurring groups of objectives can be learned jointly—then used only where a calibrated gate has evidence to trust them.</p></div><aside class="verdict"><small>Current conclusion</small><strong>PROMISING / UNPROVEN</strong><p>One narrow CPU surrogate is fast and effectively exact. No learned fusion has yet been tested against the expensive GPU parent workloads, paper-matched scores, or positive routing holdouts.</p></aside></div></section>
 
-<section class="shell" id="why"><div class="heading"><div><span class="index">01</span><h2>Why ProtoFuse</h2></div><p>The value is not merely a smaller model. It is fewer repeated parent calls across a joint objective group.</p></div><div class="motivation-grid"><article class="motivation"><b>01 · COST</b><h3>Repeated model calls dominate.</h3><p>An optimizer can score thousands of nearby proposals with the same sequence, structure, and binding models. Reusing learned local behavior could reduce time, accelerator use, and credits.</p></article><article class="motivation"><b>02 · JOIN</b><h3>Objectives travel together.</h3><p>The opportunity is to learn recurring groups—not replace one model at a time—so feature work and predictions are shared across the same optimization decision.</p></article><article class="motivation"><b>03 · TRUST</b><h3>Deferral is part of the design.</h3><p>Unmatched, uncertain, out-of-distribution, or failed cases must retain the original full-model path. Coverage matters only alongside selective risk.</p></article></div><div class="flow" aria-label="ProtoFuse routing concept"><div><span>Original</span><strong>Proto optimization program</strong></div><div><span>Detect</span><strong>Recurring expensive objective group</strong></div><div><span>Learn</span><strong>Joint calibrated surrogate</strong></div><div><span>Gate</span><strong>Check support + uncertainty</strong></div><div><span>Route</span><strong>Surrogate or full models</strong></div></div></section>
+<section class="shell" id="why"><div class="heading"><div><span class="index">01</span><h2>Why ProtoFuse</h2></div><p>The value is not merely a smaller model. It is fewer repeated parent calls across a joint objective group.</p></div><div class="motivation-grid"><article class="motivation"><b>01 · COST</b><h3>Repeated model calls dominate.</h3><p>An optimizer can score thousands of nearby proposals with the same sequence, structure, and binding models. Reusing learned local behavior could reduce time, accelerator use, and credits.</p></article><article class="motivation"><b>02 · LINKED</b><h3>Objectives travel together.</h3><p>The opportunity is to learn recurring groups—not replace one model at a time—so feature work and predictions are shared across the same optimization decision.</p></article><article class="motivation"><b>03 · OPTIMIZE</b><h3>Optimize</h3><p>Call <code>protofuse.optimize()</code> to check pairwise tool calls for an available surrogate and replace matching instances.</p></article></div><div class="flow" aria-label="ProtoFuse routing concept"><div><span>Original</span><strong>Proto optimization program</strong></div><div><span>Detect</span><strong>Recurring expensive objective group</strong></div><div><span>Learn</span><strong>Joint calibrated surrogate</strong></div><div><span>Gate</span><strong>Check support + uncertainty</strong></div><div><span>Route</span><strong>Surrogate or full models</strong></div></div></section>
 
 <section class="metrics" aria-label="Current evidence summary">__METRICS__</section>
 
@@ -1767,7 +1974,7 @@ PAGE_TEMPLATE = """<!doctype html>
 
 <section class="shell" id="gaps"><div class="heading"><div><span class="index">03</span><h2>What blocks the next claim</h2></div><p>Each gap names the evidence we have and the measurement that would close it.</p></div><div class="gap-grid">__GAP_CARDS__</div></section>
 
-<section class="shell" id="measure"><div class="heading"><div><span class="index">04</span><h2>What to measure next</h2></div><p>Three priorities before the next claim.</p></div><div class="plan">__MEASUREMENT_PLAN__</div></section>
+<section class="shell" id="measure"><div class="heading"><div><span class="index">04</span><h2>What to measure next</h2></div><p>A claim ladder from proposal-level traces to paired full-versus-fused decisions.</p></div><div class="plan">__MEASUREMENT_PLAN__</div></section>
 
 	<section class="shell" id="evidence"><div class="heading"><div><span class="index">05</span><h2>Evidence appendix</h2></div><p>Trace readiness, cohorts, checkpoints, and hashed aggregate inputs.</p></div><details class="appendix"><summary>Open trace, split, checkpoint & provenance detail</summary><div class="appendix-body"><h3>Trace coverage</h3><div class="trace-grid">__TRACE_ROWS__</div><div class="callout"><strong>Checkpointing is not tracing.</strong> Checkpoints support recovery from completed compute boundaries. Evals additionally need proposal-level teacher, surrogate, routing, latency, cost, and final-validation records.</div><h3>How trajectories become model splits</h3><div class="trajectory-guide"><article><b>01 · run</b><strong>One seed creates one trajectory</strong><p>A complete optimizer run emits many sequential proposals whose later states depend on earlier decisions.</p></article><article><b>02 · group</b><strong>Many rows remain one unit</strong><p>Objective rows align into proposal-level teacher samples, but every sample from the trajectory retains one group ID.</p></article><article><b>03 · split</b><strong>Assign complete trajectories</strong><p>Whole groups go to train, calibration, or test. Shuffling proposal rows would leak neighboring optimizer states.</p></article></div><div class="trajectory-target"><strong>Preferred narrow-workload collection:</strong> 60 train + 20 calibration + 20 untouched test trajectories, followed by roughly 50 fresh paired timing trajectories and 40–60 designed challenge cases. Proposal-row counts are larger, but the trajectory counts are the effective independent sample sizes.</div><h3>Training and held-out cohorts</h3><div class="cohorts">__COHORT_ROWS__</div><h3>Resume evidence</h3><section class="checkpoint" aria-label="Checkpoint artifacts"><div class="checkpoint-title"><span>Supplied checkpoint data</span><strong>Operational checkpoints</strong></div><div><span>Runs</span><strong>__CHECKPOINT_RUNS__</strong></div><div><span>Resume events</span><strong>__CHECKPOINT_RESUMES__</strong></div><div><span>Completed / planned units</span><strong>__CHECKPOINT_UNITS__</strong></div><div><span>Trace rows</span><strong>__CHECKPOINT_TRACE_ROWS__</strong></div></section><h3>Hashed aggregate inputs</h3><div class="source-wrap"><table class="sources"><thead><tr><th>Source artifact</th><th>SHA-256</th></tr></thead><tbody>__SOURCE_ROWS__</tbody></table></div><div class="use-note"><strong>Portable by design.</strong> Anyone with a clone and the result artifacts can regenerate this file with <code>python3 scripts/build_evaluation_report.py</code>. It opens directly in a browser; the interactions use only embedded JavaScript, with no server, login, hosted API, external font, or package install required to read it. The normalized aggregate JSON is embedded in <code>#protofuse-report-data</code>.</div></div></details></section>
 
@@ -1795,6 +2002,19 @@ def _resolve(root: Path, supplied: Path | None, default: str) -> Path:
     if supplied is None:
         return root / default
     return supplied if supplied.is_absolute() else root / supplied
+
+
+_SLIDE_ISOLATION_SCRIPT = """(activeIndex) => {
+    document.querySelectorAll('.slide').forEach((element, idx) => {
+        element.style.display = idx === activeIndex ? 'block' : 'none';
+    });
+    const deck = document.querySelector('.deck');
+    if (deck) {
+        deck.style.display = 'block';
+        deck.style.gap = '0';
+        deck.style.padding = '0';
+    }
+}"""
 
 
 def _export_slides_pdf(html_path: Path, pdf_path: Path) -> None:
@@ -1831,20 +2051,7 @@ def _export_slides_pdf(html_path: Path, pdf_path: Path) -> None:
         temp_paths: list[Path] = []
         try:
             for index in range(slide_count):
-                page.evaluate(
-                    """(activeIndex) => {
-                        document.querySelectorAll('.slide').forEach((element, idx) => {
-                            element.style.display = idx === activeIndex ? 'block' : 'none';
-                        });
-                        const deck = document.querySelector('.deck');
-                        if (deck) {
-                            deck.style.display = 'block';
-                            deck.style.gap = '0';
-                            deck.style.padding = '0';
-                        }
-                    }""",
-                    index,
-                )
+                page.evaluate(_SLIDE_ISOLATION_SCRIPT, index)
                 temp_path = pdf_path.with_suffix(f".{index:03d}.pdf")
                 page.pdf(
                     path=str(temp_path),
@@ -1874,29 +2081,97 @@ def _export_slides_pdf(html_path: Path, pdf_path: Path) -> None:
                 temp_path.unlink(missing_ok=True)
 
 
+def _export_slides_pptx(html_path: Path, pptx_path: Path) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise SystemExit(
+            "PPTX export requires playwright. Install with: "
+            "uv sync --extra pdf && playwright install chromium"
+        ) from exc
+
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches
+    except ImportError as exc:
+        raise SystemExit(
+            "PPTX export requires python-pptx. Install with: uv sync --extra pdf"
+        ) from exc
+
+    html_path = html_path.resolve()
+    if not html_path.is_file():
+        raise SystemExit(f"slide deck HTML not found: {html_path}")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1920, "height": 1080})
+        page.goto(html_path.as_uri(), wait_until="networkidle")
+        slide_count = page.locator(".slide").count()
+        if slide_count == 0:
+            browser.close()
+            raise SystemExit("slide deck HTML contains no .slide frames")
+
+        screenshots: list[bytes] = []
+        for index in range(slide_count):
+            page.evaluate(_SLIDE_ISOLATION_SCRIPT, index)
+            screenshots.append(page.locator(".slide").nth(index).screenshot(type="png"))
+        browser.close()
+
+    presentation = Presentation()
+    presentation.slide_width = Inches(10)
+    presentation.slide_height = Inches(5.625)
+    blank_layout = presentation.slide_layouts[6]
+
+    for image_bytes in screenshots:
+        slide = presentation.slides.add_slide(blank_layout)
+        slide.shapes.add_picture(
+            io.BytesIO(image_bytes),
+            0,
+            0,
+            width=presentation.slide_width,
+            height=presentation.slide_height,
+        )
+
+    pptx_path.parent.mkdir(parents=True, exist_ok=True)
+    presentation.save(str(pptx_path))
+
+
 def _resolve_slide_outputs(
     root: Path,
     output: Path | None,
     *,
     write_html: bool,
     write_pdf: bool,
-) -> tuple[Path | None, Path | None]:
+    write_pptx: bool,
+) -> tuple[Path | None, Path | None, Path | None]:
     default_html = root / "reports" / "protofuse-evaluation-slides.html"
     default_pdf = root / "reports" / "protofuse-evaluation-slides.pdf"
+    default_pptx = root / "reports" / "protofuse-evaluation-slides.pptx"
+    html_path = default_html if write_html else None
+    pdf_path = default_pdf if write_pdf else None
+    pptx_path = default_pptx if write_pptx else None
     if output is None:
-        return (default_html if write_html else None, default_pdf if write_pdf else None)
+        return html_path, pdf_path, pptx_path
+
     resolved = output if output.is_absolute() else root / output
-    if write_html and write_pdf:
-        if resolved.suffix.lower() == ".pdf":
-            return default_html, resolved
-        if resolved.suffix.lower() == ".html":
-            return resolved, default_pdf
-        return resolved.with_suffix(".html"), resolved.with_suffix(".pdf")
-    if write_pdf:
-        pdf_path = resolved if resolved.suffix.lower() == ".pdf" else resolved.with_suffix(".pdf")
-        return None, pdf_path
-    html_path = resolved if resolved.suffix.lower() == ".html" else resolved.with_suffix(".html")
-    return html_path, None
+    suffix = resolved.suffix.lower()
+    enabled = sum((write_html, write_pdf, write_pptx))
+    if enabled > 1:
+        if write_html and suffix == ".html":
+            html_path = resolved
+        elif write_pdf and suffix == ".pdf":
+            pdf_path = resolved
+        elif write_pptx and suffix == ".pptx":
+            pptx_path = resolved
+        return html_path, pdf_path, pptx_path
+
+    if write_html:
+        html_path = resolved if suffix == ".html" else resolved.with_suffix(".html")
+    elif write_pdf:
+        pdf_path = resolved if suffix == ".pdf" else resolved.with_suffix(".pdf")
+    elif write_pptx:
+        pptx_path = resolved if suffix == ".pptx" else resolved.with_suffix(".pptx")
+    return html_path, pdf_path, pptx_path
 
 
 def main() -> int:
@@ -1923,13 +2198,19 @@ def main() -> int:
         action="store_true",
         help="write a 16:9 widescreen slide deck PDF (one page per slide)",
     )
+    parser.add_argument(
+        "--pptx",
+        action="store_true",
+        help="write a 16:9 widescreen slide deck PowerPoint file for Google Drive import",
+    )
     args = parser.parse_args()
     root = args.repo_root.resolve()
     analysis_dir = _resolve(root, args.analysis_dir, "data/analysis")
     checkpoint_dir = _resolve(root, args.checkpoint_dir, "data/runs/checkpoints")
+    slide_export = args.slides or args.pdf or args.pptx
     output = (
         args.output
-        if args.slides or args.pdf
+        if slide_export
         else _resolve(root, args.output, "reports/protofuse-evaluation.html")
     )
     required = [
@@ -1945,24 +2226,24 @@ def main() -> int:
         analysis_dir=analysis_dir,
         checkpoint_dir=checkpoint_dir,
     )
-    if args.slides or args.pdf:
-        slides_html = render_slides_html(data)
-        html_output, pdf_output = _resolve_slide_outputs(
+    if slide_export:
+        slides_html = render_slides_html(data, root=root)
+        html_output, pdf_output, pptx_output = _resolve_slide_outputs(
             root,
             output,
             write_html=args.slides,
             write_pdf=args.pdf,
+            write_pptx=args.pptx,
         )
         temp_html: Path | None = None
-        html_for_pdf: Path | None = None
+        html_for_render: Path | None = None
         if html_output is not None:
             html_output.parent.mkdir(parents=True, exist_ok=True)
             html_output.write_text(slides_html, encoding="utf-8")
             print(f"wrote {html_output}")
-            html_for_pdf = html_output
-        if pdf_output is not None:
-            pdf_output.parent.mkdir(parents=True, exist_ok=True)
-            if html_for_pdf is None:
+            html_for_render = html_output
+        if pdf_output is not None or pptx_output is not None:
+            if html_for_render is None:
                 with tempfile.NamedTemporaryFile(
                     mode="w",
                     suffix=".html",
@@ -1971,9 +2252,13 @@ def main() -> int:
                 ) as temp_file:
                     temp_file.write(slides_html)
                     temp_html = Path(temp_file.name)
-                html_for_pdf = temp_html
-            _export_slides_pdf(html_for_pdf, pdf_output)
-            print(f"wrote {pdf_output}")
+                html_for_render = temp_html
+            if pdf_output is not None:
+                _export_slides_pdf(html_for_render, pdf_output)
+                print(f"wrote {pdf_output}")
+            if pptx_output is not None:
+                _export_slides_pptx(html_for_render, pptx_output)
+                print(f"wrote {pptx_output}")
             if temp_html is not None:
                 temp_html.unlink(missing_ok=True)
     else:

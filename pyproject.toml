@@ -36,6 +36,7 @@ notebook = [
 pdf = [
   "playwright>=1.49,<2",
   "pypdf>=5,<7",
+  "python-pptx>=1.0,<2",
 ]
 
 [project.scripts]

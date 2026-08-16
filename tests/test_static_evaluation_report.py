@@ -267,7 +267,7 @@ def test_slides_deck_is_self_contained_and_16_9(tmp_path: Path) -> None:
     assert "1080px" in report
     assert "aspect-ratio:16/9" in report.replace(" ", "")
     assert "Why ProtoFuse" in report
-    assert "Routing concept" in report
+    assert "Speed–fidelity tradeoff" in report
     assert "Paper-based benchmarking for common paired tool calls" in report
     assert "Current evidence summary" in report
     assert "What the pilot establishes" in report
@@ -329,6 +329,52 @@ def test_pdf_export_requires_playwright_or_writes_pdf(tmp_path: Path) -> None:
 
     assert output.is_file()
     assert output.read_bytes()[:4] == b"%PDF"
+
+
+def test_pptx_export_requires_playwright_or_writes_pptx(tmp_path: Path) -> None:
+    analysis = tmp_path / "data" / "analysis"
+    _write_json(
+        analysis / "modal_smoke_summary.json",
+        {"recorded_at": "2026-08-15", "runs": []},
+    )
+    _write_json(
+        analysis / "custom-egfp-lung" / "surrogate_pilot_report.json",
+        {
+            "teacher_samples": 1,
+            "splits": {"train": 1, "calibration": 0, "audit": 0},
+            "calibration": {},
+            "audit": {},
+            "support": {"challenge_accepted": {}, "challenge_scores": {}},
+        },
+    )
+    _write_json(
+        tmp_path / "data" / "visualizations" / "manifest.json",
+        {"candidates": [], "structures": [], "molecules": [], "gaps": []},
+    )
+
+    output = tmp_path / "evaluation-slides.pptx"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--repo-root",
+            str(tmp_path),
+            "--output",
+            str(output),
+            "--pptx",
+            "--strict",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    if completed.returncode != 0:
+        assert "playwright" in completed.stderr.lower() or "python-pptx" in completed.stderr.lower()
+        return
+
+    assert output.is_file()
+    assert output.read_bytes()[:2] == b"PK"
 
 
 def test_static_report_strict_mode_rejects_missing_primary_results(tmp_path: Path) -> None:

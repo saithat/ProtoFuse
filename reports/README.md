@@ -85,3 +85,24 @@ python3 scripts/build_evaluation_report.py --strict --slides --pdf
 
 When both `--slides` and `--pdf` are set, `--output` applies to the format matching its extension
 (`.html` or `.pdf`); the other format uses its default path.
+
+## 16:9 slide deck PowerPoint
+
+Export the same widescreen frames as a `.pptx` file for upload to Google Drive:
+
+```bash
+uv sync --extra pdf
+playwright install chromium
+python3 scripts/build_evaluation_report.py --strict --pptx
+```
+
+Default output: `reports/protofuse-evaluation-slides.pptx`. Upload to Drive and open with Google Slides.
+
+Combine slide export flags as needed:
+
+```bash
+python3 scripts/build_evaluation_report.py --strict --slides --pdf --pptx
+```
+
+When multiple slide export flags are set, `--output` applies to the format matching its extension
+(`.html`, `.pdf`, or `.pptx`); the other formats use their default paths.

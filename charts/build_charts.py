@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 from pathlib import Path
@@ -46,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT_DIR,
         help="Destination for PNG, SVG, and source-data.json files.",
+    )
+    parser.add_argument(
+        "--slide-results-only",
+        action="store_true",
+        help="Render only charts/slide-results.csv into 04-slide-results.{png,svg}.",
     )
     return parser.parse_args()
 
@@ -283,6 +289,178 @@ def build_routing_composition(routing_rows: list[dict[str, Any]], output_dir: Pa
     save_figure(fig, output_dir, "02-routing-composition")
 
 
+SLIDE_RESULTS_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("headline_summary", "Headline summary"),
+    ("external_audit", "External audit"),
+    ("custom_validation_funnel", "CUSTOM validation funnel"),
+    ("custom_confirmation_routing", "CUSTOM confirmation routing"),
+    ("speed_fidelity", "Speed and fidelity"),
+)
+
+SLIDE_RESULTS_COLUMNS: tuple[tuple[str, str, float], ...] = (
+    ("item", "Item", 0.22),
+    ("scale", "Scale", 0.16),
+    ("coverage_percent", "Coverage", 0.08),
+    ("speedup", "Speedup", 0.08),
+    ("fidelity", "Fidelity", 0.28),
+    ("status", "Status", 0.18),
+)
+
+STATUS_COLORS = {
+    "PASS": "#059669",
+    "FAIL": "#B63A32",
+    "REJECTED": "#B63A32",
+    "REJECTED SAFELY": "#B63A32",
+    "ACCEPTED": "#0F766E",
+    "FALLBACK": "#58677C",
+    "EXACT CLOSURE": "#2563EB",
+    "COMPARATOR": "#2563EB",
+    "NOT ACCEPTED": "#D97706",
+    "PRIMARY POSITIVE RESULT": "#059669",
+    "NEGATIVE SAFETY RESULT": "#B63A32",
+    "NARROWED SCOPE": "#D97706",
+    "SELECTED": "#0F766E",
+}
+
+
+def _format_slide_results_cell(column: str, value: str) -> str:
+    if not value:
+        return "—"
+    if column == "coverage_percent":
+        try:
+            return f"{float(value):.1f}%"
+        except ValueError:
+            return value
+    if column == "speedup":
+        try:
+            number = float(value)
+            return f"{number:.2f}x"
+        except ValueError:
+            return value
+    return value
+
+
+def _wrap_slide_results_text(text: str, *, width: int) -> str:
+    words = text.split()
+    if not words:
+        return "—"
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if len(candidate) <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return "\n".join(lines)
+
+
+def build_slide_results(csv_path: Path, output_dir: Path) -> None:
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        raise ValueError(f"No rows found in {csv_path}")
+
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["table"]), []).append(row)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.9, bottom=0.01)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    column_labels = [label for _, label, _ in SLIDE_RESULTS_COLUMNS]
+    column_widths = [width for _, _, width in SLIDE_RESULTS_COLUMNS]
+    row_height = 0.018
+    section_gap = 0.006
+    header_height = 0.026
+    y_cursor = 0.865
+
+    fig.text(
+        0.03,
+        0.925,
+        "Evaluation results at a glance",
+        fontsize=24,
+        fontweight="bold",
+        color=COLORS["ink"],
+        ha="left",
+    )
+    fig.text(
+        0.03,
+        0.895,
+        "Condensed from charts/slide-results.csv; full provenance paths remain in the source file.",
+        fontsize=10,
+        color=COLORS["muted"],
+        ha="left",
+    )
+
+    for section_key, section_title in SLIDE_RESULTS_SECTIONS:
+        section_rows = grouped.get(section_key, [])
+        if not section_rows:
+            continue
+
+        table_height = header_height + row_height * len(section_rows)
+        y_cursor -= section_gap
+        fig.text(
+            0.03,
+            y_cursor,
+            section_title.upper(),
+            fontsize=8.5,
+            fontweight="bold",
+            color="#D97706" if section_key == "headline_summary" else COLORS["muted"],
+            ha="left",
+            va="top",
+        )
+        y_cursor -= 0.006
+
+        table_rows: list[list[str]] = []
+        for row in section_rows:
+            table_rows.append(
+                [
+                    _wrap_slide_results_text(str(row.get(column, "")), width=30)
+                    if column in {"item", "fidelity"}
+                    else _format_slide_results_cell(column, str(row.get(column, "")))
+                    for column, _, _ in SLIDE_RESULTS_COLUMNS
+                ]
+            )
+
+        table = ax.table(
+            cellText=table_rows,
+            colLabels=column_labels,
+            colWidths=column_widths,
+            cellLoc="left",
+            colLoc="left",
+            bbox=[0.03, y_cursor - table_height, 0.94, table_height],
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(6.8)
+        table.scale(1, 1.0)
+
+        for column_index in range(len(column_labels)):
+            header = table[(0, column_index)]
+            header.set_facecolor("#E8EEF5")
+            header.set_text_props(weight="bold", color=COLORS["ink"], fontsize=6.8)
+            header.set_edgecolor(COLORS["grid"])
+
+        for row_index, source_row in enumerate(section_rows, start=1):
+            for column_index in range(len(column_labels)):
+                cell = table[(row_index, column_index)]
+                cell.set_edgecolor(COLORS["grid"])
+                cell.set_facecolor("#FFFFFF" if row_index % 2 else "#FFFDF8")
+                if column_index == len(column_labels) - 1:
+                    status = str(source_row.get("status", ""))
+                    color = STATUS_COLORS.get(status, COLORS["ink"])
+                    cell.set_text_props(color=color, weight="bold", fontsize=6.8)
+
+        y_cursor -= table_height + 0.008
+
+    save_figure(fig, output_dir, "04-slide-results")
+
+
 def build_audit_gates(audit: dict[str, Any], output_dir: Path) -> None:
     fig, axes = plt.subplots(1, 3, figsize=(12, 6.75))
     fig.subplots_adjust(left=0.06, right=0.98, top=0.76, bottom=0.23, wspace=0.08)
@@ -516,8 +694,13 @@ def assemble_source_data(analysis_root: Path) -> dict[str, Any]:
 def main() -> None:
     args = parse_args()
     style()
-    source_data = assemble_source_data(args.analysis_root)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    slide_results_csv = args.output_dir / "slide-results.csv"
+    if args.slide_results_only:
+        build_slide_results(slide_results_csv, args.output_dir)
+        return
+
+    source_data = assemble_source_data(args.analysis_root)
     with (args.output_dir / "source-data.json").open("w", encoding="utf-8") as handle:
         json.dump(source_data, handle, indent=2)
         handle.write("\n")
@@ -525,6 +708,8 @@ def main() -> None:
     build_speedup_fidelity(source_data["strategies"], args.output_dir)
     build_routing_composition(source_data["routing"], args.output_dir)
     build_audit_gates(source_data["custom_frozen_audit"], args.output_dir)
+    if slide_results_csv.is_file():
+        build_slide_results(slide_results_csv, args.output_dir)
 
 
 if __name__ == "__main__":
