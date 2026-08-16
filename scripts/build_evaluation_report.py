@@ -1451,20 +1451,13 @@ def render_slides_html(data: dict[str, Any]) -> str:
 
     slides: list[str] = [
         (
-            '<div class="hero-grid">'
-            f'<div><div class="eyebrow">motivation · evidence · next measurements · audit '
-            f'{_escape(data["audit_date"])}</div>'
-            "<h1>Make expensive design loops faster.<br>"
-            "<span>Keep the full models when risk is high.</span></h1>"
-            "<p class=\"lede\">Proto programs repeatedly call sequence and structure models while "
+            '<div class="title-slide">'
+            "<h1>ProtoFuse</h1>"
+            '<p class="title-lede">Proto programs repeatedly call sequence and structure models while '
             "searching for better biological designs. ProtoFuse asks whether recurring groups of "
-            "objectives can be learned jointly—then used only where a calibrated gate has evidence "
-            "to trust them.</p></div>"
-            '<aside class="verdict"><small>Current conclusion</small>'
-            "<strong>PROMISING / UNPROVEN</strong>"
-            "<p>One narrow CPU surrogate is fast and effectively exact. No learned fusion has yet "
-            "been tested against the expensive GPU parent workloads, paper-matched scores, or "
-            "positive routing holdouts.</p></aside></div>"
+            "objectives can be learned jointly.</p>"
+            '<p class="title-authors">Sai Thatigotla and Philip Thomas</p>'
+            "</div>"
         ),
         _slide_heading(
             "01",
@@ -1478,11 +1471,7 @@ def render_slides_html(data: dict[str, Any]) -> str:
         "</article><article class=\"motivation\"><b>02 · JOIN</b>"
         "<h3>Objectives travel together.</h3>"
         "<p>The opportunity is to learn recurring groups—not replace one model at a time—so feature work "
-        "and predictions are shared across the same optimization decision.</p></article>"
-        '<article class="motivation"><b>03 · TRUST</b>'
-        "<h3>Deferral is part of the design.</h3>"
-        "<p>Unmatched, uncertain, out-of-distribution, or failed cases must retain the original full-model path. "
-        "Coverage matters only alongside selective risk.</p></article></div>"
+        "and predictions are shared across the same optimization decision.</p></article></div>"
         '<p class="flow-label">Routing concept</p>'
         '<div class="flow" aria-label="ProtoFuse routing concept"><div><span>Original</span>'
         "<strong>Proto optimization program</strong></div><div><span>Detect</span>"
@@ -1561,11 +1550,11 @@ SLIDES_PAGE_TEMPLATE = """<!doctype html>
 .slide{width:var(--slide-w);height:var(--slide-h);aspect-ratio:16/9;overflow:hidden;background:var(--paper);position:relative;box-shadow:0 8px 32px rgba(20,35,61,.12)}.slide-inner{padding:var(--slide-py) var(--slide-px);height:100%;display:flex;flex-direction:column;gap:20px}
 .slide-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font:700 10px ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
 .eyebrow,.kicker{color:var(--orange);font:800 10px ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;align-items:end;flex:1}.hero-grid h1{margin:16px 0 0;font:700 52px/1.02 Georgia,serif;letter-spacing:-.04em}.hero-grid h1 span{color:var(--orange)}.lede{margin:20px 0 0;color:var(--muted);font-size:18px;line-height:1.65;max-width:920px}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;align-items:end;flex:1}.hero-grid h1{margin:16px 0 0;font:700 52px/1.02 Georgia,serif;letter-spacing:-.04em}.hero-grid h1 span{color:var(--orange)}.title-slide{flex:1;display:flex;flex-direction:column;justify-content:center;gap:44px;max-width:1180px;padding-top:12px}.title-slide h1{margin:0;font:700 136px/.94 Georgia,serif;letter-spacing:-.05em;color:var(--ink)}.title-lede{margin:0;max-width:1040px;font-size:34px;line-height:1.58;font-weight:500;color:#24324a}.title-authors{margin:0;padding-top:28px;border-top:2px solid var(--line);font:750 22px ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--orange)}.lede{margin:20px 0 0;color:var(--muted);font-size:18px;line-height:1.65;max-width:920px}
 .verdict{padding:24px;background:var(--ink);color:white;border-radius:11px 11px 11px 2px;box-shadow:10px 10px 0 var(--soft-orange)}.verdict small{color:#aebad0;font:750 9px ui-monospace,monospace;text-transform:uppercase}.verdict strong{display:block;margin:12px 0;color:#ff875d;font:780 24px ui-monospace,monospace}.verdict p{margin:0;color:#ccd5e3;font-size:13px;line-height:1.55}
 .heading{display:flex;align-items:end;justify-content:space-between;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--line)}.heading>div{display:flex;align-items:baseline;gap:12px}.index{color:var(--orange);font:800 10px ui-monospace,monospace}.heading h2{margin:0;font:700 36px Georgia,serif;letter-spacing:-.025em}.heading-note{max-width:520px;margin:0;color:var(--muted);font-size:13px;line-height:1.5;text-align:right}
 .motivation-grid{display:grid;grid-template-columns:repeat(3,1fr);border-left:1px solid var(--line);flex:1}.motivation{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.motivation b{color:var(--orange);font:800 10px ui-monospace,monospace}.motivation h3{margin:18px 0 8px;font:700 22px/1.15 Georgia,serif}.motivation p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
-.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line)}.why-routing-slide .motivation{padding:16px 18px}.why-routing-slide .motivation h3{margin:12px 0 6px;font-size:18px}.why-routing-slide .motivation p{font-size:12px;line-height:1.5}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line);grid-template-columns:repeat(2,1fr)}.why-routing-slide .motivation{padding:16px 18px}.why-routing-slide .motivation h3{margin:12px 0 6px;font-size:18px}.why-routing-slide .motivation p{font-size:12px;line-height:1.5}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
 .flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);background:var(--ink);gap:1px;flex:1}.flow div{min-height:120px;padding:16px;background:var(--paper);display:flex;flex-direction:column;gap:8px;justify-content:center;position:relative}.why-routing-slide .flow{flex:.85}.why-routing-slide .flow div{min-height:88px;padding:12px 14px}.flow div:not(:last-child):after{content:"→";position:absolute;right:-10px;z-index:2;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:50%;background:var(--paper);font-size:11px}.flow span{color:var(--orange);font:800 8px ui-monospace,monospace;text-transform:uppercase}.flow strong{font-size:12px;line-height:1.4}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:3px solid var(--ink);flex:1}.appendix-metrics{grid-template-columns:repeat(3,1fr)}.metric{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.metric:nth-child(4n){border-right:0}.appendix-metrics .metric:nth-child(3n){border-right:0}.appendix-metrics .metric:nth-child(4n){border-right:1px solid var(--line)}.metric-value{font:760 30px ui-monospace,monospace;letter-spacing:-.05em}.metric-label{margin-top:12px;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric p{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .evidence-slide{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}.evidence-slide .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.evidence-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}.evidence-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.evidence-metrics .metrics-compact{border-top-width:1px}.metrics-compact .metric{padding:12px 14px}.metrics-compact .metric-value{font-size:22px}.metrics-compact .metric-label{margin-top:8px;font-size:8px}.metrics-compact .metric p{font-size:10px;line-height:1.4}.result-grid-compact,.surrogate-grid-compact{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);flex:1}.result-grid-compact .result-card,.surrogate-grid-compact .surrogate-metric{padding:12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper)}.result-grid-compact .result-card:nth-child(2n),.surrogate-grid-compact .surrogate-metric:nth-child(2n){border-right:0}.result-grid-compact .result-card:nth-last-child(-n+2),.surrogate-grid-compact .surrogate-metric:nth-last-child(-n+2){border-bottom:0}.result-grid-compact .result-card strong{font-size:20px}.result-grid-compact .result-card span,.surrogate-grid-compact .surrogate-metric span{margin-top:8px;font-size:8px}.result-grid-compact .result-card p,.surrogate-grid-compact .surrogate-metric p{font-size:10px;line-height:1.4}.surrogate-grid-compact .surrogate-metric strong{font-size:14px}.evidence-viz .artifact-summary{border:1px solid var(--line)}.evidence-viz .artifact-summary div{padding:12px}.evidence-viz .artifact-summary strong{font-size:20px}.evidence-viz .viz-note{margin:10px 0 0;color:var(--muted);font-size:10px;line-height:1.45}.evidence-benchmarks .benchmark-table{flex:1;min-height:0}.evidence-benchmarks .benchmark-head{min-height:28px;font-size:8px}.evidence-benchmarks .benchmark-row{min-height:42px;font-size:11px}.evidence-benchmarks .paper-warning{margin-top:10px;padding:10px 12px;font-size:10px;line-height:1.45}
