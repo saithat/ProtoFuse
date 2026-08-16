@@ -212,7 +212,7 @@ function SystemFlowExplainer() {
 export function EvaluationDashboard() {
   const [view, setView] = useState<View>("readout");
   const [runFilter, setRunFilter] = useState<RunFilter>("all");
-  const [expandedRun, setExpandedRun] = useState<string | null>("custom-full");
+  const [expandedRun, setExpandedRun] = useState<string | null>("custom-adaptive-confirmation");
 
   const visibleRuns = useMemo(
     () => benchmarks.filter((run) => runFilter === "all" || run.status === runFilter),
@@ -251,8 +251,8 @@ export function EvaluationDashboard() {
         <div className="eyebrow"><FlaskConical size={15} /> evaluation readiness / current repository state</div>
         <div className="hero-grid">
           <div>
-            <h1>We can measure speed.<br /><span>We cannot yet claim fusion.</span></h1>
-            <p className="lede">The full-model baselines run, and supported optimizer units can resume from crash-safe checkpoints. One local ten-trajectory diagnostic preserved final accuracy but produced no meaningful speedup. The other workloads still lack teacher traces, frozen external tests, registered surrogates, and paired learned-fusion runs.</p>
+            <h1>One narrow path is confirmed.<br /><span>Broad fusion is not.</span></h1>
+            <p className="lede">CUSTOM’s adaptive MFE path passed four fresh counterbalanced pairs at 9.72× net speedup, with identical candidate pools, exact selected outputs, and 100% top-10 recall. The joint LigandMPNN–ESMFold and scaled Evo2 surrogates failed their frozen audits, so those routes remain safely deferred rather than promoted.</p>
             <div className="hero-actions">
               <button className="primary-action" onClick={() => scrollTo("benchmarks")}>Inspect run evidence <ArrowRight size={16} /></button>
               <button className="text-action" onClick={() => scrollTo("eval-plan")}>See the eval contract</button>
@@ -260,45 +260,45 @@ export function EvaluationDashboard() {
           </div>
           <aside className="verdict-card">
             <div className="verdict-label">Current verdict</div>
-            <div className="verdict-value">NOT READY</div>
-            <p>for a full multi-program fusion claim</p>
+            <div className="verdict-value confirmed">NARROW PASS</div>
+            <p>CUSTOM MFE confirmation passed; cross-program approval did not</p>
             <div className="verdict-rule" />
-            <div className="verdict-detail"><Check size={15} /> full-model smoke baselines exist</div>
-            <div className="verdict-detail"><Check size={15} /> optimizer checkpoints verified</div>
-            <div className="verdict-detail warning"><CircleAlert size={15} /> fused GPU comparisons do not</div>
+            <div className="verdict-detail"><Check size={15} /> 4 / 4 fresh CUSTOM pairs passed</div>
+            <div className="verdict-detail"><Check size={15} /> exact top-10 recovery</div>
+            <div className="verdict-detail warning"><CircleAlert size={15} /> 2 joint surrogate audits failed</div>
           </aside>
         </div>
       </section>
 
       <section className="metric-strip" id="readout" aria-label="Current audit metrics">
-        <article title="One unreviewed tissue-only linear artifact was used for the paired local diagnostic.">
-          <div className="metric-icon"><Sparkles size={18} /></div>
-          <div className="metric-value">1 <span>/ 0</span></div>
-          <div className="metric-name">experimental / registered surrogates</div>
+        <article title="Net end-to-end speedup across the four fresh CUSTOM confirmation pairs.">
+          <div className="metric-icon"><Gauge size={18} /></div>
+          <div className="metric-value">9.72<span>×</span></div>
+          <div className="metric-name">CUSTOM confirmation speedup</div>
         </article>
-        <article title="Linear, tree, and small neural families were compared on a two-output development cohort; no joint winner was selected.">
+        <article title="Every fresh counterbalanced pair completed with identical ordered candidate-pool hashes and exact top-10 recovery.">
           <div className="metric-icon"><GitCompareArrows size={18} /></div>
-          <div className="metric-value">1 <span>× 2</span></div>
-          <div className="metric-name">joint pilot × objectives</div>
+          <div className="metric-value">4 <span>/ 4</span></div>
+          <div className="metric-name">fresh paired runs passed</div>
         </article>
-        <article title="The next protocol calls for 40–60 designed challenge cases; that cohort has not been collected.">
+        <article title="3,844 of 4,000 CUSTOM candidates used sampled MFE; 156 routed to exact MFE through uncertainty, boundary, or tail recovery.">
           <div className="metric-icon"><ShieldCheck size={18} /></div>
-          <div className="metric-value">0 <span>/ 40–60</span></div>
-          <div className="metric-name">collected / planned challenges</div>
+          <div className="metric-value">96.1<span>%</span></div>
+          <div className="metric-name">selective surrogate coverage</div>
         </article>
-        <article title="Constraint entries with at least one evidence record across all methodology fixtures.">
+        <article title="The LigandMPNN–ESMFold and scaled Evo2 artifacts both failed their frozen external approval audits.">
           <div className="metric-icon"><Database size={18} /></div>
-          <div className="metric-value">32 <span>/ 62</span></div>
-          <div className="metric-name">constraints with evidence</div>
+          <div className="metric-value">2</div>
+          <div className="metric-name">joint surrogate audits failed</div>
         </article>
       </section>
 
-      <section className="checkpoint-band" aria-label="Checkpoint readiness">
-        <div className="checkpoint-title"><HardDriveDownload size={20} /><div><span>RESUME SAFETY</span><strong>Checkpointing is implemented and tested</strong></div></div>
-        <div><span>Save boundary</span><strong>completed step / paid batch</strong></div>
-        <div><span>Representative interruption</span><strong>2 saved · 3 resumed · 0 repeated</strong></div>
-        <div><span>Coverage</span><strong>MCMC · cycling · rejection</strong></div>
-        <div><span>Changed program</span><strong>fails closed</strong></div>
+      <section className="checkpoint-band" aria-label="Fresh confirmation result">
+        <div className="checkpoint-title"><ShieldCheck size={20} /><div><span>FRESH CONFIRMATION</span><strong>Adaptive CUSTOM MFE passed</strong></div></div>
+        <div><span>Candidate pools</span><strong>4 / 4 identical</strong></div>
+        <div><span>Top-10 recall</span><strong>1.00 mean · 1.00 minimum</strong></div>
+        <div><span>Exact recovery</span><strong>156 routed candidates</strong></div>
+        <div><span>Promotion</span><strong>review gates remain</strong></div>
       </section>
 
       <SystemFlowExplainer />
@@ -317,13 +317,13 @@ export function EvaluationDashboard() {
             </article>
           ))}
         </div>
-        <div className="callout"><CircleAlert size={18} /><p><strong>Bottom line:</strong> CUSTOM now has one teacher trace and one aggregate paired report. The other workloads still lack those records, and surrogate predictions, routing decisions, and parent recovery are not yet joined into one durable proposal-level campaign trace.</p></div>
+        <div className="callout"><CircleAlert size={18} /><p><strong>Bottom line:</strong> the evidence now supports one narrow CUSTOM MFE result. LigandMPNN–ESMFold produced a useful exploratory timing pair but failed its approval audit; Evo2’s independent audit routed every proposal back to the parent, demonstrating fail-closed behavior rather than usable coverage.</p></div>
       </section>
 
       <section className="section-shell split-section">
         <div className="section-heading">
-          <div><span className="section-index">02</span><h2>Training & held-out sets</h2></div>
-          <p>The current ten-trajectory pilot can reject weak ideas, but it cannot establish generalization.</p>
+          <div><span className="section-index">02</span><h2>Evidence cohorts</h2></div>
+          <p>Development, frozen audit, and paired confirmation stay separate.</p>
         </div>
         <div className="trajectory-guide" aria-label="How optimizer trajectories become model splits">
           <article>
@@ -345,22 +345,22 @@ export function EvaluationDashboard() {
           </article>
         </div>
         <div className="trajectory-target">
-          <div><span>PREFERRED COLLECTION</span><strong>60 train + 20 calibration + 20 untouched test trajectories</strong></div>
-          <p>At 20 proposals per run this is about 1,200/400/400 model samples, but the independent counts remain 60/20/20. Keep roughly 50 additional trajectories for paired timing and 40–60 designed challenge cases.</p>
+          <div><span>APPROVAL RULE</span><strong>Freeze the model before external audit; freeze the policy before confirmation</strong></div>
+          <p>CUSTOM’s successful result followed this separation. LigandMPNN–ESMFold and Evo2 remain negative results because their independent audits missed the predeclared accuracy or coverage gates.</p>
         </div>
         <div className="training-layout">
           <article className="method-card">
-            <div className="card-kicker">CURRENT DEVELOPMENT PILOT</div>
-            <h3>CUSTOM trajectory split</h3>
-            <p>Ten seeded runs produced 200 aligned proposal states. Linear, tree, and small neural models saw the same grouped split.</p>
+            <div className="card-kicker">CURRENT CONFIRMATION</div>
+            <h3>CUSTOM adaptive MFE</h3>
+            <p>Four previously unopened seeds produced 4,000 same-pool candidates and four counterbalanced full-versus-adaptive pairs. Every frozen confirmation gate passed.</p>
             <div className="method-flow">
-              <span>10 trajectories</span><ArrowRight size={15} /><span>200 states</span><ArrowRight size={15} /><span>6 / 2 / 2 groups</span>
+              <span>4 fresh pairs</span><ArrowRight size={15} /><span>4,000 candidates</span><ArrowRight size={15} /><span>4 / 4 exact top ten</span>
             </div>
             <dl>
-              <div><dt>Split unit</dt><dd>complete trajectory</dd></div>
-              <div><dt>Group allocation</dt><dd>60% / 20% / 20%</dd></div>
-              <div><dt>Effective independent N</dt><dd>6 / 2 / 2</dd></div>
-              <div><dt>Artifact decision</dt><dd>unreviewed · rejected</dd></div>
+              <div><dt>Pairing unit</dt><dd>complete candidate pool</dd></div>
+              <div><dt>Arm order</dt><dd>counterbalanced</dd></div>
+              <div><dt>Net speedup</dt><dd>9.72×</dd></div>
+              <div><dt>Experiment status</dt><dd>fresh confirmation pass</dd></div>
             </dl>
           </article>
           <div className="cohort-table" role="table" aria-label="Held-out evaluation cohorts">
@@ -372,19 +372,19 @@ export function EvaluationDashboard() {
             ))}
           </div>
         </div>
-        <p className="split-warning"><strong>Untouched means untouched:</strong> because the current audit results were inspected while comparing model families, those two trajectories are now development data. A final claim needs a newly frozen external test cohort.</p>
+        <p className="split-warning"><strong>Confirmation is not promotion:</strong> the adaptive bundle remains an experimental result until the scientific-fairness and challenge-cohort review gates are closed. Failed LigandMPNN–ESMFold and Evo2 audits are retained as negative evidence, never reinterpreted as successful fusion.</p>
       </section>
 
       <section className="section-shell" id="benchmarks">
         <div className="section-heading benchmark-heading">
           <div><span className="section-index">03</span><h2>Full vs fused evidence</h2></div>
           <div className="filter-group" aria-label="Filter benchmark runs">
-            {(["all", "paired", "baseline", "missing"] as RunFilter[]).map((filter) => (
+            {(["all", "confirmed", "paired", "baseline", "missing"] as RunFilter[]).map((filter) => (
               <button key={filter} className={runFilter === filter ? "active" : ""} onClick={() => setRunFilter(filter)}>{filter}</button>
             ))}
           </div>
         </div>
-        <div className="paper-warning"><Target size={18} /><div><strong>Paper parity is not established.</strong><span>Three of 15 fixtures point to paper-specific local text, nine use the internal candidate-workflow document, and three declare no local source. Current “final energy” values are internal composites, not error versus a paper-reported score.</span></div></div>
+        <div className="paper-warning"><Target size={18} /><div><strong>Keep comparison boundaries explicit.</strong><span>CUSTOM establishes same-pool parity with the pinned released implementation; the LigandMPNN–ESMFold result is objective-matched but rejected; Evo2 is a scaled 4,096-base reproduction with no paired timing result. None of these runs reproduces a wet-lab endpoint.</span></div></div>
         <div className="benchmark-table">
           <div className="benchmark-header"><span>Workload</span><span>Work</span><span>Full</span><span>Fused</span><span>Objective error</span><span /></div>
           {visibleRuns.length === 0 ? <div className="empty-state">No runs match this filter.</div> : visibleRuns.map((run) => (
@@ -392,9 +392,9 @@ export function EvaluationDashboard() {
               <button className="benchmark-row" onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)} aria-expanded={expandedRun === run.id}>
                 <span className="workload"><strong>{run.workload}</strong><small>{run.tier}</small></span>
                 <span>{run.work}</span>
-                <span className="timing"><Clock3 size={14} /> {formatTime(run.fullSeconds)}</span>
-                <span>{run.fusedSeconds === null ? <em className="not-run">not run</em> : <span className="timing good"><Gauge size={14} /> {formatTime(run.fusedSeconds)}</span>}</span>
-                <span className={run.status === "paired" ? "error-good" : "error-missing"}>{run.objectiveError}</span>
+                <span>{run.fullSeconds === null ? <em className="not-run">not reported</em> : <span className="timing"><Clock3 size={14} /> {formatTime(run.fullSeconds)}</span>}</span>
+                <span>{run.fusedSeconds === null ? <em className="not-run">{run.speedup === null ? "not run" : "not reported"}</em> : <span className="timing good"><Gauge size={14} /> {formatTime(run.fusedSeconds)}</span>}</span>
+                <span className={run.status === "confirmed" ? "error-good" : run.status === "paired" ? "error-mixed" : "error-missing"}>{run.objectiveError}</span>
                 <ChevronDown size={17} className={expandedRun === run.id ? "rotate" : ""} />
               </button>
               {expandedRun === run.id && (

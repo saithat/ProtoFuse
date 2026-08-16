@@ -43,6 +43,7 @@ h1 span { color: var(--orange); }
 .verdict-card { background: var(--ink); color: white; border-radius: 10px 10px 10px 2px; padding: 25px; box-shadow: 12px 12px 0 var(--orange-soft); }
 .verdict-label { color: #aebad0; font: 750 10px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
 .verdict-value { margin-top: 12px; color: #ff875d; font: 780 32px ui-monospace, monospace; letter-spacing: -.04em; }
+.verdict-value.confirmed { color: #72d9be; }
 .verdict-card > p { margin: 5px 0 0; color: #cfd6e2; font-size: 13px; line-height: 1.5; }
 .verdict-rule { height: 1px; margin: 20px 0; background: #314363; }
 .verdict-detail { display: flex; gap: 9px; align-items: center; margin: 10px 0; color: #dfe6f2; font-size: 12px; }
@@ -205,9 +206,9 @@ h1 span { color: var(--orange); }
 .cohort-row > span:nth-child(3) { color: var(--muted); }
 .mono { font-family: ui-monospace, monospace; }
 .cohort-verdict { justify-self: start; border-radius: 999px; padding: 4px 7px !important; font: 800 8px ui-monospace, monospace; text-transform: uppercase; }
-.cohort-verdict.available { color: var(--green); background: #dceee8; }
+.cohort-verdict.available, .cohort-verdict.pass { color: var(--green); background: #dceee8; }
 .cohort-verdict.thin { color: var(--yellow); background: #f5e7c8; }
-.cohort-verdict.missing { color: var(--red); background: #f4dcd8; }
+.cohort-verdict.missing, .cohort-verdict.fail { color: var(--red); background: #f4dcd8; }
 .split-warning { margin: 18px 0 0; padding: 15px 18px; color: var(--yellow); background: #fff8e8; border: 1px solid #e5d4ad; font-size: 11px; line-height: 1.6; }
 
 .benchmark-heading { align-items: center; }
@@ -232,6 +233,7 @@ h1 span { color: var(--orange); }
 .timing.good { color: var(--green); font-weight: 800; }
 .not-run { display: inline-block; padding: 5px 8px; color: var(--muted); background: repeating-linear-gradient(-45deg,#ebe8df,#ebe8df 4px,#f7f4ec 4px,#f7f4ec 8px); border: 1px solid var(--line); border-radius: 4px; font: 750 9px ui-monospace, monospace; }
 .error-good { color: var(--green); }
+.error-mixed { color: var(--yellow); }
 .error-missing { color: var(--red); }
 .benchmark-row > svg { color: var(--muted); transition: transform .2s ease; }
 .benchmark-row > svg.rotate { transform: rotate(180deg); }
