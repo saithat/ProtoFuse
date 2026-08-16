@@ -107,6 +107,11 @@ def _program_record(root: Path, run_id: str) -> dict[str, Any]:
     return json.loads((root / run_id / "test" / "program-0000.json").read_text())
 
 
+def _events(root: Path, run_id: str) -> list[dict[str, Any]]:
+    path = root / run_id / "test" / "events.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
 @pytest.mark.parametrize(
     ("run_id", "builder", "saved_units", "resumed_calls", "trace_units"),
     [
@@ -133,7 +138,10 @@ def test_run_resumes_after_credit_error_without_repeating_completed_units(
         nonlocal first_calls
         first_calls += 1
         if first_calls == 3:
-            raise RuntimeError("model credits exhausted api_key=must-not-be-saved")
+            raise RuntimeError(
+                "model credits exhausted api_key=must-not-be-saved "
+                "Authorization: Bearer must-also-not-be-saved"
+            )
         first_sample(*args, **kwargs)
 
     monkeypatch.setattr(first_generator, "sample", fail_on_third_call)
@@ -190,6 +198,21 @@ def test_run_resumes_after_credit_error_without_repeating_completed_units(
     trace = [json.loads(line) for line in trace_path.read_text().splitlines()]
     assert [row["completed_units"] for row in trace] == trace_units
 
+    events = _events(tmp_path, run_id)
+    assert [event["sequence"] for event in events] == list(range(len(events)))
+    assert [event["event"] for event in events].count("run_started") == 2
+    assert [event["event"] for event in events].count("run_interrupted") == 1
+    assert [event["event"] for event in events].count("run_completed") == 1
+    assert [
+        event["details"]["completed_units"]
+        for event in events
+        if event["event"] == "optimizer_progress"
+        and event["details"]["checkpoint_saved"]
+    ] == trace_units
+    serialized_events = "\n".join(json.dumps(event) for event in events)
+    assert "must-not-be-saved" not in serialized_events
+    assert "must-also-not-be-saved" not in serialized_events
+
     restored = builder()
     restored_generator = restored.optimizers[0].generators[0]
 
@@ -206,6 +229,10 @@ def test_run_resumes_after_credit_error_without_repeating_completed_units(
     )
     assert restored.current_stage == 1
     assert restored.get_stage_results(0)["results"]
+
+    restored_events = _events(tmp_path, run_id)
+    assert restored_events[-2]["event"] == "program_restored"
+    assert restored_events[-1]["event"] == "run_completed"
 
 
 def test_changed_program_fails_closed_unless_restart_is_explicit(

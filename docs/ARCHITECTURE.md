@@ -35,6 +35,19 @@ The user does not write a fused program. They build an ordinary Proto program an
 5. An immediate final constraint stage always runs the original matched objectives on the
    selected output; artifacts that request a weaker validation policy are rejected.
 
+### Multi-output surrogate semantics
+
+A fusion group preserves the selected Proto constraints as separate outputs. Training aligns
+their teacher scores for the same proposal, one model call returns the score vector, and one gate
+routes the complete group. Proto applies the original constraint weights after prediction; the
+trainer does not collapse the vector into a scalar energy.
+
+The current ordinary least-squares ensemble has one coefficient column per objective. Although
+those columns live in one artifact and use the same features and bootstrap sample, the loss is
+column-separable: it does not explicitly model output covariance or learn a shared nonlinear
+representation. “Joint surrogate” in this repository therefore describes evaluation and routing,
+not a statistical multi-task claim.
+
 If no bundle matches—or matching/transformation fails—the original program is returned.
 Callers may register a reviewed bundle programmatically. The default runtime also performs
 one lazy discovery pass under `PROTOFUSE_BUNDLE_DIR`, or `data/models/` when the variable is

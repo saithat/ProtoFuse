@@ -21,6 +21,13 @@ test("renders the ProtoFuse evaluation readout", async () => {
   assert.match(html, /We can measure speed/);
   assert.match(html, /Checkpointing is implemented and tested/);
   assert.match(html, /2 saved · 3 resumed · 0 repeated/);
+  assert.match(html, /How ProtoFuse works/);
+  assert.match(html, /Match only what is identical/);
+  assert.match(html, /Original objectives validate the selected output/);
+  assert.match(html, /One seed creates one trajectory/);
+  assert.match(html, /Many rows remain one unit/);
+  assert.match(html, /60 train \+ 20 calibration \+ 20 untouched test trajectories/);
+  assert.match(html, /effective independent N/i);
   assert.match(html, /Full vs fused evidence/);
   assert.match(html, /Minimum eval contract/);
   assert.doesNotMatch(html, /Your site is taking shape/);

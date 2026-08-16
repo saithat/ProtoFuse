@@ -51,6 +51,20 @@ class TrainingResult:
     metrics: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class PreparedTrainingData:
+    """One feature matrix and one leakage-resistant split shared by every model family."""
+
+    schemas: tuple[SequenceFeatureSchema, ...]
+    x: np.ndarray
+    y: np.ndarray
+    group_values: np.ndarray
+    train_mask: np.ndarray
+    calibration_mask: np.ndarray
+    audit_mask: np.ndarray
+    split: SplitManifest
+
+
 def _read_trace(path: Path) -> list[TraceRow]:
     rows: list[TraceRow] = []
     for line_number, line in enumerate(path.read_text().splitlines(), start=1):
@@ -69,7 +83,7 @@ def load_teacher_samples(
     optimizer_index: int,
     constraint_labels: tuple[str, ...],
 ) -> tuple[TeacherSample, ...]:
-    """Join objective rows by group and input, preserving repeated occurrences."""
+    """Align separate objective rows into one vector target for each proposal occurrence."""
 
     buckets: dict[
         tuple[str, str, int, tuple[str, ...]],
@@ -163,8 +177,98 @@ def _split_groups(groups: set[str], seed: int) -> tuple[set[str], set[str], set[
     return train, calibration, audit
 
 
+def prepare_training_data(
+    samples: tuple[TeacherSample, ...],
+    *,
+    output_labels: tuple[str, ...],
+    trace_paths: tuple[Path, ...],
+    schemas: tuple[SequenceFeatureSchema, ...] | None = None,
+    seed: int = 0,
+) -> PreparedTrainingData:
+    """Featurize once and freeze the exact grouped split used by model comparisons."""
+
+    if not samples or not output_labels:
+        raise ValueError("training requires samples and at least one output label")
+    if any(len(sample.outputs) != len(output_labels) for sample in samples):
+        raise ValueError("teacher output dimensions do not match output labels")
+    resolved_schemas = schemas or infer_feature_schemas(samples)
+    x = np.asarray(
+        [featurize_inputs(sample.sequences, resolved_schemas) for sample in samples],
+        dtype=np.float64,
+    )
+    y = np.asarray([sample.outputs for sample in samples], dtype=np.float64)
+    if not np.all(np.isfinite(y)):
+        raise ValueError("teacher outputs must be finite")
+    if np.any((y < 0.0) | (y > 1.0)):
+        raise ValueError("portable score-only training requires teacher outputs in [0, 1]")
+
+    train_groups, calibration_groups, audit_groups = _split_groups(
+        {sample.group_id for sample in samples},
+        seed,
+    )
+    group_values = np.asarray([sample.group_id for sample in samples])
+    train_mask = np.asarray([group in train_groups for group in group_values])
+    calibration_mask = np.asarray([group in calibration_groups for group in group_values])
+    audit_mask = np.asarray([group in audit_groups for group in group_values])
+    if not train_mask.any() or not calibration_mask.any() or not audit_mask.any():
+        raise ValueError("group split produced an empty cohort")
+    split = SplitManifest(
+        seed=seed,
+        trace_sha256=tuple(file_sha256(path) for path in trace_paths),
+        train_groups=tuple(sorted(train_groups)),
+        calibration_groups=tuple(sorted(calibration_groups)),
+        audit_groups=tuple(sorted(audit_groups)),
+        train_samples=int(train_mask.sum()),
+        calibration_samples=int(calibration_mask.sum()),
+        audit_samples=int(audit_mask.sum()),
+    )
+    return PreparedTrainingData(
+        schemas=resolved_schemas,
+        x=x,
+        y=y,
+        group_values=group_values,
+        train_mask=train_mask,
+        calibration_mask=calibration_mask,
+        audit_mask=audit_mask,
+        split=split,
+    )
+
+
 def _quantile(values: np.ndarray, probability: float) -> float:
     return float(np.quantile(values, probability, method="higher"))
+
+
+def _average_ranks(values: np.ndarray) -> np.ndarray:
+    order = np.argsort(values, kind="stable")
+    ranks = np.empty(len(values), dtype=np.float64)
+    start = 0
+    while start < len(values):
+        end = start + 1
+        while end < len(values) and values[order[end]] == values[order[start]]:
+            end += 1
+        ranks[order[start:end]] = (start + end - 1) / 2.0
+        start = end
+    return ranks
+
+
+def _rank_correlations(actual: np.ndarray, predicted: np.ndarray) -> list[float | None]:
+    correlations: list[float | None] = []
+    for output_index in range(actual.shape[1]):
+        actual_ranks = _average_ranks(actual[:, output_index])
+        predicted_ranks = _average_ranks(predicted[:, output_index])
+        actual_centered = actual_ranks - actual_ranks.mean()
+        predicted_centered = predicted_ranks - predicted_ranks.mean()
+        denominator = float(
+            np.sqrt(
+                np.sum(np.square(actual_centered)) * np.sum(np.square(predicted_centered))
+            )
+        )
+        correlations.append(
+            float(np.sum(actual_centered * predicted_centered) / denominator)
+            if denominator > 0.0
+            else None
+        )
+    return correlations
 
 
 def train_linear_ensemble(
@@ -178,32 +282,24 @@ def train_linear_ensemble(
 ) -> TrainingResult:
     if ensemble_size < 2:
         raise ValueError("ensemble_size must be at least 2")
-    if any(len(sample.outputs) != len(output_labels) for sample in samples):
-        raise ValueError("teacher output dimensions do not match output labels")
-    resolved_schemas = schemas or infer_feature_schemas(samples)
-    x = np.asarray(
-        [featurize_inputs(sample.sequences, resolved_schemas) for sample in samples],
-        dtype=np.float64,
+    prepared = prepare_training_data(
+        samples,
+        output_labels=output_labels,
+        trace_paths=trace_paths,
+        schemas=schemas,
+        seed=seed,
     )
-    y = np.asarray([sample.outputs for sample in samples], dtype=np.float64)
-    if not np.all(np.isfinite(y)):
-        raise ValueError("teacher outputs must be finite")
-    if np.any((y < 0.0) | (y > 1.0)):
-        raise ValueError("portable score-only training requires teacher outputs in [0, 1]")
-    train_groups, calibration_groups, audit_groups = _split_groups(
-        {sample.group_id for sample in samples},
-        seed,
-    )
-    group_values = np.asarray([sample.group_id for sample in samples])
-    train_mask = np.asarray([group in train_groups for group in group_values])
-    calibration_mask = np.asarray([group in calibration_groups for group in group_values])
-    audit_mask = np.asarray([group in audit_groups for group in group_values])
-    if not train_mask.any() or not calibration_mask.any() or not audit_mask.any():
-        raise ValueError("group split produced an empty cohort")
+    resolved_schemas = prepared.schemas
+    x = prepared.x
+    y = prepared.y
+    group_values = prepared.group_values
+    train_mask = prepared.train_mask
+    calibration_mask = prepared.calibration_mask
+    audit_mask = prepared.audit_mask
 
     design = np.column_stack((np.ones(len(x)), x))
     rng = np.random.default_rng(seed)
-    train_group_list = sorted(train_groups)
+    train_group_list = list(prepared.split.train_groups)
     coefficients: list[np.ndarray] = []
     for _ in range(ensemble_size):
         sampled_groups = rng.choice(
@@ -214,6 +310,8 @@ def train_linear_ensemble(
         indices = np.concatenate(
             [np.flatnonzero(group_values == group) for group in sampled_groups]
         )
+        # The vector solve is a compact multi-output implementation, but ordinary least squares
+        # remains column-separable: it does not learn cross-objective covariance.
         coefficients.append(np.linalg.lstsq(design[indices], y[indices], rcond=None)[0])
     stacked = np.stack([design @ coefficient for coefficient in coefficients])
     prediction = stacked.mean(axis=0)
@@ -244,16 +342,6 @@ def train_linear_ensemble(
         uncertainty_threshold=uncertainty_threshold,
         calibration_absolute_error=error_quantiles,
     )
-    split = SplitManifest(
-        seed=seed,
-        trace_sha256=tuple(file_sha256(path) for path in trace_paths),
-        train_groups=tuple(sorted(train_groups)),
-        calibration_groups=tuple(sorted(calibration_groups)),
-        audit_groups=tuple(sorted(audit_groups)),
-        train_samples=int(train_mask.sum()),
-        calibration_samples=int(calibration_mask.sum()),
-        audit_samples=int(audit_mask.sum()),
-    )
     audit_error = np.abs(y[audit_mask] - prediction[audit_mask])
     audit_prediction = prediction[audit_mask]
     audit_uncertainty = uncertainty[audit_mask].max(axis=1)
@@ -272,9 +360,16 @@ def train_linear_ensemble(
     accepted_error = audit_error[audit_accepted]
     metrics = {
         "calibration_mae": calibration_error.mean(axis=0).tolist(),
+        "calibration_rmse": np.sqrt(
+            np.mean(np.square(calibration_error), axis=0)
+        ).tolist(),
+        "calibration_max_error": calibration_error.max(axis=0).tolist(),
         "audit_mae": audit_error.mean(axis=0).tolist(),
         "audit_rmse": np.sqrt(np.mean(np.square(audit_error), axis=0)).tolist(),
         "audit_max_error": audit_error.max(axis=0).tolist(),
+        "audit_rank_correlation": _rank_correlations(
+            y[audit_mask], audit_prediction
+        ),
         "audit_support_coverage": float(np.mean(audit_support <= support_threshold)),
         "audit_uncertainty_coverage": float(np.mean(audit_uncertainty <= uncertainty_threshold)),
         "audit_selective_coverage": float(np.mean(audit_accepted)),
@@ -285,7 +380,7 @@ def train_linear_ensemble(
             accepted_error.max(axis=0).tolist() if len(accepted_error) else None
         ),
     }
-    return TrainingResult(model=model, split=split, metrics=metrics)
+    return TrainingResult(model=model, split=prepared.split, metrics=metrics)
 
 
 def write_trained_fusion(

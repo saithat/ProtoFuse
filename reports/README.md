@@ -6,6 +6,10 @@ surrogate results, and turns missing evidence into an explicit measurement plan.
 in a browser; its tabs and expandable evidence use only embedded JavaScript. It has no external
 fonts, scripts, stylesheets, hosted APIs, authentication, or ChatGPT dependency.
 
+The versioned paired-evaluation JSON emitted by `protofuse fusion evaluate --out ...` is the
+canonical scientific result. This HTML file is only its presentation layer and may also contain
+legacy aggregate inputs until the report generator is updated to ingest a paired result directly.
+
 Regenerate it after copying result artifacts into the ignored data directories:
 
 ```bash
@@ -35,3 +39,7 @@ The surrogate model card reports the metrics present in the pilot artifact: cali
 audit MAE/max error, trajectory error and support coverage, OOD challenge outcomes, speedup,
 and final-design agreement. Metrics that are not present or are not meaningful for the current
 regression pilot—such as a training-loss curve or classification accuracy—are labeled explicitly.
+
+The evidence appendix also explains the split unit. One seeded optimizer trajectory can emit many
+correlated proposal rows, but all of them remain in one train, calibration, or test group. It shows
+the preferred 60/20/20 trajectory collection target separately from raw proposal-sample counts.

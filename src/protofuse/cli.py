@@ -149,7 +149,7 @@ def main() -> None:
     run_parser.add_argument(
         "--no-checkpoint",
         action="store_true",
-        help="disable automatic save and resume for this run",
+        help="disable automatic save, resume, and structured event logging for this run",
     )
     collection_parser = subparsers.add_parser(
         "collection",
@@ -173,6 +173,7 @@ def main() -> None:
     trace_parser.add_argument("--out", type=Path, required=True)
     trace_parser.add_argument("--run-id", required=True)
     trace_parser.add_argument("--group-id", required=True)
+    trace_parser.add_argument("--seed", type=int, default=None)
     trace_parser.add_argument("--device", choices=("local", "modal"), default="local")
     trace_parser.add_argument("--tier", choices=("smoke", "full"), default=None)
     trace_parser.add_argument(
@@ -182,7 +183,7 @@ def main() -> None:
     )
     fusion_parser = subparsers.add_parser(
         "fusion",
-        help="validate, train, or evaluate learned-fusion artifacts",
+        help="compare, validate, train, or evaluate learned-fusion artifacts",
     )
     fusion_sub = fusion_parser.add_subparsers(dest="fusion_command", required=True)
     fusion_validate = fusion_sub.add_parser("validate")
@@ -191,6 +192,15 @@ def main() -> None:
     fusion_profile = fusion_sub.add_parser("profile")
     fusion_profile.add_argument("--trace", type=Path, action="append", required=True)
     fusion_profile.add_argument("--out", type=Path, default=None)
+    fusion_compare = fusion_sub.add_parser(
+        "compare-models",
+        help="compare linear, tree, and small neural surrogates on one grouped split",
+    )
+    fusion_compare.add_argument("--trace", type=Path, action="append", required=True)
+    fusion_compare.add_argument("--optimizer-index", type=int, required=True)
+    fusion_compare.add_argument("--constraint", action="append", required=True)
+    fusion_compare.add_argument("--seed", type=int, default=0)
+    fusion_compare.add_argument("--out", type=Path, required=True)
     fusion_train = fusion_sub.add_parser("train")
     fusion_train.add_argument("collection", type=Path)
     fusion_train.add_argument("program_id")
@@ -209,6 +219,17 @@ def main() -> None:
     fusion_evaluate.add_argument("--seed", type=int, action="append", required=True)
     fusion_evaluate.add_argument("--device", choices=("local", "modal"), default="local")
     fusion_evaluate.add_argument("--allow-unreviewed", action="store_true")
+    fusion_evaluate.add_argument(
+        "--no-warmup",
+        action="store_true",
+        help="include startup effects by skipping the unmeasured warmup pair",
+    )
+    fusion_evaluate.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="write the complete JSON report instead of printing it",
+    )
     generate_parser = subparsers.add_parser(
         "generate",
         help="generate design_*.py programs from a reviewed fixture methodology",
@@ -317,7 +338,8 @@ def main() -> None:
                 tier=args.tier,
                 restart=args.restart,
             ) as session:
-                print(f"checkpoint={session.directory}")
+                print(f"checkpoint={session.directory}", flush=True)
+                print(f"events={session.event_log_path}", flush=True)
                 program, wall_ms, summary = _run_fixture(args.fixture, tier=args.tier)
         if summary is not None:
             print(json.dumps(summary, indent=2))
@@ -348,9 +370,12 @@ def main() -> None:
 
     if args.command == "trace":
         from protofuse.sai.analyzer import load_reviewed_program
+        from protofuse.sai.evaluation import apply_program_seed
         from protofuse.sai.tracing import JsonlTraceWriter, trace_program_constraints
 
         traced_program = load_reviewed_program(args.collection, program_id=args.program_id)
+        if args.seed is not None:
+            apply_program_seed(traced_program.program, args.seed)
         writer = JsonlTraceWriter(args.out)
         with trace_program_constraints(
             traced_program.program,
@@ -393,6 +418,28 @@ def main() -> None:
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 args.out.write_text(payload)
                 print(f"profile={args.out}")
+            return
+
+        if args.fusion_command == "compare-models":
+            from protofuse.sai.model_comparison import compare_model_families
+            from protofuse.sai.training import load_teacher_samples
+
+            traces = tuple(args.trace)
+            labels = tuple(args.constraint)
+            samples = load_teacher_samples(
+                traces,
+                optimizer_index=args.optimizer_index,
+                constraint_labels=labels,
+            )
+            report = compare_model_families(
+                samples,
+                output_labels=labels,
+                trace_paths=traces,
+                seed=args.seed,
+            )
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+            print(f"model_comparison={args.out}")
             return
 
         if args.fusion_command == "train":
@@ -459,8 +506,20 @@ def main() -> None:
             artifact,
             seeds=args.seed,
             device="modal" if args.device == "modal" else None,
+            warmup=not args.no_warmup,
+            offline_surrogate_metrics=(
+                json.loads((artifact.root / "metrics.json").read_text())
+                if (artifact.root / "metrics.json").is_file()
+                else None
+            ),
         )
-        print(json.dumps(evaluation.as_dict(), indent=2))
+        payload = json.dumps(evaluation.as_dict(), indent=2) + "\n"
+        if args.out is None:
+            print(payload, end="")
+        else:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(payload)
+            print(f"evaluation={args.out}")
         return
 
     if args.command == "paper":

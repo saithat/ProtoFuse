@@ -1789,6 +1789,7 @@ dependencies = [
     { name = "proto-language" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "scikit-learn" },
 ]
 
 [package.optional-dependencies]
@@ -1811,6 +1812,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.2,<7" },
     { name = "python-dotenv", specifier = ">=1.1,<2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12,<1" },
+    { name = "scikit-learn", specifier = ">=1.9,<2" },
 ]
 provides-extras = ["dev"]
 

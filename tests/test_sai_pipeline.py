@@ -8,12 +8,14 @@ import pytest
 from proto_language.core import Constraint, ConstraintOutput, Construct, Program, Segment
 from proto_language.optimizer import RejectionSamplingOptimizer, RejectionSamplingOptimizerConfig
 
+from protofuse.sai import evaluation as evaluation_module
 from protofuse.sai.analyzer import load_reviewed_program
 from protofuse.sai.artifacts import (
     FusionManifest,
     load_fusion_artifact,
     write_unreviewed_fusion_artifact,
 )
+from protofuse.sai.evaluation import ProgramOutputs, classify_proto_energy, evaluate_paired
 from protofuse.sai.model import LinearEnsembleModel, SequenceFeatureSchema
 from protofuse.sai.profiling import profile_traces
 from protofuse.sai.registry import FusionRegistry
@@ -289,5 +291,69 @@ def test_trace_training_and_unreviewed_packaging_are_reproducible(tmp_path: Path
     assert len(samples) == 3
     assert packaged.manifest.reviewed is False
     assert result.split.train_samples == 1
+    assert result.metrics["audit_rank_correlation"] == [None, None]
     assert (packaged.root / "split.json").is_file()
     assert (packaged.root / "metrics.json").is_file()
+
+
+def test_paired_evaluation_excludes_warmup_and_reports_complete_metrics(tmp_path: Path) -> None:
+    artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+
+    evaluation = evaluate_paired(
+        build_constant_program,
+        artifact,
+        seeds=(11, 12),
+        offline_surrogate_metrics={"audit_mae": [0.0, 0.0]},
+    )
+    payload = evaluation.as_dict()
+
+    assert evaluation.warmup is not None
+    assert evaluation.warmup.excluded_from_primary_timing is True
+    assert [run.order for run in evaluation.runs] == [
+        ("full", "fused"),
+        ("fused", "full"),
+    ]
+    assert payload["protocol"]["cold_start_in_primary_timing"] is False
+    assert payload["metrics"]["reliability"]["fully_valid_accuracy_runs"] == 2
+    assert payload["metrics"]["routing"]["surrogate_coverage"] == pytest.approx(1.0)
+    assert payload["metrics"]["routing"]["target_parent_item_evaluations_avoided"] == 4
+    assert payload["metrics"]["routing"]["deferral_reasons"] == {
+        "calibrated_in_domain": 2
+    }
+    assert payload["offline_surrogate_metrics"] == {"audit_mae": [0.0, 0.0]}
+    json.dumps(payload, allow_nan=False)
+
+
+def test_proto_energy_classification_matches_proto_sentinels() -> None:
+    assert classify_proto_energy(0.5) == "finite"
+    assert classify_proto_energy(float("nan")) == "nan"
+    assert classify_proto_energy(float("inf")) == "positive_infinity"
+    assert classify_proto_energy(float("-inf")) == "negative_infinity"
+
+
+def test_paired_evaluation_reports_non_finite_final_energy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = write_artifact(tmp_path / "reviewed", reviewed=True)
+    original_outputs = evaluation_module._outputs
+
+    def non_finite_outputs(program: Program) -> ProgramOutputs:
+        outputs = original_outputs(program)
+        return ProgramOutputs(outputs.sequences, (float("inf"),))
+
+    monkeypatch.setattr(evaluation_module, "_outputs", non_finite_outputs)
+    payload = evaluate_paired(
+        build_constant_program,
+        artifact,
+        seeds=(1,),
+        warmup=False,
+    ).as_dict()
+
+    assert payload["runs"][0]["status"] == "non_finite_energy"
+    assert payload["runs"][0]["full_energy_kinds"] == ("positive_infinity",)
+    assert payload["runs"][0]["full_energies"] == (None,)
+    assert payload["metrics"]["reliability"]["non_finite_energy_runs"] == 1
+    assert payload["metrics"]["accuracy"]["final_energy_mae"] is None
+    assert payload["metrics"]["accuracy"]["all_final_sequences_identical"] is None
+    json.dumps(payload, allow_nan=False)

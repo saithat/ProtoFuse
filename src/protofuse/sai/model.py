@@ -1,4 +1,4 @@
-"""Safe JSON-backed linear ensembles for sequence-only fusion baselines."""
+"""Safe JSON-backed vector-output linear ensembles for sequence-only fusion baselines."""
 
 from __future__ import annotations
 
@@ -33,7 +33,11 @@ class SequenceFeatureSchema(ModelArtifact):
 
 
 class LinearEnsembleModel(ModelArtifact):
-    """Portable ensemble coefficients plus calibration and support statistics."""
+    """Portable multi-output baseline with per-objective linear coefficient columns.
+
+    The artifact shares features, bootstrap members, and routing across outputs. It neither
+    scalarizes the objectives nor explicitly models covariance between them.
+    """
 
     schema_version: str = "1.0"
     input_schemas: tuple[SequenceFeatureSchema, ...]

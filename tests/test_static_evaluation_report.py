@@ -136,6 +136,9 @@ def test_static_report_is_self_contained_and_uses_supplied_results(tmp_path: Pat
     assert "CURATEDSEQ" in report
     assert "training loss" in report
     assert "classification accuracy" in report
+    assert "How trajectories become model splits" in report
+    assert "One seed creates one trajectory" in report
+    assert "60 train + 20 calibration + 20 untouched test trajectories" in report
     assert 'data-tab="routing"' in report
     assert "2.000×" in report
     assert "ESM-2 protein maturation" in report

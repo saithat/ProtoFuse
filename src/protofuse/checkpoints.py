@@ -11,6 +11,7 @@ import inspect
 import json
 import math
 import os
+import platform
 import re
 from collections.abc import Callable, Iterator, Mapping
 from collections.abc import Sequence as SequenceABC
@@ -35,7 +36,11 @@ from pydantic import BaseModel
 
 CheckpointDevice = Literal["modal"] | None
 CHECKPOINT_SCHEMA_VERSION = "1.0"
-_SECRET_PATTERN = re.compile(r"(?i)\b(token|api[_-]?key|secret|authorization)\b\s*[:=]\s*[^\s,;]+")
+_SECRET_PATTERN = re.compile(
+    r"(?i)\b(token|api[_-]?key|secret|authorization)\b\s*[:=]\s*"
+    r"(?:bearer\s+)?[^\s,;]+"
+)
+_BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 
 
 class CheckpointCompatibilityError(RuntimeError):
@@ -60,7 +65,10 @@ def _utc_now() -> str:
 
 
 def _redact_failure(message: str) -> str:
-    return _SECRET_PATTERN.sub(lambda match: f"{match.group(1)}=[redacted]", message)[:1000]
+    redacted = _BEARER_PATTERN.sub("Bearer [redacted]", message)
+    return _SECRET_PATTERN.sub(
+        lambda match: f"{match.group(1)}=[redacted]", redacted
+    )[:1000]
 
 
 def _encode_json(value: Any) -> Any:
@@ -456,6 +464,7 @@ class CheckpointSession:
         self._manifest: dict[str, Any] = {}
         self._attempt_started = 0.0
         self._attempt_index = 0
+        self._event_sequence = 0
 
     @property
     def directory(self) -> Path:
@@ -465,12 +474,21 @@ class CheckpointSession:
     def manifest_path(self) -> Path:
         return self.directory / "manifest.json"
 
+    @property
+    def event_log_path(self) -> Path:
+        """Append-only structured lifecycle and optimizer progress log."""
+
+        return self.directory / "events.jsonl"
+
     def __enter__(self) -> CheckpointSession:
+        archived_previous_run: str | None = None
         if self.restart and self.directory.exists():
             timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
             archive = self.directory.with_name(f"{self.directory.name}.archived-{timestamp}")
             self.directory.rename(archive)
+            archived_previous_run = str(archive)
         self.directory.mkdir(parents=True, exist_ok=True)
+        self._event_sequence = self._next_event_sequence()
         if self.manifest_path.is_file():
             self._manifest = _read_json(self.manifest_path)
             self._validate_manifest()
@@ -502,6 +520,17 @@ class CheckpointSession:
         self._manifest["resume_count"] = self._attempt_index
         self._attempt_started = perf_counter()
         self._save_manifest()
+        self._emit_event(
+            "run_started",
+            attempt=self._attempt_index + 1,
+            resume_count=self._attempt_index,
+            restart=self.restart,
+            archived_previous_run=archived_previous_run,
+            process_id=os.getpid(),
+            python_version=platform.python_version(),
+            proto_language_version=_package_version("proto-language"),
+            checkpoint_directory=str(self.directory),
+        )
         return self
 
     def __exit__(
@@ -535,6 +564,25 @@ class CheckpointSession:
                 if isinstance(item, dict)
             )
         self._save_manifest()
+        if exception is None:
+            self._emit_event(
+                "run_completed",
+                attempt=self._attempt_index + 1,
+                status="completed",
+                program_count=int(self._manifest.get("program_count", 0)),
+                wall_time_seconds=perf_counter() - self._attempt_started,
+            )
+        else:
+            self._emit_event(
+                "run_interrupted",
+                level="error",
+                attempt=self._attempt_index + 1,
+                status="interrupted",
+                program_count=int(self._manifest.get("program_count", 0)),
+                wall_time_seconds=perf_counter() - self._attempt_started,
+                failure_type=type(exception).__name__,
+                failure_message=_redact_failure(str(exception)),
+            )
         return False
 
     def _validate_manifest(self) -> None:
@@ -553,6 +601,44 @@ class CheckpointSession:
     def _save_manifest(self) -> None:
         self._manifest["updated_at"] = _utc_now()
         _atomic_write_json(self.manifest_path, self._manifest)
+
+    def _next_event_sequence(self) -> int:
+        if not self.event_log_path.is_file():
+            return 0
+        for line in reversed(self.event_log_path.read_text(encoding="utf-8").splitlines()):
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            sequence = event.get("sequence") if isinstance(event, dict) else None
+            if isinstance(sequence, int) and sequence >= 0:
+                return sequence + 1
+        return 0
+
+    def _emit_event(
+        self,
+        event: str,
+        *,
+        level: Literal["info", "warning", "error"] = "info",
+        **details: Any,
+    ) -> None:
+        row = {
+            "schema_version": CHECKPOINT_SCHEMA_VERSION,
+            "sequence": self._event_sequence,
+            "recorded_at": _utc_now(),
+            "elapsed_seconds": max(perf_counter() - self._attempt_started, 0.0),
+            "level": level,
+            "event": event,
+            "run_id": self.location.run_id,
+            "tier": self.location.tier,
+            "details": _encode_json(details),
+        }
+        self.event_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.event_log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, sort_keys=True, allow_nan=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        self._event_sequence += 1
 
     def _program_path(self, index: int) -> Path:
         return self.directory / f"program-{index:04d}.json"
@@ -636,7 +722,26 @@ class CheckpointSession:
 
         if record.get("status") == "completed":
             self._restore_completed_program(program, record)
+            self._emit_event(
+                "program_restored",
+                program_index=index,
+                fingerprint=fingerprint,
+                status="completed",
+                stage_count=len(program.optimizers),
+                checkpoint_file=path.name,
+            )
             return
+
+        self._emit_event(
+            "program_started",
+            program_index=index,
+            fingerprint=fingerprint,
+            status=str(record.get("status", "running")),
+            stage_count=len(program.optimizers),
+            device=device or "local",
+            resumed=bool(record.get("stages")),
+            checkpoint_file=path.name,
+        )
 
         stages = record.setdefault("stages", {})
         if not isinstance(stages, dict):
@@ -653,6 +758,15 @@ class CheckpointSession:
                     _restore_sequence_state(optimizer, state)
                     program._stage_results.append(program.extract_results(optimizer.energy_scores))
                     program.current_stage = stage_index + 1
+                    self._emit_event(
+                        "stage_restored",
+                        program_index=index,
+                        stage_index=stage_index,
+                        optimizer=_optimizer_kind(optimizer),
+                        status="completed",
+                        completed_units=int(stage_record.get("completed_units", 0)),
+                        planned_units=int(stage_record.get("planned_units", 0)),
+                    )
                     continue
                 self._run_stage(
                     program,
@@ -667,6 +781,14 @@ class CheckpointSession:
             record["completed_at"] = _utc_now()
             record["failure"] = None
             self._save_program(path, record)
+            self._emit_event(
+                "program_completed",
+                program_index=index,
+                fingerprint=fingerprint,
+                status="completed",
+                completed_stages=len(program.optimizers),
+                checkpoint_file=path.name,
+            )
         except BaseException as exc:
             record["status"] = "interrupted"
             record["failure"] = {
@@ -674,6 +796,17 @@ class CheckpointSession:
                 "message": _redact_failure(str(exc)),
             }
             self._save_program(path, record)
+            self._emit_event(
+                "program_interrupted",
+                level="error",
+                program_index=index,
+                fingerprint=fingerprint,
+                status="interrupted",
+                current_stage=program.current_stage,
+                failure_type=type(exc).__name__,
+                failure_message=_redact_failure(str(exc)),
+                checkpoint_file=path.name,
+            )
             raise
 
     def _restore_completed_program(self, program: Program, record: dict[str, Any]) -> None:
@@ -731,6 +864,18 @@ class CheckpointSession:
         if not isinstance(saved_state, dict):
             raise CheckpointCompatibilityError("checkpoint stage state is invalid")
 
+        stage_attempt_started = perf_counter()
+        self._emit_event(
+            "stage_started",
+            program_index=index,
+            stage_index=stage_index,
+            optimizer=_optimizer_kind(optimizer),
+            status="running",
+            completed_units=completed_units,
+            planned_units=planned_units,
+            resumed=completed_units > 0,
+        )
+
         # The final optimizer callback runs before Program.run_stage extracts and
         # records results. If that small finalization window was interrupted, do
         # not repeat the final (potentially paid) optimizer unit.
@@ -742,6 +887,17 @@ class CheckpointSession:
             stage_record["status"] = "completed"
             stage_record["completed_at"] = _utc_now()
             self._save_program(path, record)
+            self._emit_event(
+                "stage_completed",
+                program_index=index,
+                stage_index=stage_index,
+                optimizer=_optimizer_kind(optimizer),
+                status="completed",
+                completed_units=completed_units,
+                planned_units=planned_units,
+                restored_from_final_checkpoint=True,
+                wall_time_seconds=perf_counter() - stage_attempt_started,
+            )
             return
 
         cleanup: list[Callable[[], None]] = []
@@ -793,15 +949,32 @@ class CheckpointSession:
         previous_config_interval = optimizer.config.tracking_interval
         optimizer.tracking_interval = 1
         optimizer.config.tracking_interval = 1
+        last_progress_at = stage_attempt_started
 
         def checkpoint_callback(step: int, segments: Any) -> None:
+            nonlocal last_progress_at
             del segments
             global_step = step if absolute_steps else completed_units + step
+            progress_recorded_at = perf_counter()
             if (
                 isinstance(optimizer, RejectionSamplingOptimizer)
                 and global_step < planned_units
                 and global_step % optimizer.proposal_batch_size != 0
             ):
+                self._emit_event(
+                    "optimizer_progress",
+                    program_index=index,
+                    stage_index=stage_index,
+                    optimizer=_optimizer_kind(optimizer),
+                    completed_units=global_step,
+                    planned_units=planned_units,
+                    progress_fraction=global_step / planned_units if planned_units else 1.0,
+                    unit_wall_time_seconds=progress_recorded_at - last_progress_at,
+                    stage_wall_time_seconds=progress_recorded_at - stage_attempt_started,
+                    checkpoint_saved=False,
+                    checkpoint_reason="proposal_batch_incomplete",
+                )
+                last_progress_at = progress_recorded_at
                 if previous_logging is not None:
                     previous_logging(global_step, optimizer.segments)
                 return
@@ -818,6 +991,28 @@ class CheckpointSession:
                 completed_units=global_step,
                 optimizer=optimizer,
             )
+            result_hashes = [
+                sha256(sequence.sequence.encode()).hexdigest()
+                for segment in optimizer.segments
+                for sequence in segment.result_sequences
+            ]
+            self._emit_event(
+                "optimizer_progress",
+                program_index=index,
+                stage_index=stage_index,
+                optimizer=_optimizer_kind(optimizer),
+                completed_units=global_step,
+                planned_units=planned_units,
+                progress_fraction=global_step / planned_units if planned_units else 1.0,
+                unit_wall_time_seconds=progress_recorded_at - last_progress_at,
+                stage_wall_time_seconds=progress_recorded_at - stage_attempt_started,
+                checkpoint_saved=True,
+                checkpoint_file=path.name,
+                trace_file=self._trace_path(index).name,
+                energy_scores=list(optimizer.energy_scores),
+                result_sequence_sha256=result_hashes,
+            )
+            last_progress_at = progress_recorded_at
             if previous_logging is not None:
                 previous_logging(global_step, optimizer.segments)
 
@@ -831,6 +1026,32 @@ class CheckpointSession:
             if int(stage_record.get("completed_units", 0)) == 0:
                 stage_record["completed_units"] = planned_units
             self._save_program(path, record)
+            self._emit_event(
+                "stage_completed",
+                program_index=index,
+                stage_index=stage_index,
+                optimizer=_optimizer_kind(optimizer),
+                status="completed",
+                completed_units=int(stage_record["completed_units"]),
+                planned_units=planned_units,
+                restored_from_final_checkpoint=False,
+                wall_time_seconds=perf_counter() - stage_attempt_started,
+            )
+        except BaseException as exc:
+            self._emit_event(
+                "stage_interrupted",
+                level="error",
+                program_index=index,
+                stage_index=stage_index,
+                optimizer=_optimizer_kind(optimizer),
+                status="interrupted",
+                completed_units=int(stage_record.get("completed_units", 0)),
+                planned_units=planned_units,
+                wall_time_seconds=perf_counter() - stage_attempt_started,
+                failure_type=type(exc).__name__,
+                failure_message=_redact_failure(str(exc)),
+            )
+            raise
         finally:
             optimizer.custom_logging = previous_logging
             optimizer.tracking_interval = previous_interval

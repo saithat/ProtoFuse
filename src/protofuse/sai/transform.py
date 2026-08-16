@@ -5,9 +5,11 @@ from __future__ import annotations
 import copy
 import functools
 import math
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
+from time import perf_counter
 from typing import Any, cast
 
 from proto_language.core import Constraint, ConstraintOutput, Program
@@ -54,7 +56,11 @@ class _OriginalObjective:
 
 
 class _ConstraintGroupEvaluator:
-    """Expose one routed joint evaluation through several ordinary constraints."""
+    """Route one vector prediction while preserving several ordinary constraints.
+
+    Jointness here is operational: one prediction and one fail-closed route for the group. The
+    objectives are not scalarized, and the current linear model is not covariance-aware.
+    """
 
     def __init__(
         self,
@@ -69,6 +75,8 @@ class _ConstraintGroupEvaluator:
         self._cache: dict[str, list[ConstraintOutput]] = {}
         self._remaining: set[str] = set()
         self.routing_counts = {"surrogate": 0, "full_model": 0}
+        self.routing_reasons: Counter[str] = Counter()
+        self.timing_seconds = {"surrogate": 0.0, "gate": 0.0, "full_model": 0.0}
         self.router = BatchSelectiveRouter[InputItem, ObjectiveOutputs](
             surrogate=self._surrogate,
             gate=self._gate,
@@ -79,74 +87,92 @@ class _ConstraintGroupEvaluator:
         self,
         items: Sequence[InputItem],
     ) -> list[SurrogatePrediction[ObjectiveOutputs]]:
-        predictions: list[SurrogatePrediction[ObjectiveOutputs]] = []
-        for item in items:
-            prediction = self.predictor.predict(tuple(str(sequence.sequence) for sequence in item))
-            outputs = tuple(
-                ConstraintOutput(
-                    score=value,
-                    metadata={
-                        "protofuse_predicted_score": value,
-                        "protofuse_uncertainty": prediction.uncertainties[index],
-                        "protofuse_support_score": prediction.support_score,
-                    },
+        started = perf_counter()
+        try:
+            predictions: list[SurrogatePrediction[ObjectiveOutputs]] = []
+            for item in items:
+                prediction = self.predictor.predict(
+                    tuple(str(sequence.sequence) for sequence in item)
                 )
-                for index, value in enumerate(prediction.values)
-            )
-            predictions.append(
-                SurrogatePrediction(
-                    outputs,
-                    {
-                        "values": prediction.values,
-                        "uncertainties": prediction.uncertainties,
-                        "support_score": prediction.support_score,
-                    },
+                outputs = tuple(
+                    ConstraintOutput(
+                        score=value,
+                        metadata={
+                            "protofuse_predicted_score": value,
+                            "protofuse_uncertainty": prediction.uncertainties[index],
+                            "protofuse_support_score": prediction.support_score,
+                        },
+                    )
+                    for index, value in enumerate(prediction.values)
                 )
-            )
-        return predictions
+                predictions.append(
+                    SurrogatePrediction(
+                        outputs,
+                        {
+                            "values": prediction.values,
+                            "uncertainties": prediction.uncertainties,
+                            "support_score": prediction.support_score,
+                        },
+                    )
+                )
+            return predictions
+        finally:
+            self.timing_seconds["surrogate"] += perf_counter() - started
 
     def _gate(
         self,
         _item: InputItem,
         prediction: SurrogatePrediction[ObjectiveOutputs],
     ) -> GateDecision:
-        values = cast(tuple[float, ...], prediction.metadata["values"])
-        uncertainties = cast(tuple[float, ...], prediction.metadata["uncertainties"])
-        support_value = prediction.metadata["support_score"]
-        if isinstance(support_value, bool) or not isinstance(support_value, (int, float)):
-            return GateDecision(False, "invalid_support_score")
-        support_score = float(support_value)
-        if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
-            return GateDecision(False, "prediction_out_of_range")
-        if support_score > self.model.support_threshold:
-            return GateDecision(False, "out_of_domain")
-        if max(uncertainties, default=0.0) > self.model.uncertainty_threshold:
-            return GateDecision(False, "uncertain")
-        return GateDecision(True, "calibrated_in_domain")
+        started = perf_counter()
+        try:
+            values = cast(tuple[float, ...], prediction.metadata["values"])
+            uncertainties = cast(tuple[float, ...], prediction.metadata["uncertainties"])
+            support_value = prediction.metadata["support_score"]
+            if isinstance(support_value, bool) or not isinstance(support_value, (int, float)):
+                return GateDecision(False, "invalid_support_score")
+            support_score = float(support_value)
+            if any(not math.isfinite(value) or value < 0.0 or value > 1.0 for value in values):
+                return GateDecision(False, "prediction_out_of_range")
+            if support_score > self.model.support_threshold:
+                return GateDecision(False, "out_of_domain")
+            # One unreliable output defers the whole objective group, avoiding a mixed vector of
+            # surrogate and parent scores for the same proposal.
+            if max(uncertainties, default=0.0) > self.model.uncertainty_threshold:
+                return GateDecision(False, "uncertain")
+            return GateDecision(True, "calibrated_in_domain")
+        finally:
+            self.timing_seconds["gate"] += perf_counter() - started
 
     def _full_model(self, items: Sequence[InputItem]) -> list[ObjectiveOutputs]:
-        per_objective: list[list[ConstraintOutput]] = []
-        input_list = list(items)
-        for objective in self.objectives:
-            parent = objective.constraint
-            function = parent.function
-            if function is None:
-                raise FusionCompatibilityError(
-                    f"parent objective {objective.label!r} is missing its function"
-                )
-            outputs = list(function(input_list, config=parent.function_config))
-            if len(outputs) != len(items):
-                raise ValueError(
-                    f"parent objective {objective.label!r} returned {len(outputs)} outputs "
-                    f"for {len(items)} inputs"
-                )
-            if any(not isinstance(output, ConstraintOutput) for output in outputs):
-                raise TypeError(f"parent objective {objective.label!r} returned an invalid output")
-            per_objective.append(outputs)
-        return [
-            tuple(outputs[item_index] for outputs in per_objective)
-            for item_index in range(len(items))
-        ]
+        started = perf_counter()
+        try:
+            per_objective: list[list[ConstraintOutput]] = []
+            input_list = list(items)
+            for objective in self.objectives:
+                parent = objective.constraint
+                function = parent.function
+                if function is None:
+                    raise FusionCompatibilityError(
+                        f"parent objective {objective.label!r} is missing its function"
+                    )
+                outputs = list(function(input_list, config=parent.function_config))
+                if len(outputs) != len(items):
+                    raise ValueError(
+                        f"parent objective {objective.label!r} returned {len(outputs)} outputs "
+                        f"for {len(items)} inputs"
+                    )
+                if any(not isinstance(output, ConstraintOutput) for output in outputs):
+                    raise TypeError(
+                        f"parent objective {objective.label!r} returned an invalid output"
+                    )
+                per_objective.append(outputs)
+            return [
+                tuple(outputs[item_index] for outputs in per_objective)
+                for item_index in range(len(items))
+            ]
+        finally:
+            self.timing_seconds["full_model"] += perf_counter() - started
 
     def evaluate(self, label: str, items: list[InputItem]) -> list[ConstraintOutput]:
         key = _batch_key(items)
@@ -154,6 +180,7 @@ class _ConstraintGroupEvaluator:
             routed = self.router(items)
             for result in routed:
                 self.routing_counts[result.route] += 1
+                self.routing_reasons[result.reason] += 1
             self._cache_key = key
             self._remaining = {objective.label for objective in self.objectives}
             self._cache = {

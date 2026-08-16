@@ -20,12 +20,16 @@ Sai owns `src/protofuse/sai/` and:
 - reads frozen collections without modifying them;
 - derives step signatures and profiles recurring expensive groups;
 - applies exact caching/batching opportunities before approximate fusion;
-- trains a joint surrogate and calibrates applicability/uncertainty;
+- trains a multi-output surrogate group and calibrates applicability/uncertainty;
 - packages accepted work as a registered `FusionBundle`;
 - guarantees per-input full-model fallback through `SelectiveRouter`.
 
 Sai does not require Phillip's paper text, methodology extraction internals, graph dumps,
 or benchmark directories.
+
+“Multi-output” currently means that aligned objective scores share one artifact, inference call,
+and fail-closed routing decision. It does not mean that objectives are scalarized or that the
+linear baseline models cross-objective covariance.
 
 ## Shared code decisions
 

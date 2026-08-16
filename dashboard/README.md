@@ -10,6 +10,9 @@ anyone who has a clone or for archiving alongside results, use the self-containe
 
 The displayed values are a reviewed snapshot of local analysis artifacts recorded on
 2026-08-15. Missing comparisons are intentionally labeled `not run`; they are not zeros.
+The training section explains why proposal rows from one seeded optimizer trajectory remain one
+split group, shows the current 6/2/2-trajectory pilot split, and distinguishes it from the planned
+60/20/20 train/calibration/test collection.
 
 ```bash
 npm ci

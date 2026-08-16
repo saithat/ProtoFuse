@@ -66,17 +66,41 @@ The implementation workflow is available from the CLI:
 ```bash
 protofuse analyze proto_programs/generated/<collection> <program-id>
 protofuse trace proto_programs/generated/<collection> <program-id> \
-  --out data/analysis/<collection>/teacher.jsonl --run-id <run> --group-id <split-group>
+  --out data/analysis/<collection>/teacher.jsonl --run-id <run> \
+  --group-id <split-group> --seed <seed>
 protofuse fusion profile --trace data/analysis/<collection>/teacher.jsonl
+protofuse fusion compare-models \
+  --trace data/analysis/<collection>/teacher.jsonl --optimizer-index 0 \
+  --constraint <objective-a> --constraint <objective-b> \
+  --out data/analysis/<collection>/model-comparison.json
 protofuse fusion train proto_programs/generated/<collection> <program-id> \
   --trace data/analysis/<collection>/teacher.jsonl --optimizer-index 0 \
   --constraint <objective-a> --constraint <objective-b> \
   --fusion-id <id> --version 1 --out data/models/<id>
+protofuse fusion evaluate data/models/<id> \
+  proto_programs/generated/<collection> <program-id> \
+  --seed 1 --seed 2 --allow-unreviewed \
+  --out data/analysis/<collection>/paired-evaluation.json
 ```
 
 Training deliberately writes `reviewed=false`. A generated model is not auto-registered
 until its scientific interpretation, calibration thresholds, and paired evaluation have
 been reviewed and that status is explicitly changed in its manifest.
+
+The current baseline is **multi-output, not scalarized**: one artifact predicts a vector of
+ordinary Proto constraint scores and routes that group together. Its linear output columns do
+not explicitly learn covariance between objectives. Here, “joint” means aligned teacher data,
+one inference call, and one fail-closed routing decision—not one weighted objective and not a
+covariance-aware multi-task model.
+
+`compare-models` is an offline audit of the current linear ensemble, Extra Trees, and a small
+shared-trunk MLP on one frozen grouped split. It never packages a model or declares a winner.
+Runtime artifacts remain linear-only until a reviewed comparison justifies extending the artifact
+format and router.
+
+The paired evaluator is the only timed experiment path. Warmup runs are reported but
+excluded, measured arm order is counterbalanced, and non-finite Proto sentinel energies are
+recorded as invalid outcomes rather than numeric errors.
 
 ## Setup
 
@@ -88,14 +112,35 @@ uv run mypy src/protofuse
 uv run pytest
 ```
 
+During fusion-experiment development, `uv run pytest tests/test_sai_pipeline.py
+tests/test_model_comparison.py` is the fast inner loop. The full suite includes a minute-scale
+workload test and is required only at the pre-push gate.
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TEAM.md](docs/TEAM.md),
 [docs/PROGRAM_COLLECTION.md](docs/PROGRAM_COLLECTION.md), and [docs/SETUP.md](docs/SETUP.md).
 
+### Inspect a run while it is executing
+
+By default, `protofuse run` prints both its checkpoint directory and the path to `events.jsonl`
+before model execution begins. The event log is append-only and records the run, program, and
+stage lifecycle; every optimizer progress callback; checkpoint decisions; timings; energy
+scores; result hashes; resume activity; and redacted failures. Follow it from another terminal:
+
+```bash
+tail -f data/runs/checkpoints/<fixture>/<tier>/events.jsonl
+```
+
+The sibling `manifest.json` and `program-*.json` files contain the latest resumable state, while
+`program-*.trace.jsonl` contains the compact per-checkpoint history. Raw sequences are not written
+to the operational event log. `protofuse trace --hash-inputs-only` provides the separate,
+proposal-level scientific trace without recording raw input sequences.
+Passing `--no-checkpoint` explicitly disables both resumable state and this event stream.
+
 ## Portable evaluation report
 
-The canonical shareable readout is a self-contained interactive HTML file. It explains the
-motivation, reports surrogate and full-path results, and identifies the next measurements. It
-does not require ChatGPT, the hosted dashboard, npm, or a web server:
+The paired-evaluation JSON above is the canonical scientific result. The self-contained HTML
+report is a presentation snapshot of the aggregate evidence available when it was generated; it
+does not replace the paired result and does not require ChatGPT, npm, or a web server:
 
 ```bash
 python3 scripts/build_visualization_bundle.py --strict

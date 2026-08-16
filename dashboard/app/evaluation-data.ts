@@ -20,15 +20,15 @@ export const benchmarks: BenchmarkRun[] = [
   {
     id: "custom-full",
     workload: "CUSTOM eGFP lung",
-    tier: "full · injected pilot",
-    work: "20 chains × 100 iterations",
-    fullSeconds: 2.1837,
-    fusedSeconds: 2.0116,
-    speedup: 1.0856,
-    objective: "Tissue codon score + GC%",
-    objectiveError: "2.21e−15 tissue MAE · 1.36e−13 pp GC MAE",
+    tier: "smoke · paired diagnostic",
+    work: "10 unseen trajectories × 20 steps",
+    fullSeconds: 0.4111,
+    fusedSeconds: 0.4074,
+    speedup: 1.009,
+    objective: "Tissue codon score",
+    objectiveError: "0 final-energy error · 10 / 10 identical outputs",
     status: "paired",
-    note: "Paired experimental injection. It is not a registered FusionBundle and the support gate is not wired into routing.",
+    note: "Unreviewed tissue-only linear artifact with 35% surrogate coverage. The 95% speedup interval was 0.893–1.139×, so this was rejected as a speedup demo.",
   },
   {
     id: "esm2-smoke",
@@ -85,23 +85,22 @@ export const benchmarks: BenchmarkRun[] = [
 ];
 
 export const traceRows = [
-  { layer: "Run summary", state: "partial", detail: "Wall time, tier, work count, and final output exist for four Modal smokes." },
+  { layer: "Run summary", state: "partial", detail: "Wall time, tier, work count, and final output exist for four Modal smokes plus one local paired diagnostic." },
   { layer: "Operational checkpoint", state: "available", detail: "Every completed MCMC step, cycling round, or rejection proposal batch is saved atomically with optimizer and RNG state." },
-  { layer: "Eval-grade proposal trace", state: "partial", detail: "A durable unit ledger now stores energy summaries and sequence hashes, but not raw teacher outputs or objective-level latency." },
-  { layer: "Parent model outputs", state: "missing", detail: "No durable, versioned teacher-output table across workloads." },
-  { layer: "Surrogate output + uncertainty", state: "missing", detail: "No registered bundle emits prediction, uncertainty, and gate records." },
-  { layer: "Route + defer reason", state: "missing", detail: "Router behavior has synthetic unit tests, not real workload traces." },
-  { layer: "Objective + paper provenance", state: "partial", detail: "21 of 51 constraints have evidence entries; only 3 of 12 fixtures point to paper text." },
+  { layer: "Eval-grade proposal trace", state: "partial", detail: "The CUSTOM smoke has 600 parent-constraint rows across ten trajectories; the other workloads do not yet have teacher traces." },
+  { layer: "Parent model outputs", state: "partial", detail: "A versioned CUSTOM teacher trace exists locally, but there is no cross-workload teacher table or external test trace." },
+  { layer: "Surrogate output + uncertainty", state: "partial", detail: "The paired CUSTOM report aggregates real predictions and uncertainty gates; these records are not yet joined into the durable proposal trace." },
+  { layer: "Route + defer reason", state: "partial", detail: "The paired diagnostic recorded 70 surrogate routes, 93 uncertainty deferrals, and 37 OOD deferrals." },
+  { layer: "Objective + paper provenance", state: "partial", detail: "32 of 62 constraints have evidence entries; 3 of 15 fixtures point to paper-specific local text." },
 ] as const;
 
 export const heldOutRows = [
-  { cohort: "Train", count: "1,198", coverage: "CUSTOM trajectory groups 0–2", verdict: "available" },
-  { cohort: "Calibration / val", count: "396", coverage: "CUSTOM trajectory group 3", verdict: "available" },
-  { cohort: "Audit / test", count: "398", coverage: "CUSTOM trajectory group 4", verdict: "available" },
-  { cohort: "Full-trajectory holdout", count: "1,998", coverage: "20 separate 100-step chains", verdict: "available" },
-  { cohort: "Negative / OOD challenges", count: "4", coverage: "Hand-crafted; all correctly rejected", verdict: "thin" },
-  { cohort: "Held-out high-value positives", count: "0", coverage: "No positive acceptance test set", verdict: "missing" },
-  { cohort: "Positive-but-uncertain deferrals", count: "0", coverage: "No safe-deferral test set", verdict: "missing" },
+  { cohort: "Current train", count: "120 states", coverage: "6 complete trajectories", verdict: "available" },
+  { cohort: "Current calibration / val", count: "40 states", coverage: "2 complete trajectories", verdict: "available" },
+  { cohort: "Current model audit", count: "40 states", coverage: "2 trajectories; inspected during model choice", verdict: "thin" },
+  { cohort: "Paired downstream run", count: "200 proposals", coverage: "10 unseen trajectories; seeds 10–19", verdict: "available" },
+  { cohort: "Planned train / val / test", count: "60 / 20 / 20", coverage: "Independent trajectories, not proposal rows", verdict: "missing" },
+  { cohort: "Designed challenge set", count: "40–60 cases", coverage: "GC extremes, OOD, boundaries, non-finite", verdict: "missing" },
 ];
 
 export const measurementGroups = [

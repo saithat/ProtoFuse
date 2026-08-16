@@ -10,6 +10,11 @@ uv run mypy src/protofuse
 uv run pytest
 ```
 
+For fusion-experiment edits, use `uv run pytest tests/test_sai_pipeline.py
+tests/test_model_comparison.py` as the fast inner loop. Use `uv run pytest -m "not slow"` for the
+broader suite, and run the command above once before pushing to `main`; it includes the
+intentionally minute-scale full DNAChisel workload.
+
 The environment includes pinned Proto Language, Modal, Anthropic's Python SDK, Pydantic,
 NumPy for the portable linear-ensemble baseline, pytest, Ruff, and mypy. Heavier learned-model
 libraries remain intentionally absent until a reviewed experiment requires them.
@@ -87,18 +92,49 @@ uv run protofuse analyze \
 uv run protofuse trace \
   proto_programs/generated/<collection-id> <program-id> \
   --out data/analysis/<collection-id>/teacher.jsonl \
-  --run-id <run-id> --group-id <target-or-campaign-id> --tier full
+  --run-id trajectory-seed-<seed> --group-id trajectory-seed-<seed> \
+  --seed <seed> --tier full
 
-# Summarize the actual calls, then train the portable multi-output baseline.
+# Summarize the actual calls and compare compact model families on one frozen split.
 uv run protofuse fusion profile \
   --trace data/analysis/<collection-id>/teacher.jsonl \
   --out data/analysis/<collection-id>/profile.json
+uv run protofuse fusion compare-models \
+  --trace data/analysis/<collection-id>/teacher.jsonl \
+  --optimizer-index 0 --constraint <label-a> --constraint <label-b> \
+  --out data/analysis/<collection-id>/model-comparison.json
+
+# Package the currently supported portable linear baseline only after reviewing that report.
 uv run protofuse fusion train \
   proto_programs/generated/<collection-id> <program-id> \
   --trace data/analysis/<collection-id>/teacher.jsonl \
   --optimizer-index 0 --constraint <label-a> --constraint <label-b> \
   --fusion-id <fusion-id> --version 1 --out data/models/<fusion-id>
 ```
+
+The comparison command fits a bootstrap linear ensemble, Extra Trees, and a small multi-output
+MLP using the identical grouped train/calibration/audit split. It warms each fitted predictor
+before measuring inference latency and records no automatic winner. It is an offline audit only:
+`fusion train` and runtime artifacts remain linear until a reviewed result justifies another
+artifact format.
+
+One `trace` invocation creates one seeded optimizer trajectory. That trajectory can contribute
+many aligned proposal-level teacher samples, but every one of those samples must keep the same
+`group-id` and stay in the same split. For example, ten 20-step trajectories create about 200
+aligned teacher samples; the current 60/20/20 group split produces six/two/two independent
+trajectory groups and about 120/40/40 proposal samples. The effective independent counts are
+six/two/two, not 120/40/40.
+
+For the next single-program experiment, target 60 training, 20 calibration, and 20 untouched test
+trajectories. Use approximately 50 additional unseen seeds for the paired runtime experiment and
+40--60 deliberately designed challenge cases. See `docs/EVALUATION.md` for the rationale and
+stopping rules.
+
+The repository does not yet provide a resumable multi-seed trace campaign command. `trace` runs
+one program directly, while `protofuse run` is the command currently connected to checkpoint
+sessions. Do not launch a large expensive campaign until trace collection has campaign-level
+planning, resume/deduplication, a frozen external-test manifest, and a dry-run check for the chosen
+score-only constraint group.
 
 Training artifacts always start with `reviewed=false`. The following flags are for local
 development only; the normal validation and evaluation commands reject unreviewed artifacts:
@@ -107,8 +143,14 @@ development only; the normal validation and evaluation commands reject unreviewe
 uv run protofuse fusion validate data/models/<fusion-id> --allow-unreviewed
 uv run protofuse fusion evaluate \
   data/models/<fusion-id> proto_programs/generated/<collection-id> <program-id> \
-  --seed 1 --seed 2 --allow-unreviewed
+  --seed 1 --seed 2 --allow-unreviewed \
+  --out data/analysis/<collection-id>/paired-evaluation.json
 ```
+
+This is the single timed experiment path. It performs an excluded warmup pair, alternates
+which arm runs first, and writes the complete warm-runtime, final-accuracy, routing, and
+reliability report. Use `--no-warmup` only for a quick diagnostic where startup effects are
+acceptable.
 
 After human review explicitly changes the manifest status, `protofuse.optimize()` lazily
 discovers hash-valid bundles under `data/models/`. Set `PROTOFUSE_BUNDLE_DIR` to use a
