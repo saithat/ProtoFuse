@@ -1,0 +1,230 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "FreeBindCraft PyRosetta-free de novo binder design",
+    "identifier": "freebindcraft-2025",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "FreeBindCraft binder design",
+      "description": "Hallucinate a mini-protein binder against a fixed target with AlphaFold2, refine with ProteinMPNN, and validate with AF2 initial guess (PyRosetta-free BindCraft alternative).",
+      "parameters": {
+        "target_pdb": "4RWS",
+        "target_chains": ["A"],
+        "target_hotspots": ["A94", "A259", "A284"]
+      },
+      "evidence": [
+        {
+          "quote": "Design a mini-protein binder against a fixed target structure (PDB). PyRosetta-free pipeline already wrapped in Proto.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        },
+        {
+          "quote": "Generator | freebindcraft | Tools | freebindcraft-design",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "structure ipTM filter",
+      "description": "Require predicted binder-target interface confidence above threshold.",
+      "parameters": {"structure_tool": "alphafold2_binder", "min_iptm": 0.5},
+      "evidence": [
+        {
+          "quote": "Constraints | structure-iptm, structure-ipae, structure-plddt, pyrosetta-interface (optional), structure-rmsd",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "metric": "iptm",
+      "direction": "filter",
+      "weight": 1.0
+    },
+    {
+      "name": "structure interface PAE",
+      "description": "Limit AF2 binder interface predicted aligned error.",
+      "parameters": {"structure_tool": "alphafold2_binder", "max_ipae": 0.35},
+      "evidence": [
+        {
+          "quote": "Sai fusion target: AF2 / structure validation per candidate.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "metric": "ipae",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "structure pLDDT filter",
+      "description": "Require predicted binder pLDDT above developability threshold.",
+      "parameters": {"structure_tool": "alphafold2_binder", "min_plddt": 70.0},
+      "evidence": [],
+      "metric": "mean_plddt",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "structure RMSD filter",
+      "description": "Penalize large RMSD drift of the predicted complex from the apo target structure.",
+      "parameters": {
+        "structure_tool": "alphafold2_binder",
+        "target_structure": "4RWS",
+        "inflection_point_angstroms": 2.0
+      },
+      "evidence": [],
+      "metric": "rmsd",
+      "direction": "minimize",
+      "weight": 0.5
+    },
+    {
+      "name": "PyRosetta interface score",
+      "description": "Optional Rosetta interface metrics when PyRosetta is available locally.",
+      "parameters": {"metric": "interface_dG", "direction": "lower"},
+      "evidence": [],
+      "metric": "interface_dG",
+      "direction": "minimize",
+      "weight": 0.0
+    },
+    {
+      "name": "protein length range",
+      "description": "Keep binder within the configured mini-protein length window.",
+      "parameters": {"min_length": 45, "max_length": 75},
+      "evidence": [],
+      "metric": "protein_length",
+      "direction": "range",
+      "weight": 1.0
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "rejection sampling design filter",
+      "description": "Draw independent FreeBindCraft binder candidates and keep those passing structure filters.",
+      "parameters": {"num_samples": 50, "num_results": 1},
+      "evidence": [
+        {
+          "quote": "Topology: staged_filter — hallucinate → validate → filter.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ],
+      "strategy": "rejection_sampling",
+      "stopping_criteria": {"num_samples": 50, "num_results": 1}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "FreeBindCraft",
+      "version_or_checkpoint": "2025",
+      "provider": "FreeBindCraft / Proto wrapper",
+      "purpose": "PyRosetta-free AF2 hallucination + MPNN binder design",
+      "evidence": [
+        {
+          "quote": "Reference: FreeBindCraft (2025), PyRosetta-free BindCraft alternative.",
+          "section": "CANDIDATE_WORKFLOWS",
+          "page": null
+        }
+      ]
+    },
+    {
+      "name": "AlphaFold2 initial guess",
+      "version_or_checkpoint": null,
+      "provider": "ColabDesign / FreeBindCraft",
+      "purpose": "Structure validation and interface scoring",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "freebindcraft_binder",
+    "target_pdb": "4RWS",
+    "target_chains": ["A"],
+    "target_hotspots": ["A94", "A259", "A284"],
+    "binder_length_aa": 70,
+    "min_binder_length_aa": 45,
+    "max_binder_length_aa": 75,
+    "num_samples": 50,
+    "num_results": 1,
+    "min_iptm": 0.5,
+    "min_plddt": 70.0,
+    "max_ipae": 0.35,
+    "rmsd_inflection_angstroms": 2.0
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "hallucinate_binder",
+        "operation": "FreeBindCraft AF2 hallucination against frozen target",
+        "inputs": ["target_structure", "hotspot_residues"],
+        "outputs": ["binder_sequences"],
+        "parameters": {"target_pdb": "4RWS"},
+        "evidence": []
+      },
+      {
+        "id": "mpnn_refine",
+        "operation": "ProteinMPNN sequence assignment on binder chain",
+        "inputs": ["binder_backbones"],
+        "outputs": ["binder_sequences"],
+        "parameters": {},
+        "evidence": []
+      },
+      {
+        "id": "structure_validate",
+        "operation": "AF2 re-fold and score ipTM, ipAE, pLDDT, RMSD",
+        "inputs": ["binder_sequences", "target_sequence"],
+        "outputs": ["scored_designs"],
+        "parameters": {"structure_tool": "alphafold2_binder"},
+        "evidence": []
+      },
+      {
+        "id": "select_binders",
+        "operation": "Keep designs passing structure gates",
+        "inputs": ["scored_designs"],
+        "outputs": ["accepted_binders"],
+        "parameters": {"num_results": 1},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "hallucinate_binder", "target": "mpnn_refine", "artifact": "binder_backbones"},
+      {"source": "mpnn_refine", "target": "structure_validate", "artifact": "binder_sequences"},
+      {"source": "structure_validate", "target": "select_binders", "artifact": "scored_designs"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "interface ipTM gate",
+      "metric": "iptm",
+      "operator": ">=",
+      "value": 0.5,
+      "unit": "score",
+      "applies_to": "designed binder-target complex",
+      "evidence": []
+    },
+    {
+      "name": "binder length window",
+      "metric": "protein_length",
+      "operator": "between",
+      "value": [45, 75],
+      "unit": "aa",
+      "applies_to": "designed mini-protein",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "CXCR4 chain A from PDB 4RWS is a compact benchmark target shared with gpcr-cxcr4-miniprotein.",
+    "alphafold2_binder structure constraints proxy FreeBindCraft internal AF2 validation.",
+    "PyRosetta interface scoring is documented but omitted from the default builder (optional, not Modal-safe).",
+    "Rejection sampling with num_samples=50 (full) / 5 (smoke) stands in for large-scale design libraries."
+  ],
+  "unknowns": [
+    "Wet-lab binding affinity and specificity are not modeled.",
+    "Exact FreeBindCraft filter thresholds may differ from Proto constraint defaults.",
+    "Target hotspot residue numbering follows PDB chain A 1-indexed positions."
+  ]
+}

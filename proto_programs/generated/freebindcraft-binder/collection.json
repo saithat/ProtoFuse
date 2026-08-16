@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "freebindcraft-binder",
+  "methodology_id": "freebindcraft-binder-v1",
+  "proto_version": "e02ab35bf6b15bcd9e84103e388dc3f9e5b305f9",
+  "registry_version": "1",
+  "seed_policy": "FreeBindCraft seeds from generator; rejection sampling is stateless per batch",
+  "reviewed": true,
+  "programs": [
+    {
+      "program_id": "design-001",
+      "path": "design_001.py",
+      "entrypoint": "build_program",
+      "sha256": "fc87766449df10a18d4b4dcad99c6a10f2f141e43c232d311119c9c4b5e84675"
+    },
+    {
+      "program_id": "design-002",
+      "path": "design_002.py",
+      "entrypoint": "build_program",
+      "sha256": "19bd9cc4fcce85cbda9b7220481a01121340b4ff13a8709c64a54cd66bc763fd"
+    }
+  ]
+}

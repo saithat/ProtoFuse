@@ -1,0 +1,180 @@
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "Symmetric oligomer nanoring design benchmark",
+    "identifier": "symmetric-oligomer-ring-v1",
+    "source_path": "docs/CANDIDATE_WORKFLOWS.md"
+  },
+  "generators": [
+    {
+      "name": "random protein mutation",
+      "description": "Propose random amino-acid mutations on a de novo monomer sequence using codon-scheme-biased sampling.",
+      "parameters": {"mutations_per_step": 3, "codon_scheme": "NNK"},
+      "evidence": [
+        {
+          "quote": "Design sequences that assemble into Cn-symmetric ring multimers.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "output": "protein"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "protein symmetry ring",
+      "description": "Require ESMFold-predicted oligomer to form a symmetric ring with low inter-protomer distance variance.",
+      "parameters": {"max_symmetry_std": 10.0, "structure_tool": "esmfold"},
+      "evidence": [
+        {
+          "quote": "Constraints: protein-symmetry-ring, protein-globularity, structure-radius-gyration, structure-composite, overall-protein-quality",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "metric": "symmetry_std",
+      "direction": "minimize",
+      "weight": 1.0
+    },
+    {
+      "name": "protein globularity",
+      "description": "Encourage compact, globular monomer folds before oligomer assembly.",
+      "parameters": {"max_globularity": 20.0, "structure_tool": "esmfold"},
+      "evidence": [],
+      "metric": "globularity",
+      "direction": "minimize",
+      "weight": 0.75
+    },
+    {
+      "name": "structure radius of gyration",
+      "description": "Penalize extended monomer structures inconsistent with ring protomers.",
+      "parameters": {"structure_tool": "esmfold"},
+      "evidence": [],
+      "metric": "radius_gyration",
+      "direction": "minimize",
+      "weight": 0.5
+    },
+    {
+      "name": "structure composite quality",
+      "description": "Score oligomer structure confidence with a composite of pLDDT, ipTM, pTM, and PAE from one prediction call.",
+      "parameters": {"structure_tool": "esmfold"},
+      "evidence": [],
+      "metric": "structure_composite",
+      "direction": "maximize",
+      "weight": 1.0
+    },
+    {
+      "name": "overall protein quality",
+      "description": "Composite developability checks on the monomer sequence (complexity and amino-acid balance).",
+      "parameters": {"max_low_complexity": 0.2, "min_aa_frequency": 0.02, "max_underrepresented_count": 3},
+      "evidence": [],
+      "metric": "overall_protein_quality",
+      "direction": "filter",
+      "weight": 0.5
+    }
+  ],
+  "optimizers": [
+    {
+      "name": "pool propose-score-select",
+      "description": "Generate a pool of rejection-sampled ring monomer candidates and select the top-scoring design.",
+      "parameters": {"n_pool": 1000, "top_k": 10, "num_samples": 20},
+      "evidence": [
+        {
+          "quote": "Topology: propose_score_select or population search.",
+          "section": "Candidate workflows",
+          "page": null
+        }
+      ],
+      "strategy": "propose_score_select",
+      "stopping_criteria": {"n_pool": 1000, "top_k": 10, "num_samples": 20}
+    }
+  ],
+  "model_dependencies": [
+    {
+      "name": "ESMFold",
+      "version_or_checkpoint": null,
+      "provider": "Meta FAIR",
+      "purpose": "Multimer symmetry, globularity, radius-of-gyration, and composite structure scoring",
+      "evidence": []
+    }
+  ],
+  "global_parameters": {
+    "workload": "symmetric_oligomer_ring",
+    "segment_length_aa": 80,
+    "symmetry_order": 6,
+    "n_pool": 1000,
+    "top_k": 10,
+    "num_samples": 20,
+    "num_results": 1,
+    "mutations_per_step": 3,
+    "homopolymer_max": 5,
+    "max_symmetry_std": 10.0,
+    "max_globularity": 20.0,
+    "max_low_complexity": 0.2,
+    "min_aa_frequency": 0.02,
+    "max_underrepresented_count": 3
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "sample_monomer",
+        "operation": "random protein mutation proposals on monomer sequence",
+        "inputs": ["monomer_length"],
+        "outputs": ["candidate_monomer"],
+        "parameters": {"mutations_per_step": 3},
+        "evidence": []
+      },
+      {
+        "id": "score_oligomer",
+        "operation": "ESMFold symmetry ring, globularity, Rg, and composite scoring",
+        "inputs": ["candidate_monomer", "symmetry_order"],
+        "outputs": ["structure_scores"],
+        "parameters": {"symmetry_order": 6},
+        "evidence": []
+      },
+      {
+        "id": "reject_filter",
+        "operation": "rejection sampling on lowest-energy monomer designs",
+        "inputs": ["structure_scores"],
+        "outputs": ["filtered_monomer"],
+        "parameters": {"num_samples": 20},
+        "evidence": []
+      },
+      {
+        "id": "select_best",
+        "operation": "pool propose-score-select over n_pool independent rejection runs",
+        "inputs": ["filtered_monomer"],
+        "outputs": ["best_ring_monomer"],
+        "parameters": {"n_pool": 1000, "top_k": 10},
+        "evidence": []
+      }
+    ],
+    "edges": [
+      {"source": "sample_monomer", "target": "score_oligomer", "artifact": "candidate_monomer"},
+      {"source": "score_oligomer", "target": "reject_filter", "artifact": "structure_scores"},
+      {"source": "reject_filter", "target": "select_best", "artifact": "filtered_monomer"}
+    ]
+  },
+  "selection_thresholds": [
+    {
+      "name": "symmetry ring tolerance",
+      "metric": "symmetry_std",
+      "operator": "<=",
+      "value": 10,
+      "unit": "Angstrom",
+      "applies_to": "predicted oligomer",
+      "evidence": []
+    }
+  ],
+  "experimental_measurements": [],
+  "assumptions": [
+    "Smoke tier uses C3 symmetry (symmetry_order=3) with n_pool=100 for fast GPU sanity checks.",
+    "Full tier uses C6 symmetry with n_pool=1000 matching the propose-score-select population search topology.",
+    "Each pool member runs an inner rejection-sampling program with ESMFold-backed structure constraints.",
+    "Homo-oligomer ring design reuses the same monomer sequence for all protomer chains in symmetry scoring."
+  ],
+  "unknowns": [
+    "No canonical paper anchors this v1 fixture; parameters follow internal CANDIDATE_WORKFLOWS spec.",
+    "ProteinMPNN structure-conditioned design is deferred; v1 uses random-protein mutation only."
+  ]
+}

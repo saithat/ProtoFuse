@@ -42,6 +42,12 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
         seed_policy="ESM-2 seeds from framework_sequence; CDR masking via region_pass",
         compile_device="modal",
     ),
+    "symmetric-oligomer-ring": HandoffConfig(
+        fixture_id="symmetric-oligomer-ring",
+        methodology_id="symmetric-oligomer-ring-v1",
+        seed_policy="random-protein init per pool member; symmetry order from fixture parameters",
+        compile_device="modal",
+    ),
     "gpcr-cxcr4-miniprotein": HandoffConfig(
         fixture_id="gpcr-cxcr4-miniprotein",
         methodology_id="gpcr-cxcr4-v1",
@@ -50,6 +56,20 @@ HANDOFF_CONFIGS: dict[str, HandoffConfig] = {
         ),
         compile_device="modal",
         requires_paper_source=True,
+    ),
+    "freebindcraft-binder": HandoffConfig(
+        fixture_id="freebindcraft-binder",
+        methodology_id="freebindcraft-binder-v1",
+        seed_policy=(
+            "FreeBindCraft seeds from generator; rejection sampling is stateless per batch"
+        ),
+        compile_device="modal",
+    ),
+    "ppi-interface-specificity": HandoffConfig(
+        fixture_id="ppi-interface-specificity",
+        methodology_id="ppi-interface-specificity-v1",
+        seed_policy="binder_sequence seed; interface masking via region_pass",
+        compile_device="modal",
     ),
 }
 

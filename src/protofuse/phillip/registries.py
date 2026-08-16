@@ -81,10 +81,46 @@ ANTIBODY_CDR_MATURATION_REGISTRY: dict[str, str] = {
     "gap distribution": "proto_language.constraint.gap_gini_constraint",
 }
 
+SYMMETRIC_OLIGOMER_RING_REGISTRY: dict[str, str] = {
+    **PROTEIN_SHARED_REGISTRY,
+    "random protein mutation": "proto_language.generator.RandomProteinGenerator",
+    "ProteinMPNN inverse folding": "proto_language.generator.ProteinMPNNGenerator",
+    "protein symmetry ring": "proto_language.constraint.protein_symmetry_ring_constraint",
+    "protein globularity": "proto_language.constraint.protein_globularity_constraint",
+    "structure radius of gyration": "proto_language.constraint.structure_radius_gyration_constraint",
+    "structure composite quality": "proto_language.constraint.structure_composite_constraint",
+    "overall protein quality": "proto_language.constraint.overall_protein_quality_constraint",
+    "rejection sampling design filter": "proto_language.optimizer.RejectionSamplingOptimizer",
+    "pool propose-score-select": "protofuse.phillip.pool_optimizer.run_pool_optimizer",
+}
+
 GPCR_CXCR4_REGISTRY: dict[str, str] = {
     "RFdiffusion MPNN binder design": "proto_language.generator.RFdiffusionMPNNBinderGenerator",
     "structure ipTM filter": "proto_language.constraint.structure_iptm_constraint",
     "Boltz2 binding strength": "proto_language.constraint.boltz_binding_strength_constraint",
+    "protein length range": "proto_language.constraint.protein_length_constraint",
+    "rejection sampling design filter": "proto_language.optimizer.RejectionSamplingOptimizer",
+}
+
+PPI_INTERFACE_REGISTRY: dict[str, str] = {
+    **PROTEIN_SHARED_REGISTRY,
+    "interface ESM-2 mutation": "proto_language.generator.ESM2Generator",
+    "interface MPNN mutation": "proto_language.generator.MPNNMutationGenerator",
+    "target interface ipTM": "proto_language.constraint.structure_iptm_constraint",
+    "Boltz2 binding strength": "proto_language.constraint.boltz_binding_strength_constraint",
+    "AF3 off-target ipTM specificity": (
+        "proto_language.constraint.af3_offtarget_iptm_specificity_constraint"
+    ),
+    "interface contact loss": "proto_language.constraint.structure_interface_contact_constraint",
+}
+
+FREEBINDCRAFT_REGISTRY: dict[str, str] = {
+    "FreeBindCraft binder design": "proto_language.generator.FreeBindCraftGenerator",
+    "structure ipTM filter": "proto_language.constraint.structure_iptm_constraint",
+    "structure interface PAE": "proto_language.constraint.structure_ipae_constraint",
+    "structure pLDDT filter": "proto_language.constraint.structure_plddt_constraint",
+    "structure RMSD filter": "proto_language.constraint.structure_rmsd_constraint",
+    "PyRosetta interface score": "proto_language.constraint.pyrosetta_interface_constraint",
     "protein length range": "proto_language.constraint.protein_length_constraint",
     "rejection sampling design filter": "proto_language.optimizer.RejectionSamplingOptimizer",
 }
@@ -95,8 +131,11 @@ REGISTRY_BY_NAME: dict[str, dict[str, str]] = {
     "dnachisel-num1": DNA_CHISEL_NUM1_REGISTRY,
     "custom-egfp": CUSTOM_EGFP_REGISTRY,
     "gpcr-cxcr4": GPCR_CXCR4_REGISTRY,
+    "freebindcraft-binder": FREEBINDCRAFT_REGISTRY,
     "esm2-protein-maturation": ESM2_PROTEIN_MATURATION_REGISTRY,
     "antibody-cdr-maturation": ANTIBODY_CDR_MATURATION_REGISTRY,
+    "symmetric-oligomer-ring": SYMMETRIC_OLIGOMER_RING_REGISTRY,
+    "ppi-interface-specificity": PPI_INTERFACE_REGISTRY,
 }
 
 WorkloadTier = Literal["smoke", "full"]
@@ -227,6 +266,97 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
                     "Smoke-tier ESM-2 protein maturation (80 aa truncated eGFP, 50 MCMC steps)."
                 ),
                 builder_call="build_esm2_protein_maturation_program(params, region_pass=0)",
+            ),
+        ),
+    ),
+    "freebindcraft_binder": WorkloadProfile(
+        workload_key="freebindcraft_binder",
+        fixture_id="freebindcraft-binder",
+        registry_name="freebindcraft-binder",
+        builder_symbol="build_freebindcraft_binder_program",
+        required_global_parameters=("workload", "target_pdb", "binder_length_aa", "num_samples"),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier FreeBindCraft binder design (70 aa, 50 rejection samples).\n\n"
+                    "Represents one in-silico design batch from the staged_filter topology:\n"
+                    "FreeBindCraft hallucination → AF2 validation → rejection sampling.\n"
+                    "Target: CXCR4 chain A from PDB 4RWS (compact benchmark epitope)."
+                ),
+                builder_call="build_freebindcraft_binder_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier FreeBindCraft binder design (50 aa, 5 samples) for fast GPU sanity checks."
+                ),
+                builder_call="build_freebindcraft_binder_program(params)",
+            ),
+        ),
+    ),
+    "symmetric_oligomer_ring": WorkloadProfile(
+        workload_key="symmetric_oligomer_ring",
+        fixture_id="symmetric-oligomer-ring",
+        registry_name="symmetric-oligomer-ring",
+        builder_symbol="build_symmetric_oligomer_ring_program",
+        required_global_parameters=("workload", "segment_length_aa", "symmetry_order", "n_pool"),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier symmetric oligomer ring design (80 aa monomer, C6, n_pool=1000).\n\n"
+                    "Represents one pool member in the propose-score-select loop: random-protein\n"
+                    "mutation with rejection sampling under ESMFold symmetry, globularity, Rg,\n"
+                    "structure-composite, and overall-protein-quality constraints."
+                ),
+                builder_call="build_symmetric_oligomer_ring_program(params)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier symmetric oligomer ring design for fast GPU sanity checks "
+                    "(60 aa monomer, C3, n_pool=100)."
+                ),
+                builder_call="build_symmetric_oligomer_ring_program(params)",
+            ),
+        ),
+    ),
+    "ppi_interface_specificity": WorkloadProfile(
+        workload_key="ppi_interface_specificity",
+        fixture_id="ppi-interface-specificity",
+        registry_name="ppi-interface-specificity",
+        builder_symbol="build_ppi_interface_specificity_program",
+        required_global_parameters=(
+            "workload",
+            "binder_sequence",
+            "target_pdb",
+            "off_target_pdb",
+        ),
+        variants=(
+            ProgramVariant(
+                filename="design_001.py",
+                tier="full",
+                docstring=(
+                    "Full-tier PPI interface specificity (65-aa binder, 100 MCMC steps, 2 interface passes).\n\n"
+                    "Represents one region-pass in the region-local solver: MPNN mutations within\n"
+                    "the active interface patch, AF3/Boltz on-target scoring, AF3 off-target\n"
+                    "specificity margin, and AF2 interface contact loss vs PD-L1 (4ZQK)."
+                ),
+                builder_call="build_ppi_interface_specificity_program(params, region_pass=0)",
+            ),
+            ProgramVariant(
+                filename="design_002.py",
+                tier="smoke",
+                docstring=(
+                    "Smoke-tier PPI interface specificity for fast GPU sanity checks "
+                    "(20 steps, interface patch 1, ESM-2 proposals)."
+                ),
+                builder_call="build_ppi_interface_specificity_program(params, region_pass=0)",
             ),
         ),
     ),
