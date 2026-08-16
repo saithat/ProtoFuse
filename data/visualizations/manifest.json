@@ -1,0 +1,169 @@
+{
+  "bundle_id": "protofuse-visualization-v1",
+  "candidates": [
+    {
+      "arm": "full_model",
+      "artifact_role": "final",
+      "candidate_id": "antibody-cdr-maturation:smoke:final",
+      "complete": true,
+      "fixture": "antibody-cdr-maturation",
+      "molecule_ids": [],
+      "score_vector": [
+        {
+          "direction": "minimize",
+          "name": "final_energy",
+          "units": "internal composite",
+          "value": 0.5202766489391485
+        }
+      ],
+      "segment_label": "construct",
+      "sequence": {
+        "fasta_path": "sequences/antibody-cdr-maturation-smoke-final.fasta",
+        "length": 261,
+        "sha256": "3f30aee7ae34d66fcf896795619a1d17677d8a76b551b845729f0ab8f43a7564",
+        "type": "protein",
+        "value": "EVQLVESGGGLVQPGGSLRLSCAASGFAISSQTVSCVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNAKNTLYLQMNSLRAEDTAVYYCAKDRGYSSGWYFDYWGQGTQVTVSSGSGSGSGSGSGSGSGSGSGEVQLVESGGGLVQPGGSLRLSCAASGFTFSNYAMNWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNAKNTLYLQMNSLRAEDTAVYYCAKDRGYSSGWYFDYWGQGTQVTVSS"
+      },
+      "source": {
+        "path": "data/analysis/antibody-cdr-maturation/smoke_run_report.json",
+        "sha256": "561ac3b021543ea1592335eaebc16fe66d2920ae30014c96b277edaa14af351a"
+      },
+      "structure_ids": [],
+      "tier": "smoke"
+    },
+    {
+      "arm": "full_model",
+      "artifact_role": "partial_output_prefix",
+      "candidate_id": "boltz2-state-sweep:smoke:output-prefix",
+      "complete": false,
+      "fixture": "boltz2-state-sweep",
+      "molecule_ids": [],
+      "score_vector": [],
+      "segment_label": "construct",
+      "sequence": {
+        "fasta_path": "sequences/boltz2-state-sweep-smoke-output-prefix.fasta",
+        "length": 120,
+        "sha256": "d81cfd45e52fb4cc3758bd247fd556fffdd2acd0d990fe6d65816498ebdd8472",
+        "type": "protein",
+        "value": "MRIILLGAPGAGKGTQAQFIMEKYGIPQISTGDMLRAAVKSGSELGKQAKDIMDAGKLVTDELVIALVKERIAQEDCRNGFLLDGFPRTIPQADAMKEAGINVDYVLEFDVPDELIVDRI"
+      },
+      "source": {
+        "path": "data/analysis/modal_smoke_summary.json",
+        "sha256": "c2ce71f583b27e1277a6f7a2191bd39e0117c266695e91e4c6c9287c4647bc5d"
+      },
+      "structure_ids": [],
+      "tier": "smoke"
+    },
+    {
+      "arm": "full_model",
+      "artifact_role": "final",
+      "candidate_id": "esm2-protein-maturation:smoke:final",
+      "complete": true,
+      "fixture": "esm2-protein-maturation",
+      "molecule_ids": [],
+      "score_vector": [],
+      "segment_label": "construct",
+      "sequence": {
+        "fasta_path": "sequences/esm2-protein-maturation-smoke-final.fasta",
+        "length": 80,
+        "sha256": "d0eecdc69530c4f14a2df1afb91bb0a8cff11d14a7680e0df5d982e4b76130ff",
+        "type": "protein",
+        "value": "MSKLLELFTGVVPGLGSGSGLIGGGAGDGAGEGAGDGGAGKGTGGFICITLLLLLILLLLLLLLLYLSLLLLLYLDHTHT"
+      },
+      "source": {
+        "path": "data/analysis/modal_smoke_summary.json",
+        "sha256": "c2ce71f583b27e1277a6f7a2191bd39e0117c266695e91e4c6c9287c4647bc5d"
+      },
+      "structure_ids": [],
+      "tier": "smoke"
+    },
+    {
+      "arm": "full_model",
+      "artifact_role": "final",
+      "candidate_id": "rfdiffusion3-boltz2-binder:smoke:final",
+      "complete": true,
+      "fixture": "rfdiffusion3-boltz2-binder",
+      "molecule_ids": [],
+      "score_vector": [
+        {
+          "direction": "minimize",
+          "name": "final_energy",
+          "units": "internal composite",
+          "value": 0.0
+        }
+      ],
+      "segment_label": "construct",
+      "sequence": {
+        "fasta_path": "sequences/rfdiffusion3-boltz2-binder-smoke-final.fasta",
+        "length": 548,
+        "sha256": "cb53bb033db0027dc912acd5117f3316383dccbaee2ae962dd808e1561105104",
+        "type": "protein",
+        "value": "AAAAAAAAAAAAAAARRRALGLPPPRRVPGVPRPRRAPTPEELAALAAALDYKDDDDGAPEGISIYTSDNYTEEMGSGDYDSMKEPCFREENANFNKIFLPTIYSIIFLTGIVGNGLVILVMGYQKKLRSMTDKYRLHLSVADLLFVITLPFWAVDAVANWYFGNFLCKAVHVIYTVNLYSSVWILAFISLDRYLAIVHATNSQRPRKLLAEKVVYVGVWIPALLLTIPDFIFANVSEADDRYICCRFYPNDLWVVVFQFQHIMVGLILPGIVILSCYCIIISKLSHNIFEMLRIDEGLRLKIYKDTEGYYTIGIGHLLTKSPSLNAAKSELDKAIGRNTNGVITKDEAEKLFNQDVDAAVRGILRNAKLKPVYDSLDAVRRAALINMVFQMGETGVAGFTNSLRMLQQKRWDEAAVNLAKSRWYNQTPNRAKRVITTFRTGTWDAYSGSGHQKRKALKPTVILILAFFACWLPYYIGISIDSFILLEIIKQGCEFENTVHKWISITEALAFFHCCLNPILYAFLGAKFKTSAQHALTSGRPLEVLFQ"
+      },
+      "source": {
+        "path": "data/analysis/rfdiffusion3-boltz2-binder/smoke_run_report.json",
+        "sha256": "00b2cb29fe6b2c226b914002361ad8dd2f2dbc4fb72444fa724dce3885f9c237"
+      },
+      "structure_ids": [
+        "rfdiffusion3-boltz2-binder:smoke:intermediate-backbone"
+      ],
+      "tier": "smoke"
+    }
+  ],
+  "description": "Curated final-candidate artifacts for sequence, structure, molecule, and full-versus-fused visualizations.",
+  "gaps": [
+    {
+      "code": "VIS-MOLECULE-001",
+      "message": "No final small-molecule SMILES or SDF artifacts are available."
+    },
+    {
+      "code": "VIS-STRUCTURE-001",
+      "message": "The committed RFdiffusion PDB is an intermediate backbone; final Boltz/ESMFold structures are not yet exported."
+    },
+    {
+      "code": "VIS-SURROGATE-001",
+      "message": "The CUSTOM surrogate report stores agreement counts but not paired final sequences, so a full-versus-fused sequence alignment cannot be rendered."
+    }
+  ],
+  "generated_at": "2026-08-16T04:31:28.657711+00:00",
+  "molecules": [],
+  "provenance": [
+    {
+      "path": "data/analysis/antibody-cdr-maturation/smoke_run_report.json",
+      "sha256": "561ac3b021543ea1592335eaebc16fe66d2920ae30014c96b277edaa14af351a"
+    },
+    {
+      "path": "data/analysis/modal_smoke_summary.json",
+      "sha256": "c2ce71f583b27e1277a6f7a2191bd39e0117c266695e91e4c6c9287c4647bc5d"
+    },
+    {
+      "path": "data/analysis/rfdiffusion3-boltz2-binder/last_rfdiffusion_structure.pdb",
+      "sha256": "6d6bc572349080a4c3af72ff88f5f88f52c966e0995413f85f9a5df6b3d03eb6"
+    },
+    {
+      "path": "data/analysis/rfdiffusion3-boltz2-binder/smoke_run_report.json",
+      "sha256": "00b2cb29fe6b2c226b914002361ad8dd2f2dbc4fb72444fa724dce3885f9c237"
+    }
+  ],
+  "schema_version": "1.0",
+  "structures": [
+    {
+      "atom_count": 4330,
+      "candidate_id": "rfdiffusion3-boltz2-binder:smoke:final",
+      "chain_ids": [
+        "A",
+        "B"
+      ],
+      "format": "pdb",
+      "hetatm_count": 0,
+      "path": "structures/rfdiffusion3-boltz2-binder-intermediate.pdb",
+      "role": "intermediate_rfdiffusion_backbone",
+      "sha256": "d880ec22253320d633835b3838701e3aca5e63462e4ef4695e07258f28a606aa",
+      "source": {
+        "path": "data/analysis/rfdiffusion3-boltz2-binder/last_rfdiffusion_structure.pdb",
+        "sha256": "6d6bc572349080a4c3af72ff88f5f88f52c966e0995413f85f9a5df6b3d03eb6"
+      },
+      "structure_id": "rfdiffusion3-boltz2-binder:smoke:intermediate-backbone"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://protofuse.local/schemas/visualization-manifest-1.0.json",
+  "title": "ProtoFuse visualization manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "generated_at",
+    "candidates",
+    "structures",
+    "molecules",
+    "gaps",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "bundle_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "description": {"type": "string"},
+    "candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/candidate"}
+    },
+    "structures": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/structure"}
+    },
+    "molecules": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/molecule"}
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string"},
+          "message": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "score": {
+      "type": "object",
+      "required": ["name", "value", "direction", "units"],
+      "properties": {
+        "name": {"type": "string"},
+        "value": {"type": "number"},
+        "direction": {"enum": ["minimize", "maximize", "target", "report_only"]},
+        "units": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "required": ["type", "length", "value", "sha256", "fasta_path"],
+      "properties": {
+        "type": {"type": "string"},
+        "length": {"type": "integer", "minimum": 1},
+        "value": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "fasta_path": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "candidate_id",
+        "fixture",
+        "tier",
+        "arm",
+        "artifact_role",
+        "complete",
+        "segment_label",
+        "sequence",
+        "score_vector",
+        "structure_ids",
+        "molecule_ids",
+        "source"
+      ],
+      "properties": {
+        "candidate_id": {"type": "string"},
+        "fixture": {"type": "string"},
+        "tier": {"type": "string"},
+        "arm": {"enum": ["full_model", "fused", "reference"]},
+        "artifact_role": {"type": "string"},
+        "complete": {"type": "boolean"},
+        "segment_label": {"type": "string"},
+        "sequence": {"$ref": "#/$defs/sequence"},
+        "score_vector": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/score"}
+        },
+        "structure_ids": {"type": "array", "items": {"type": "string"}},
+        "molecule_ids": {"type": "array", "items": {"type": "string"}},
+        "source": {"$ref": "#/$defs/source"}
+      },
+      "additionalProperties": false
+    },
+    "structure": {
+      "type": "object",
+      "required": [
+        "structure_id",
+        "candidate_id",
+        "role",
+        "format",
+        "path",
+        "sha256",
+        "source"
+      ],
+      "properties": {
+        "structure_id": {"type": "string"},
+        "candidate_id": {"type": "string"},
+        "role": {"type": "string"},
+        "format": {"enum": ["pdb", "cif", "mmcif"]},
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "atom_count": {"type": "integer", "minimum": 0},
+        "hetatm_count": {"type": "integer", "minimum": 0},
+        "chain_ids": {"type": "array", "items": {"type": "string"}},
+        "source": {"$ref": "#/$defs/source"}
+      },
+      "additionalProperties": false
+    },
+    "molecule": {
+      "type": "object",
+      "required": ["molecule_id", "candidate_id", "role", "canonical_smiles", "sha256"],
+      "properties": {
+        "molecule_id": {"type": "string"},
+        "candidate_id": {"type": "string"},
+        "role": {"type": "string"},
+        "canonical_smiles": {"type": "string", "minLength": 1},
+        "sdf_path": {"type": ["string", "null"]},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source": {"$ref": "#/$defs/source"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

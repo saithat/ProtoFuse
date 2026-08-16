@@ -68,6 +68,25 @@ uv run pytest
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TEAM.md](docs/TEAM.md),
 [docs/PROGRAM_COLLECTION.md](docs/PROGRAM_COLLECTION.md), and [docs/SETUP.md](docs/SETUP.md).
 
+## Portable evaluation report
+
+The canonical shareable readout is a self-contained interactive HTML file. It explains the
+motivation, reports surrogate and full-path results, and identifies the next measurements. It
+does not require ChatGPT, the hosted dashboard, npm, or a web server:
+
+```bash
+python3 scripts/build_visualization_bundle.py --strict
+python3 scripts/build_evaluation_report.py
+open reports/protofuse-evaluation.html  # macOS; or double-click the file
+```
+
+The visualization builder exports reviewed final sequences, attached structures, score vectors,
+and provenance from ignored raw results into the tracked `data/visualizations/` bundle. The report
+generator reads that bundle plus aggregate artifacts from `data/analysis/`, optional checkpoints
+from `data/runs/checkpoints/`, and methodology provenance from `workspaces/phillip/fixtures/`.
+It excludes proposal pools and teacher traces while embedding the curated final candidates and
+normalized aggregate JSON. See [reports/README.md](reports/README.md).
+
 ## Current state
 
 Paper extraction and planning, collection manifest generation/hash validation, fusion
