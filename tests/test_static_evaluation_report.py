@@ -262,12 +262,13 @@ def test_slides_deck_is_self_contained_and_16_9(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr
     report = output.read_text()
     slide_count = report.count('class="slide"')
-    assert slide_count >= 5
+    assert slide_count >= 6
     assert "1920px" in report
     assert "1080px" in report
     assert "aspect-ratio:16/9" in report.replace(" ", "")
     assert "Why ProtoFuse" in report
     assert "Routing concept" in report
+    assert "Paper-based benchmarking for common paired tool calls" in report
     assert "Current evidence summary" in report
     assert "What the pilot establishes" in report
     assert "Surrogate performance" in report

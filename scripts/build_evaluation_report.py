@@ -64,6 +64,54 @@ def _fixture_label(fixture: str) -> str:
     return labels.get(fixture, fixture.replace("-", " ").title())
 
 
+def _paper_source_kind(paper: dict[str, Any]) -> str:
+    source_path = paper.get("source_path")
+    identifier = paper.get("identifier")
+    if isinstance(source_path, str) and source_path not in {
+        None,
+        "",
+        "docs/CANDIDATE_WORKFLOWS.md",
+    }:
+        return "paper text"
+    if isinstance(identifier, str) and identifier.startswith("10."):
+        return "registered DOI"
+    if source_path == "docs/CANDIDATE_WORKFLOWS.md":
+        return "internal spec"
+    return "no paper anchor"
+
+
+def _paper_study_rows(root: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for path in sorted((root / "workspaces" / "phillip" / "fixtures").glob("*/methodology.json")):
+        methodology = _read_json(path)
+        if methodology is None:
+            continue
+        paper = methodology.get("paper", {})
+        if not isinstance(paper, dict):
+            paper = {}
+        fixture_id = path.parent.name
+        identifier = paper.get("identifier")
+        source_kind = _paper_source_kind(paper)
+        if isinstance(identifier, str) and identifier.startswith("10."):
+            identifier_label = identifier
+        elif isinstance(paper.get("source_path"), str) and paper["source_path"]:
+            identifier_label = str(paper["source_path"]).split("/")[-1]
+        elif isinstance(identifier, str) and identifier:
+            identifier_label = identifier
+        else:
+            identifier_label = "not recorded"
+        rows.append(
+            {
+                "fixture": fixture_id,
+                "workload": _fixture_label(fixture_id),
+                "paper_title": str(paper.get("title") or _fixture_label(fixture_id)),
+                "identifier": identifier_label,
+                "source_kind": source_kind,
+            }
+        )
+    return rows
+
+
 def _methodology_summary(root: Path) -> dict[str, Any]:
     paths = sorted((root / "workspaces" / "phillip" / "fixtures").glob("*/methodology.json"))
     constraint_count = 0
@@ -234,6 +282,7 @@ def collect_report_data(
     collection_audit = _read_json(audit_path)
     visualizations = _read_json(visualization_path)
     methodology = _methodology_summary(root)
+    paper_studies = _paper_study_rows(root)
     checkpoints = _checkpoint_summary(checkpoint_dir, root)
 
     sources = [
@@ -290,6 +339,7 @@ def collect_report_data(
             **methodology,
         },
         "checkpoints": checkpoints,
+        "paper_studies": paper_studies,
         "splits": {
             "train": int(splits.get("train", 0)) if isinstance(splits, dict) else 0,
             "calibration": (
@@ -880,39 +930,17 @@ def _render_gaps(summary: dict[str, Any], checkpoints: dict[str, Any]) -> str:
 def _render_measurement_plan() -> str:
     return "".join(
         '<article class="plan-row">'
-        f'<span class="plan-index">{index:02d}</span><div><strong>{_escape(stage)}</strong>'
-        f'<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>'
-        for index, (stage, question, measures) in enumerate(_measurement_plan_rows(), start=1)
+        f'<span class="plan-index">{index:02d}</span><div>'
+        f"<h3>{_escape(item)}</h3></div></article>"
+        for index, item in enumerate(_measurement_plan_rows(), start=1)
     )
 
 
-def _measurement_plan_rows() -> list[tuple[str, str, str]]:
+def _measurement_plan_rows() -> list[str]:
     return [
-        (
-            "Instrument",
-            "What happened at every proposal?",
-            "Objective version, inputs, parent outputs, latency, accelerator time, errors, and cost.",
-        ),
-        (
-            "Freeze cohorts",
-            "Can the router distinguish value from risk?",
-            "Train, calibration, in-domain test, negative, positive, uncertain-positive, and OOD manifests.",
-        ),
-        (
-            "Train + calibrate",
-            "Does one surrogate preserve the joint objective group?",
-            "Per-objective error, rank quality, uncertainty calibration, and applicability coverage.",
-        ),
-        (
-            "Pair executions",
-            "Does fusion improve the real pipeline?",
-            "Same seed/input/stopping rule; time, steps, parent calls, final regret, and full-model validation.",
-        ),
-        (
-            "Decide",
-            "Is the speed/coverage tradeoff safe and useful?",
-            "Selective risk, false acceptance/rejection, deferral recovery, confidence intervals, and net cost.",
-        ),
+        "Test embeddings vs surrogate models",
+        "validate on bigger tools to score the time savings",
+        "Explore if it's worth to explore combining more than 2 objectives--are these workflows common?",
     ]
 
 
@@ -1026,6 +1054,26 @@ def _render_slide_benchmark_rows(rows: list[dict[str, Any]]) -> str:
             f'<span class="mono {"good" if fused is not None else "muted"}">'
             f'{_escape(_format_time(fused))}</span>'
             f'<span>{_escape(row["objective_error"])}</span>'
+            "</div>"
+        )
+    return head + "".join(body) + "</div>"
+
+
+def _render_slide_paper_study_rows(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return '<div class="empty">No methodology fixtures were supplied.</div>'
+    head = (
+        '<div class="studies-table">'
+        '<div class="studies-head">'
+        "<span>Workload</span><span>Paper / DOI</span></div>"
+    )
+    body = []
+    for row in rows:
+        body.append(
+            '<div class="studies-row">'
+            f'<span class="workload"><strong>{_escape(row["workload"])}</strong></span>'
+            f'<span class="paper-cell"><strong>{_escape(row["paper_title"])}</strong>'
+            f'<small class="mono">{_escape(row["identifier"])}</small></span>'
             "</div>"
         )
     return head + "".join(body) + "</div>"
@@ -1376,41 +1424,21 @@ def _render_slide_evidence_combined(
     )
 
 
-def _render_slide_gaps_compact(
-    gap_definitions: list[tuple[str, str, str, str]],
-) -> str:
-    return "".join(
-        _gap_card(index, title, evidence, measurement, priority)
-        for index, (title, evidence, measurement, priority) in enumerate(
-            gap_definitions, start=1
-        )
-    )
-
-
-def _render_slide_plan_compact(rows: list[tuple[str, str, str]]) -> str:
+def _render_slide_plan_compact(rows: list[str]) -> str:
     return "".join(
         '<article class="plan-row">'
         f'<span class="plan-index">{index:02d}</span><div>'
-        f"<strong>{_escape(stage)}</strong>"
-        f"<h3>{_escape(question)}</h3><p>{_escape(measures)}</p></div></article>"
-        for index, (stage, question, measures) in enumerate(rows, start=1)
+        f"<h3>{_escape(item)}</h3></div></article>"
+        for index, item in enumerate(rows, start=1)
     )
 
 
-def _render_slide_next_steps_combined(
-    *,
-    gap_definitions: list[tuple[str, str, str, str]],
-    plan_rows: list[tuple[str, str, str]],
-) -> str:
+def _render_slide_measure_next(*, plan_rows: list[str]) -> str:
     return (
         '<div class="next-steps-slide">'
-        '<section class="next-steps-block next-steps-gaps">'
-        '<p class="block-label">What blocks the next claim</p>'
-        f'<div class="gap-grid gap-grid-compact">{_render_slide_gaps_compact(gap_definitions)}</div>'
-        "</section>"
         '<section class="next-steps-block next-steps-plan">'
         '<p class="block-label">What to measure next</p>'
-        f'<div class="plan plan-compact">{_render_slide_plan_compact(plan_rows)}</div>'
+        f'<div class="plan plan-compact plan-full">{_render_slide_plan_compact(plan_rows)}</div>'
         "</section></div>"
     )
 
@@ -1446,8 +1474,8 @@ def render_slides_html(data: dict[str, Any]) -> str:
         ]
     )
     benchmark_chunks = _chunk(benchmarks, 4) or [[]]
+    paper_studies = data.get("paper_studies", [])
     plan_rows = _measurement_plan_rows()
-    gap_definitions = _gap_definitions(summary, checkpoints)
 
     slides: list[str] = [
         (
@@ -1479,8 +1507,19 @@ def render_slides_html(data: dict[str, Any]) -> str:
         "<strong>Joint calibrated surrogate</strong></div><div><span>Gate</span>"
         "<strong>Check support + uncertainty</strong></div><div><span>Route</span>"
         "<strong>Surrogate or full models</strong></div></div></div>",
-        _slide_heading(
+        '<div class="studies-slide-frame">'
+        + _slide_heading(
             "02",
+            "Paper-based benchmarking for common paired tool calls",
+        )
+        + f'<div class="studies-slide">{_render_slide_paper_study_rows(paper_studies)}</div>'
+        + "</div>",
+    ]
+
+    slides.extend(
+        [
+        _slide_heading(
+            "03",
             "Current evidence",
             "Observed measurements, pilot results, surrogate metrics, curated outputs, and full-model baselines.",
         )
@@ -1491,12 +1530,13 @@ def render_slides_html(data: dict[str, Any]) -> str:
             benchmark_rows=benchmark_chunks[0] if benchmark_chunks else [],
             summary=summary,
         ),
-    ]
+        ]
+    )
 
     for chunk_index, chunk in enumerate(benchmark_chunks[1:], start=2):
         slides.append(
             _slide_heading(
-                "02",
+                "03",
                 "Full-model benchmark summaries",
                 f"Workload timing and objective error ({chunk_index} / {len(benchmark_chunks)}).",
             )
@@ -1512,14 +1552,11 @@ def render_slides_html(data: dict[str, Any]) -> str:
 
     slides.append(
         _slide_heading(
-            "03",
-            "Gaps and next measurements",
-            "What blocks the next claim and the claim ladder to close each gap.",
+            "04",
+            "What to measure next",
+            "Three priorities before the next claim.",
         )
-        + _render_slide_next_steps_combined(
-            gap_definitions=gap_definitions,
-            plan_rows=plan_rows,
-        )
+        + _render_slide_measure_next(plan_rows=plan_rows)
     )
 
     slides.append(
@@ -1554,16 +1591,16 @@ SLIDES_PAGE_TEMPLATE = """<!doctype html>
 .verdict{padding:24px;background:var(--ink);color:white;border-radius:11px 11px 11px 2px;box-shadow:10px 10px 0 var(--soft-orange)}.verdict small{color:#aebad0;font:750 9px ui-monospace,monospace;text-transform:uppercase}.verdict strong{display:block;margin:12px 0;color:#ff875d;font:780 24px ui-monospace,monospace}.verdict p{margin:0;color:#ccd5e3;font-size:13px;line-height:1.55}
 .heading{display:flex;align-items:end;justify-content:space-between;gap:24px;padding-bottom:16px;border-bottom:1px solid var(--line)}.heading>div{display:flex;align-items:baseline;gap:12px}.index{color:var(--orange);font:800 10px ui-monospace,monospace}.heading h2{margin:0;font:700 36px Georgia,serif;letter-spacing:-.025em}.heading-note{max-width:520px;margin:0;color:var(--muted);font-size:13px;line-height:1.5;text-align:right}
 .motivation-grid{display:grid;grid-template-columns:repeat(3,1fr);border-left:1px solid var(--line);flex:1}.motivation{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.motivation b{color:var(--orange);font:800 10px ui-monospace,monospace}.motivation h3{margin:18px 0 8px;font:700 22px/1.15 Georgia,serif}.motivation p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
-.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line);grid-template-columns:repeat(2,1fr)}.why-routing-slide .motivation{padding:16px 18px}.why-routing-slide .motivation h3{margin:12px 0 6px;font-size:18px}.why-routing-slide .motivation p{font-size:12px;line-height:1.5}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.why-routing-slide{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}.why-routing-slide .motivation-grid{flex:1.15;border-top:1px solid var(--line);grid-template-columns:repeat(2,1fr)}.why-routing-slide .motivation{padding:28px 30px}.why-routing-slide .motivation b{font:800 15px ui-monospace,monospace;letter-spacing:.12em}.why-routing-slide .motivation h3{margin:18px 0 12px;font:700 30px/1.18 Georgia,serif}.why-routing-slide .motivation p{margin:0;font-size:30px;line-height:1.48;color:#24324a}.flow-label{margin:0;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
 .flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--ink);background:var(--ink);gap:1px;flex:1}.flow div{min-height:120px;padding:16px;background:var(--paper);display:flex;flex-direction:column;gap:8px;justify-content:center;position:relative}.why-routing-slide .flow{flex:.85}.why-routing-slide .flow div{min-height:88px;padding:12px 14px}.flow div:not(:last-child):after{content:"→";position:absolute;right:-10px;z-index:2;width:18px;height:18px;display:grid;place-items:center;border:1px solid var(--ink);border-radius:50%;background:var(--paper);font-size:11px}.flow span{color:var(--orange);font:800 8px ui-monospace,monospace;text-transform:uppercase}.flow strong{font-size:12px;line-height:1.4}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:3px solid var(--ink);flex:1}.appendix-metrics{grid-template-columns:repeat(3,1fr)}.metric{padding:22px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.metric:nth-child(4n){border-right:0}.appendix-metrics .metric:nth-child(3n){border-right:0}.appendix-metrics .metric:nth-child(4n){border-right:1px solid var(--line)}.metric-value{font:760 30px ui-monospace,monospace;letter-spacing:-.05em}.metric-label{margin-top:12px;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric p{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
 .evidence-slide{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}.evidence-slide .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.evidence-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}.evidence-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.evidence-metrics .metrics-compact{border-top-width:1px}.metrics-compact .metric{padding:12px 14px}.metrics-compact .metric-value{font-size:22px}.metrics-compact .metric-label{margin-top:8px;font-size:8px}.metrics-compact .metric p{font-size:10px;line-height:1.4}.result-grid-compact,.surrogate-grid-compact{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);flex:1}.result-grid-compact .result-card,.surrogate-grid-compact .surrogate-metric{padding:12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--paper)}.result-grid-compact .result-card:nth-child(2n),.surrogate-grid-compact .surrogate-metric:nth-child(2n){border-right:0}.result-grid-compact .result-card:nth-last-child(-n+2),.surrogate-grid-compact .surrogate-metric:nth-last-child(-n+2){border-bottom:0}.result-grid-compact .result-card strong{font-size:20px}.result-grid-compact .result-card span,.surrogate-grid-compact .surrogate-metric span{margin-top:8px;font-size:8px}.result-grid-compact .result-card p,.surrogate-grid-compact .surrogate-metric p{font-size:10px;line-height:1.4}.surrogate-grid-compact .surrogate-metric strong{font-size:14px}.evidence-viz .artifact-summary{border:1px solid var(--line)}.evidence-viz .artifact-summary div{padding:12px}.evidence-viz .artifact-summary strong{font-size:20px}.evidence-viz .viz-note{margin:10px 0 0;color:var(--muted);font-size:10px;line-height:1.45}.evidence-benchmarks .benchmark-table{flex:1;min-height:0}.evidence-benchmarks .benchmark-head{min-height:28px;font-size:8px}.evidence-benchmarks .benchmark-row{min-height:42px;font-size:11px}.evidence-benchmarks .paper-warning{margin-top:10px;padding:10px 12px;font-size:10px;line-height:1.45}
 .result-intro,.surrogate-header{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:end;padding:24px;background:var(--ink);color:white}.result-intro h3,.surrogate-header h3{margin:8px 0 0;font:700 24px/1.2 Georgia,serif}.result-intro p,.surrogate-header p{margin:0;color:#cbd4e3;font-size:12px;line-height:1.6}.result-grid{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid var(--line)}.result-card{padding:20px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.result-card strong{display:block;font:760 26px ui-monospace,monospace}.result-card span,.surrogate-metric span{display:block;margin-top:12px;font:800 9px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase}.result-card p,.surrogate-metric p{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.55}
 .model-card,.visualization-card{border:1px solid var(--ink);flex:1;display:flex;flex-direction:column;overflow:hidden}.surrogate-header{background:var(--blue)}.surrogate-header p{text-align:right}.surrogate-grid{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}.surrogate-metric{padding:18px;background:var(--card);border-right:1px solid var(--line)}.surrogate-metric:last-child{border-right:0}.surrogate-metric strong{display:block;font:720 17px/1.3 ui-monospace,monospace;overflow-wrap:anywhere}.metric-note{margin:0;padding:14px 18px;background:var(--soft-blue);color:var(--blue);font-size:11px;line-height:1.55}
 .artifact-intro{display:grid;grid-template-columns:1.1fr 1fr;gap:36px;align-items:end;padding:22px;background:#263b35;color:white}.artifact-intro h3{margin:8px 0 0;font:700 22px Georgia,serif}.artifact-intro p{margin:0;color:#cbd8d2;font-size:12px;line-height:1.55}.artifact-summary{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--line)}.artifact-summary div{padding:16px;background:var(--card);border-right:1px solid var(--line)}.artifact-summary div:last-child{border-right:0}.artifact-summary strong{display:block;font:760 24px ui-monospace,monospace}.artifact-summary span{font:800 8px ui-monospace,monospace;text-transform:uppercase}.artifact-grid{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid var(--line)}.artifact-card{padding:18px;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.artifact-head h3{margin:6px 0 0;font:700 18px Georgia,serif}.artifact-meta{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.artifact-meta span{padding:4px 7px;border-radius:999px;background:#ebe7dd;font:750 8px ui-monospace,monospace;text-transform:uppercase}.artifact-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.artifact-gaps-inline{margin:0;padding:12px 16px;background:#fff8e8;color:var(--yellow);font-size:11px;border-top:1px solid var(--line)}
-.paper-warning{margin:0;padding:14px 16px;background:#fff8e8;border:1px solid #e5d4ad;font-size:12px;line-height:1.55}.benchmark-table{border:1px solid var(--line);flex:1;display:flex;flex-direction:column;overflow:hidden}.benchmark-head,.benchmark-row{display:grid;grid-template-columns:1.35fr 1fr .7fr .7fr 1.5fr;align-items:center;gap:12px;padding:0 12px}.benchmark-head{min-height:36px;border-bottom:1px solid var(--line);color:var(--muted);font:800 9px ui-monospace,monospace;text-transform:uppercase;background:var(--card)}.benchmark-row{min-height:56px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);font-size:12px}.benchmark-row:last-child{border-bottom:0}.workload{display:flex;flex-direction:column;gap:4px}.workload strong{font-size:13px}.workload small{color:var(--muted);font:650 9px ui-monospace,monospace;text-transform:uppercase}.good{color:var(--green);font-weight:800}.muted{color:var(--muted)}.empty{padding:28px;background:var(--card);color:var(--muted);text-align:center}
+.paper-warning{margin:0;padding:14px 16px;background:#fff8e8;border:1px solid #e5d4ad;font-size:12px;line-height:1.55}.studies-slide-frame{display:flex;flex-direction:column;flex:1;min-height:0;gap:20px}.studies-slide-frame .heading h2{font-size:30px}.studies-slide{display:flex;flex-direction:column;flex:1;min-height:0}.studies-table{border:1px solid var(--line);flex:1;display:flex;flex-direction:column;overflow:hidden}.studies-head,.studies-row{display:grid;grid-template-columns:1fr 2.35fr;align-items:center;gap:8px;padding:0 10px}.studies-head{min-height:48px;border-bottom:1px solid var(--line);color:var(--muted);font:800 30px ui-monospace,monospace;letter-spacing:.04em;text-transform:uppercase;background:var(--card)}.studies-row{min-height:30px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);font-size:10px;line-height:1.25}.studies-row:last-child{border-bottom:0}.studies-row .workload strong{font-size:11px}.paper-cell{display:flex;flex-direction:column;gap:2px}.paper-cell strong{font-size:10px;line-height:1.25;font-weight:650}.paper-cell small{font-size:9px;color:var(--muted);overflow-wrap:anywhere}.benchmark-table{border:1px solid var(--line);flex:1;display:flex;flex-direction:column;overflow:hidden}.benchmark-head,.benchmark-row{display:grid;grid-template-columns:1.35fr 1fr .7fr .7fr 1.5fr;align-items:center;gap:12px;padding:0 12px}.benchmark-head{min-height:36px;border-bottom:1px solid var(--line);color:var(--muted);font:800 9px ui-monospace,monospace;text-transform:uppercase;background:var(--card)}.benchmark-row{min-height:56px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);font-size:12px}.benchmark-row:last-child{border-bottom:0}.workload{display:flex;flex-direction:column;gap:4px}.workload strong{font-size:13px}.workload small{color:var(--muted);font:650 9px ui-monospace,monospace;text-transform:uppercase}.good{color:var(--green);font-weight:800}.muted{color:var(--muted)}.empty{padding:28px;background:var(--card);color:var(--muted);text-align:center}
 .gap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1}.gap-card{padding:20px;background:var(--card);border:1px solid var(--line);border-top:3px solid var(--orange)}.gap-meta{display:flex;justify-content:space-between;align-items:center;color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.gap-meta b{padding:4px 7px;border-radius:999px;background:var(--soft-orange);color:var(--red)}.gap-card h3{margin:16px 0 10px;font:700 20px Georgia,serif}.gap-card p{margin:6px 0;color:var(--muted);font-size:11px;line-height:1.55}.gap-card p strong{color:var(--ink)}
-.next-steps-slide{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;flex:1;min-height:0}.next-steps-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.next-steps-block .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.gap-grid-compact{grid-template-columns:repeat(3,1fr);gap:8px;flex:1}.gap-grid-compact .gap-card{padding:10px 12px;border-top-width:2px}.gap-grid-compact .gap-meta{font-size:8px}.gap-grid-compact .gap-card h3{margin:8px 0 6px;font-size:13px;line-height:1.2}.gap-grid-compact .gap-card p{margin:4px 0;font-size:9px;line-height:1.4}.plan-compact{border-left:1px solid var(--line);flex:1;overflow:hidden}.plan-compact .plan-row{grid-template-columns:42px 1fr}.plan-compact .plan-index{font-size:10px}.plan-compact .plan-row>div{padding:10px 12px}.plan-compact .plan-row h3{margin:4px 0 2px;font-size:13px;line-height:1.2}.plan-compact .plan-row p{font-size:9px;line-height:1.4}
+.next-steps-slide{display:flex;flex-direction:column;flex:1;min-height:0}.next-steps-block{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);background:var(--card);padding:12px 14px}.next-steps-plan{flex:1}.next-steps-block .block-label{margin:0 0 8px;color:var(--orange);font:800 9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.plan-compact{border-left:1px solid var(--line);flex:1;overflow:hidden;display:flex;flex-direction:column}.plan-compact.plan-full .plan-row{flex:1;grid-template-columns:64px 1fr}.plan-compact .plan-row{grid-template-columns:42px 1fr}.plan-compact .plan-index{font-size:10px}.plan-compact.plan-full .plan-index{font-size:18px}.plan-compact .plan-row>div{padding:10px 12px}.plan-compact.plan-full .plan-row>div{display:flex;align-items:center;padding:28px 32px}.plan-compact .plan-row h3{margin:4px 0 2px;font-size:13px;line-height:1.2}.plan-compact.plan-full .plan-row h3{margin:0;font-size:34px;line-height:1.25}.plan-compact .plan-row p{font-size:9px;line-height:1.4}
 .plan{border-left:1px solid var(--line);flex:1}.plan-row{display:grid;grid-template-columns:64px 1fr;background:var(--card);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.plan-index{display:grid;place-items:center;color:var(--orange);background:#ebe7dd;font:800 12px ui-monospace,monospace}.plan-row>div{padding:18px 22px}.plan-row>div>strong{color:var(--orange);font:800 9px ui-monospace,monospace;text-transform:uppercase}.plan-row h3{margin:6px 0 4px;font:700 18px Georgia,serif}.plan-row p{margin:0;color:var(--muted);font-size:11px;line-height:1.55}
 .appendix-note{margin-top:8px;padding:14px 16px;background:var(--soft-blue);color:var(--blue);font-size:12px;line-height:1.55;border:1px solid var(--line)}.state{white-space:nowrap;border-radius:999px;padding:4px 8px;font:800 8px ui-monospace,monospace;text-transform:uppercase}.state.available{color:var(--green);background:#dceee8}.state.partial{color:var(--yellow);background:#f5e7c8}.state.missing{color:var(--red);background:#f4dcd8}
 @media print{@page{size:10in 5.625in;margin:0}html,body{margin:0;padding:0;background:var(--paper);-webkit-print-color-adjust:exact;print-color-adjust:exact}.deck{display:block;gap:0;padding:0}.slide{display:block;width:10in;height:5.625in;max-height:5.625in;aspect-ratio:16/9;box-shadow:none;overflow:hidden;page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid}.slide:last-child{page-break-after:auto;break-after:auto}}
@@ -1730,7 +1767,7 @@ PAGE_TEMPLATE = """<!doctype html>
 
 <section class="shell" id="gaps"><div class="heading"><div><span class="index">03</span><h2>What blocks the next claim</h2></div><p>Each gap names the evidence we have and the measurement that would close it.</p></div><div class="gap-grid">__GAP_CARDS__</div></section>
 
-<section class="shell" id="measure"><div class="heading"><div><span class="index">04</span><h2>What to measure next</h2></div><p>A claim ladder from proposal-level traces to paired full-versus-fused decisions.</p></div><div class="plan">__MEASUREMENT_PLAN__</div></section>
+<section class="shell" id="measure"><div class="heading"><div><span class="index">04</span><h2>What to measure next</h2></div><p>Three priorities before the next claim.</p></div><div class="plan">__MEASUREMENT_PLAN__</div></section>
 
 	<section class="shell" id="evidence"><div class="heading"><div><span class="index">05</span><h2>Evidence appendix</h2></div><p>Trace readiness, cohorts, checkpoints, and hashed aggregate inputs.</p></div><details class="appendix"><summary>Open trace, split, checkpoint & provenance detail</summary><div class="appendix-body"><h3>Trace coverage</h3><div class="trace-grid">__TRACE_ROWS__</div><div class="callout"><strong>Checkpointing is not tracing.</strong> Checkpoints support recovery from completed compute boundaries. Evals additionally need proposal-level teacher, surrogate, routing, latency, cost, and final-validation records.</div><h3>How trajectories become model splits</h3><div class="trajectory-guide"><article><b>01 · run</b><strong>One seed creates one trajectory</strong><p>A complete optimizer run emits many sequential proposals whose later states depend on earlier decisions.</p></article><article><b>02 · group</b><strong>Many rows remain one unit</strong><p>Objective rows align into proposal-level teacher samples, but every sample from the trajectory retains one group ID.</p></article><article><b>03 · split</b><strong>Assign complete trajectories</strong><p>Whole groups go to train, calibration, or test. Shuffling proposal rows would leak neighboring optimizer states.</p></article></div><div class="trajectory-target"><strong>Preferred narrow-workload collection:</strong> 60 train + 20 calibration + 20 untouched test trajectories, followed by roughly 50 fresh paired timing trajectories and 40–60 designed challenge cases. Proposal-row counts are larger, but the trajectory counts are the effective independent sample sizes.</div><h3>Training and held-out cohorts</h3><div class="cohorts">__COHORT_ROWS__</div><h3>Resume evidence</h3><section class="checkpoint" aria-label="Checkpoint artifacts"><div class="checkpoint-title"><span>Supplied checkpoint data</span><strong>Operational checkpoints</strong></div><div><span>Runs</span><strong>__CHECKPOINT_RUNS__</strong></div><div><span>Resume events</span><strong>__CHECKPOINT_RESUMES__</strong></div><div><span>Completed / planned units</span><strong>__CHECKPOINT_UNITS__</strong></div><div><span>Trace rows</span><strong>__CHECKPOINT_TRACE_ROWS__</strong></div></section><h3>Hashed aggregate inputs</h3><div class="source-wrap"><table class="sources"><thead><tr><th>Source artifact</th><th>SHA-256</th></tr></thead><tbody>__SOURCE_ROWS__</tbody></table></div><div class="use-note"><strong>Portable by design.</strong> Anyone with a clone and the result artifacts can regenerate this file with <code>python3 scripts/build_evaluation_report.py</code>. It opens directly in a browser; the interactions use only embedded JavaScript, with no server, login, hosted API, external font, or package install required to read it. The normalized aggregate JSON is embedded in <code>#protofuse-report-data</code>.</div></div></details></section>
 
