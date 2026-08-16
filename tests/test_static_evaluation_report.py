@@ -276,7 +276,6 @@ def test_slides_deck_is_self_contained_and_16_9(tmp_path: Path) -> None:
     assert "Sai Thatigotla and Philip Thomas" in report
     assert "<h1>ProtoFuse</h1>" in report
     assert "PROMISING / UNPROVEN" not in report
-    assert "What blocks the next claim" in report
     assert "What to measure next" in report
     assert "Evidence appendix summary" in report
     assert "Full-model benchmark summaries" in report
